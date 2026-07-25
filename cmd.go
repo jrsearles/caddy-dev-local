@@ -17,6 +17,7 @@ import (
 	"github.com/jsearles/caddy-dev-local/config"
 	"github.com/jsearles/caddy-dev-local/docker"
 	"github.com/jsearles/caddy-dev-local/generator"
+	"github.com/jsearles/caddy-dev-local/hosts"
 	"github.com/moby/moby/client"
 )
 
@@ -44,8 +45,18 @@ func init() {
 			fs.Duration("probe-timeout", 0,
 				"HTTP probe timeout (env: DEVLOCAL_PROBE_TIMEOUT)")
 
+			fs.Bool("hosts-file", true,
+				"Manage /etc/hosts entries for domains (env: DEVLOCAL_HOSTS_FILE)")
+
 			return fs
 		}(),
+	})
+
+	caddycmd.RegisterCommand(caddycmd.Command{
+		Name:  "devlocal-clean",
+		Func:  cleanFunc,
+		Usage: "",
+		Short: "Remove devlocal entries from the hosts file",
 	})
 }
 
@@ -68,9 +79,27 @@ func cmdFunc(fs caddycmd.Flags) (int, error) {
 		cfg.ProbeTimeout = v
 	}
 
+	hostsFile := fs.Bool("hosts-file")
+	cfg.ApplyFlags(
+		fs.String("ingress-network"),
+		fs.String("tld"),
+		fs.Duration("stale-ttl"),
+		fs.Duration("poll-interval"),
+		fs.Duration("probe-timeout"),
+		&hostsFile,
+	)
+
 	ingressExplicit := fs.String("ingress-network") != "" || os.Getenv("DEVLOCAL_INGRESS_NETWORK") != ""
 	if !ingressExplicit {
 		cfg.Standalone = config.DetectStandalone()
+	}
+
+	hostsOK := true
+	if cfg.HostsFile {
+		if !hosts.CanWrite() {
+			log.Println("[devlocal] warning: hosts file not writable, skipping hosts file updates")
+			hostsOK = false
+		}
 	}
 
 	dockerClient, err := docker.NewClient()
@@ -95,9 +124,11 @@ func cmdFunc(fs caddycmd.Flags) (int, error) {
 		return 1, fmt.Errorf("loading initial caddy config: %w", err)
 	}
 
-	go watchEvents(ctx, dockerClient, gen, cfg)
-	go pollContainers(ctx, cfg, gen)
-	go staleCleanup(ctx, cfg, gen)
+	syncHosts(gen, cfg, hostsOK)
+
+	go watchEvents(ctx, dockerClient, gen, cfg, hostsOK)
+	go pollContainers(ctx, cfg, gen, hostsOK)
+	go staleCleanup(ctx, cfg, gen, hostsOK)
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
@@ -107,7 +138,7 @@ func cmdFunc(fs caddycmd.Flags) (int, error) {
 	return 0, nil
 }
 
-func watchEvents(ctx context.Context, dockerClient docker.Client, gen *generator.Generator, cfg *config.Config) {
+func watchEvents(ctx context.Context, dockerClient docker.Client, gen *generator.Generator, cfg *config.Config, hostsOK bool) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -154,6 +185,7 @@ func watchEvents(ctx context.Context, dockerClient docker.Client, gen *generator
 					gen.Refresh(ctx)
 					gen.SelectPorts(ctx)
 					loadCaddyConfig(gen, cfg)
+					syncHosts(gen, cfg, hostsOK)
 				}
 				throttle.Stop()
 				break eventLoop
@@ -162,7 +194,7 @@ func watchEvents(ctx context.Context, dockerClient docker.Client, gen *generator
 	}
 }
 
-func pollContainers(ctx context.Context, cfg *config.Config, gen *generator.Generator) {
+func pollContainers(ctx context.Context, cfg *config.Config, gen *generator.Generator, hostsOK bool) {
 	ticker := time.NewTicker(cfg.PollInterval)
 	defer ticker.Stop()
 
@@ -174,11 +206,12 @@ func pollContainers(ctx context.Context, cfg *config.Config, gen *generator.Gene
 			gen.Refresh(ctx)
 			gen.SelectPorts(ctx)
 			loadCaddyConfig(gen, cfg)
+			syncHosts(gen, cfg, hostsOK)
 		}
 	}
 }
 
-func staleCleanup(ctx context.Context, cfg *config.Config, gen *generator.Generator) {
+func staleCleanup(ctx context.Context, cfg *config.Config, gen *generator.Generator, hostsOK bool) {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 
@@ -189,6 +222,7 @@ func staleCleanup(ctx context.Context, cfg *config.Config, gen *generator.Genera
 		case <-ticker.C:
 			gen.StaleCleanup()
 			loadCaddyConfig(gen, cfg)
+			syncHosts(gen, cfg, hostsOK)
 		}
 	}
 }
@@ -213,4 +247,22 @@ func loadCaddyConfig(gen *generator.Generator, cfg *config.Config) error {
 	}
 
 	return caddy.Load(configJSON, false)
+}
+
+func syncHosts(gen *generator.Generator, cfg *config.Config, hostsOK bool) {
+	if !cfg.HostsFile || !hostsOK {
+		return
+	}
+	if err := hosts.Sync(gen.Domains()); err != nil {
+		log.Printf("[devlocal] failed to update hosts file: %v", err)
+	}
+}
+
+func cleanFunc(fs caddycmd.Flags) (int, error) {
+	if err := hosts.Remove(); err != nil {
+		log.Printf("[devlocal] failed to remove hosts entries: %v", err)
+		return 1, err
+	}
+	log.Println("[devlocal] hosts file entries removed")
+	return 0, nil
 }

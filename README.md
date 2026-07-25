@@ -2,13 +2,16 @@
 
 A Caddy plugin that automatically registers `{project}.{service}.dev.local` domains for Docker containers, with HTTP port probing, self-signed TLS, and a built-in index page — inspired by OrbStack's container domain feature.
 
+> **Warning**: This plugin is designed for local development environments only. It uses self-signed TLS, auto-manages hosts files, and assumes trusted networks. Do not use in production.
+
 ## Features
 
 - **Automatic domain registration** — Containers on a shared Docker network get `*.dev.local` domains
 - **Compose-aware** — Uses `{project}.{service}.dev.local` for Compose services, `{container-name}.dev.local` for standalone containers
-- **HTTP port probing** — For containers with multiple ports, automatically detects the HTTP port
+- **HTTP port probing** — For containers with multiple ports, automatically detects the HTTP port, preferring common ports (80, 8080, 443, 8443)
 - **Self-signed TLS** — Zero-config HTTPS using Caddy's internal CA
 - **Custom domains** — Override auto-registration with `dev.local.domains` label
+- **Hosts file integration** — Automatically adds entries to `/etc/hosts` for local DNS resolution
 - **Index page** — Visit `dev.local` to see all registered containers
 - **Stale cleanup** — Automatically removes config for containers stopped > 1 hour
 
@@ -102,6 +105,7 @@ services:
 | `--stale-ttl` | `DEVLOCAL_STALE_TTL` | `1h` | Keep config for stopped containers |
 | `--poll-interval` | `DEVLOCAL_POLL_INTERVAL` | `30s` | Fallback polling interval |
 | `--probe-timeout` | `DEVLOCAL_PROBE_TIMEOUT` | `2s` | HTTP probe timeout |
+| `--hosts-file` | `DEVLOCAL_HOSTS_FILE` | `true` | Manage `/etc/hosts` entries for domains |
 
 ## Building from Source
 
@@ -179,14 +183,53 @@ Then visit:
 1. Watches Docker events for container start/stop
 2. Lists all containers on the configured ingress network
 3. Computes domains from container labels (Compose project/service or container name)
-4. For multi-port containers, probes ports in order to find the HTTP server
-5. Generates a Caddyfile with `tls internal` for self-signed HTTPS
-6. Loads the config into Caddy with zero downtime
+4. For multi-port containers, probes ports to find the HTTP server (common ports 80, 8080, 443, 8443 are checked first)
+5. In Docker mode, probes via the container name; in standalone mode, probes via `localhost`
+6. Generates a Caddyfile with `tls internal` for self-signed HTTPS
+7. Loads the config into Caddy with zero downtime
+
+## Hosts File
+
+caddy-dev-local automatically manages entries in your system hosts file (`/etc/hosts` on Linux, `C:\Windows\System32\drivers\etc\hosts` on Windows) so domains resolve locally without configuring DNS.
+
+Entries are written inside a managed block with searchable markers:
+
+```
+# dev-local:BEGIN
+127.0.0.1    myapp.web.dev.local
+127.0.0.1    my-nginx.dev.local
+# dev-local:END
+```
+
+The block is updated on every config reload — added when containers start, removed when they stop. Entries are only written for `.dev.local` (or custom TLD) domains; `.localhost` domains are excluded since browsers handle those natively.
+
+### Opt Out
+
+Disable hosts file management entirely:
+
+```bash
+caddy devlocal --hosts-file=false
+# or
+DEVLOCAL_HOSTS_FILE=false caddy devlocal
+```
+
+### Cleanup
+
+Remove all devlocal entries from the hosts file:
+
+```bash
+caddy devlocal-clean
+```
+
+### Permissions
+
+On Linux, writing to `/etc/hosts` requires root. If the process doesn't have write permission, caddy-dev-local logs a warning and skips hosts file updates (Caddy still works normally).
 
 ## Acknowledgements
 
 - [OrbStack](https://orbstack.dev/) — Container domain feature inspired the domain convention and automatic registration model
 - [caddy-docker-proxy](https://github.com/caddy-docker/proxy) — Pioneered Caddy as a Docker reverse proxy; this project takes a more opinionated, zero-config approach
+- [Caddy](https://caddyserver.com/docs/) — The web server this project extends
 
 ## License
 

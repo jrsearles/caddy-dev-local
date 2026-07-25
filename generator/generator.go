@@ -182,7 +182,7 @@ func (g *Generator) SelectPorts(ctx context.Context) error {
 			} else if len(pubPorts) == 1 {
 				info.SelectedPort = pubPorts[0]
 			} else {
-				port, err := ProbeHTTPPort(pubPorts, g.cfg.ProbeTimeout)
+				port, err := ProbeHTTPPort("localhost", pubPorts, g.cfg.ProbeTimeout)
 				if err == nil {
 					info.SelectedPort = port
 				}
@@ -191,7 +191,7 @@ func (g *Generator) SelectPorts(ctx context.Context) error {
 			if len(info.Ports) == 1 {
 				info.SelectedPort = info.Ports[0]
 			} else if len(info.Ports) > 1 {
-				port, err := ProbeHTTPPort(info.Ports, g.cfg.ProbeTimeout)
+				port, err := ProbeHTTPPort(info.ContainerName, info.Ports, g.cfg.ProbeTimeout)
 				if err == nil {
 					info.SelectedPort = port
 				}
@@ -325,6 +325,46 @@ func (g *Generator) Containers() []*ContainerInfo {
 		return g.domainForContainer(result[i]) < g.domainForContainer(result[j])
 	})
 	return result
+}
+
+func (g *Generator) Domains() []string {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	seen := make(map[string]bool)
+	var domains []string
+
+	for _, info := range g.containers {
+		if !info.IsRunning {
+			continue
+		}
+
+		if custom := g.customDomains(info); len(custom) > 0 {
+			for _, cd := range custom {
+				if strings.HasSuffix(cd.Domain, ".localhost") {
+					continue
+				}
+				if !seen[cd.Domain] {
+					seen[cd.Domain] = true
+					domains = append(domains, cd.Domain)
+				}
+			}
+			continue
+		}
+
+		if info.SelectedPort == 0 {
+			continue
+		}
+
+		d := g.domainForContainer(info)
+		if !strings.HasSuffix(d, ".localhost") && !seen[d] {
+			seen[d] = true
+			domains = append(domains, d)
+		}
+	}
+
+	sort.Strings(domains)
+	return domains
 }
 
 func (g *Generator) StaleCleanup() {

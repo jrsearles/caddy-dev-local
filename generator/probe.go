@@ -9,7 +9,45 @@ import (
 
 const probeUserAgent = "DevLocal-Server-Detection"
 
-func ProbeHTTPPort(ports []uint16, timeout time.Duration) (uint16, error) {
+var commonHTTPPorts = []uint16{80, 8080, 443, 8443}
+
+func preferPorts(ports []uint16) []uint16 {
+	if len(ports) <= 1 {
+		return ports
+	}
+
+	portSet := make(map[uint16]bool, len(ports))
+	for _, p := range ports {
+		portSet[p] = true
+	}
+
+	var preferred, rest []uint16
+	for _, p := range commonHTTPPorts {
+		if portSet[p] {
+			preferred = append(preferred, p)
+		}
+	}
+
+	for _, p := range ports {
+		if !portSet[p] {
+			continue
+		}
+		isCommon := false
+		for _, cp := range commonHTTPPorts {
+			if p == cp {
+				isCommon = true
+				break
+			}
+		}
+		if !isCommon {
+			rest = append(rest, p)
+		}
+	}
+
+	return append(preferred, rest...)
+}
+
+func ProbeHTTPPort(host string, ports []uint16, timeout time.Duration) (uint16, error) {
 	if len(ports) == 0 {
 		return 0, fmt.Errorf("no ports to probe")
 	}
@@ -32,8 +70,10 @@ func ProbeHTTPPort(ports []uint16, timeout time.Duration) (uint16, error) {
 		},
 	}
 
-	for _, port := range ports {
-		url := fmt.Sprintf("http://127.0.0.1:%d/", port)
+	sorted := preferPorts(ports)
+
+	for _, port := range sorted {
+		url := fmt.Sprintf("http://%s:%d/", host, port)
 		req, err := http.NewRequest("GET", url, nil)
 		if err != nil {
 			continue

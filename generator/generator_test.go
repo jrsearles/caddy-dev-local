@@ -299,7 +299,7 @@ func TestProbeHTTPPort(t *testing.T) {
 	var port uint16
 	fmt.Sscanf(portStr, "%d", &port)
 
-	got, err := ProbeHTTPPort([]uint16{port}, 2*time.Second)
+	got, err := ProbeHTTPPort("localhost", []uint16{port}, 2*time.Second)
 	if err != nil {
 		t.Fatalf("ProbeHTTPPort() error = %v", err)
 	}
@@ -328,7 +328,7 @@ func TestProbeHTTPPortNoHTTP(t *testing.T) {
 	var port uint16
 	fmt.Sscanf(portStr, "%d", &port)
 
-	_, err = ProbeHTTPPort([]uint16{port}, 500*time.Millisecond)
+	_, err = ProbeHTTPPort("localhost", []uint16{port}, 500*time.Millisecond)
 	if err == nil {
 		t.Fatal("ProbeHTTPPort() should have returned error for non-HTTP server")
 	}
@@ -738,5 +738,173 @@ func TestIndexPageNonStandalone(t *testing.T) {
 	}
 	if contains(page, "nginx.localhost") {
 		t.Error("localhost domain should not appear in non-standalone mode")
+	}
+}
+
+func TestDomainsComposeAndStandalone(t *testing.T) {
+	containers := []container.Summary{
+		makeContainer("c1", "web", "myapp", "web",
+			[]container.PortSummary{{PrivatePort: 3000, PublicPort: 0}},
+			nil, "running"),
+		makeContainer("c2", "nginx", "", "",
+			[]container.PortSummary{{PrivatePort: 80, PublicPort: 0}},
+			nil, "running"),
+	}
+
+	mock := &mockDocker{containers: containers}
+	cfg := &config.Config{
+		IngressNetwork: "devlocal",
+		TLD:            "dev.local",
+		StaleTTL:       time.Hour,
+	}
+
+	gen := NewGenerator(cfg, mock)
+	ctx := context.Background()
+
+	gen.Refresh(ctx)
+	gen.SelectPorts(ctx)
+
+	domains := gen.Domains()
+	if len(domains) != 2 {
+		t.Fatalf("expected 2 domains, got %d: %v", len(domains), domains)
+	}
+	if domains[0] != "myapp.web.dev.local" {
+		t.Errorf("expected myapp.web.dev.local, got %s", domains[0])
+	}
+	if domains[1] != "nginx.dev.local" {
+		t.Errorf("expected nginx.dev.local, got %s", domains[1])
+	}
+}
+
+func TestDomainsExcludesLocalhost(t *testing.T) {
+	containers := []container.Summary{
+		makeContainer("c1", "nginx", "", "",
+			[]container.PortSummary{{PrivatePort: 80, PublicPort: 8080}},
+			nil, "running"),
+	}
+
+	mock := &mockDocker{containers: containers}
+	cfg := &config.Config{
+		IngressNetwork: "devlocal",
+		TLD:            "dev.local",
+		StaleTTL:       time.Hour,
+		Standalone:     true,
+	}
+
+	gen := NewGenerator(cfg, mock)
+	ctx := context.Background()
+
+	gen.Refresh(ctx)
+	gen.SelectPorts(ctx)
+
+	domains := gen.Domains()
+	if len(domains) != 1 {
+		t.Fatalf("expected 1 domain, got %d: %v", len(domains), domains)
+	}
+	if domains[0] != "nginx.dev.local" {
+		t.Errorf("expected nginx.dev.local, got %s", domains[0])
+	}
+}
+
+func TestDomainsCustomDomains(t *testing.T) {
+	containers := []container.Summary{
+		makeContainer("c1", "web", "myapp", "web",
+			[]container.PortSummary{{PrivatePort: 3000, PublicPort: 0}},
+			map[string]string{"dev.local.domains": "3000:api.custom.local;3000:admin.custom.local"},
+			"running"),
+	}
+
+	mock := &mockDocker{containers: containers}
+	cfg := &config.Config{
+		IngressNetwork: "devlocal",
+		TLD:            "dev.local",
+		StaleTTL:       time.Hour,
+	}
+
+	gen := NewGenerator(cfg, mock)
+	ctx := context.Background()
+
+	gen.Refresh(ctx)
+	gen.SelectPorts(ctx)
+
+	domains := gen.Domains()
+	if len(domains) != 2 {
+		t.Fatalf("expected 2 domains, got %d: %v", len(domains), domains)
+	}
+	if domains[0] != "admin.custom.local" {
+		t.Errorf("expected admin.custom.local, got %s", domains[0])
+	}
+	if domains[1] != "api.custom.local" {
+		t.Errorf("expected api.custom.local, got %s", domains[1])
+	}
+}
+
+func TestDomainsExcludesStopped(t *testing.T) {
+	containers := []container.Summary{
+		makeContainer("c1", "web", "myapp", "web",
+			[]container.PortSummary{{PrivatePort: 3000, PublicPort: 0}},
+			nil, "running"),
+		makeContainer("c2", "api", "myapp", "api",
+			[]container.PortSummary{{PrivatePort: 3000, PublicPort: 0}},
+			nil, "exited"),
+	}
+
+	mock := &mockDocker{containers: containers}
+	cfg := &config.Config{
+		IngressNetwork: "devlocal",
+		TLD:            "dev.local",
+		StaleTTL:       time.Hour,
+	}
+
+	gen := NewGenerator(cfg, mock)
+	ctx := context.Background()
+
+	gen.Refresh(ctx)
+	gen.SelectPorts(ctx)
+
+	domains := gen.Domains()
+	if len(domains) != 1 {
+		t.Fatalf("expected 1 domain, got %d: %v", len(domains), domains)
+	}
+	if domains[0] != "myapp.web.dev.local" {
+		t.Errorf("expected myapp.web.dev.local, got %s", domains[0])
+	}
+}
+
+func TestDomainsSorted(t *testing.T) {
+	containers := []container.Summary{
+		makeContainer("c1", "zebra", "", "",
+			[]container.PortSummary{{PrivatePort: 80, PublicPort: 0}},
+			nil, "running"),
+		makeContainer("c2", "alpha", "", "",
+			[]container.PortSummary{{PrivatePort: 80, PublicPort: 0}},
+			nil, "running"),
+		makeContainer("c3", "middle", "", "",
+			[]container.PortSummary{{PrivatePort: 80, PublicPort: 0}},
+			nil, "running"),
+	}
+
+	mock := &mockDocker{containers: containers}
+	cfg := &config.Config{
+		IngressNetwork: "devlocal",
+		TLD:            "dev.local",
+		StaleTTL:       time.Hour,
+	}
+
+	gen := NewGenerator(cfg, mock)
+	ctx := context.Background()
+
+	gen.Refresh(ctx)
+	gen.SelectPorts(ctx)
+
+	domains := gen.Domains()
+	expected := []string{"alpha.dev.local", "middle.dev.local", "zebra.dev.local"}
+	if len(domains) != len(expected) {
+		t.Fatalf("expected %d domains, got %d: %v", len(expected), len(domains), domains)
+	}
+	for i, d := range domains {
+		if d != expected[i] {
+			t.Errorf("domains[%d] = %s, want %s", i, d, expected[i])
+		}
 	}
 }
