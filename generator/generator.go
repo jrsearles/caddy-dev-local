@@ -2,10 +2,12 @@ package generator
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
 	"sort"
 	"strings"
 	"sync"
+	"text/template"
 	"time"
 
 	"github.com/jsearles/caddy-dev-local/config"
@@ -14,6 +16,30 @@ import (
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 )
+
+//go:embed caddyfile.tmpl
+var caddyfileTemplate string
+
+var (
+	caddyfileTemplateOnce sync.Once
+	caddyfileTemplateObj  *template.Template
+)
+
+func getCaddyfileTemplate() *template.Template {
+	caddyfileTemplateOnce.Do(func() {
+		caddyfileTemplateObj = template.Must(template.New("caddyfile").Parse(caddyfileTemplate))
+	})
+	return caddyfileTemplateObj
+}
+
+type caddyfileEntry struct {
+	Domain      string
+	ProxyTarget string
+}
+
+type caddyfileData struct {
+	Entries []caddyfileEntry
+}
 
 type ContainerInfo struct {
 	ContainerID    string
@@ -180,7 +206,7 @@ func (g *Generator) GenerateCaddyfile() string {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 
-	var sb strings.Builder
+	var data caddyfileData
 
 	for _, info := range g.containers {
 		if !info.IsRunning {
@@ -189,18 +215,20 @@ func (g *Generator) GenerateCaddyfile() string {
 
 		if customDomains := g.customDomains(info); len(customDomains) > 0 {
 			for _, cd := range customDomains {
-				sb.WriteString(fmt.Sprintf("%s {\n", cd.Domain))
-				sb.WriteString("    tls internal\n")
+				var proxyTarget string
 				if g.cfg.Standalone {
 					if pub, ok := info.PublishedPorts[cd.Port]; ok {
-						sb.WriteString(fmt.Sprintf("    reverse_proxy localhost:%d\n", pub))
+						proxyTarget = fmt.Sprintf("localhost:%d", pub)
 					} else {
-						sb.WriteString(fmt.Sprintf("    reverse_proxy localhost:%d\n", cd.Port))
+						proxyTarget = fmt.Sprintf("localhost:%d", cd.Port)
 					}
 				} else {
-					sb.WriteString(fmt.Sprintf("    reverse_proxy %s:%d\n", info.ContainerName, cd.Port))
+					proxyTarget = fmt.Sprintf("%s:%d", info.ContainerName, cd.Port)
 				}
-				sb.WriteString("}\n\n")
+				data.Entries = append(data.Entries, caddyfileEntry{
+					Domain:      cd.Domain,
+					ProxyTarget: proxyTarget,
+				})
 			}
 			continue
 		}
@@ -210,16 +238,28 @@ func (g *Generator) GenerateCaddyfile() string {
 		}
 
 		domain := g.domainForContainer(info)
-		sb.WriteString(fmt.Sprintf("%s {\n", domain))
-		sb.WriteString("    tls internal\n")
+		var proxyTarget string
 		if g.cfg.Standalone {
-			sb.WriteString(fmt.Sprintf("    reverse_proxy localhost:%d\n", info.SelectedPort))
+			proxyTarget = fmt.Sprintf("localhost:%d", info.SelectedPort)
 		} else {
-			sb.WriteString(fmt.Sprintf("    reverse_proxy %s:%d\n", info.ContainerName, info.SelectedPort))
+			proxyTarget = fmt.Sprintf("%s:%d", info.ContainerName, info.SelectedPort)
 		}
-		sb.WriteString("}\n\n")
+		data.Entries = append(data.Entries, caddyfileEntry{
+			Domain:      domain,
+			ProxyTarget: proxyTarget,
+		})
+
+		if g.cfg.Standalone {
+			localhostDomain := g.domainForContainerLocalhost(info)
+			data.Entries = append(data.Entries, caddyfileEntry{
+				Domain:      localhostDomain,
+				ProxyTarget: proxyTarget,
+			})
+		}
 	}
 
+	var sb strings.Builder
+	getCaddyfileTemplate().Execute(&sb, data)
 	return sb.String()
 }
 
@@ -228,6 +268,13 @@ func (g *Generator) domainForContainer(info *ContainerInfo) string {
 		return fmt.Sprintf("%s.%s.%s", info.Project, info.Service, g.cfg.TLD)
 	}
 	return fmt.Sprintf("%s.%s", info.ContainerName, g.cfg.TLD)
+}
+
+func (g *Generator) domainForContainerLocalhost(info *ContainerInfo) string {
+	if info.IsCompose {
+		return fmt.Sprintf("%s.%s.localhost", info.Project, info.Service)
+	}
+	return fmt.Sprintf("%s.localhost", info.ContainerName)
 }
 
 func (g *Generator) customDomains(info *ContainerInfo) []CustomDomain {

@@ -196,7 +196,7 @@ func staleCleanup(ctx context.Context, cfg *config.Config, gen *generator.Genera
 func loadCaddyConfig(gen *generator.Generator, cfg *config.Config) error {
 	caddyfile := gen.GenerateCaddyfile()
 
-	indexPage := generator.GenerateIndexPage(cfg.TLD, gen.Containers())
+	indexPage := generator.GenerateIndexPage(cfg.TLD, cfg.Standalone, gen.Containers())
 	indexBlock := fmt.Sprintf("%s {\n    tls internal\n    respond `%s` 200\n}\n",
 		cfg.TLD, strings.ReplaceAll(indexPage, "`", "\\`"))
 

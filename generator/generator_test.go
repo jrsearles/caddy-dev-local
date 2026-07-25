@@ -99,6 +99,41 @@ func TestDomainComputation(t *testing.T) {
 	}
 }
 
+func TestDomainComputationLocalhost(t *testing.T) {
+	cfg := &config.Config{
+		IngressNetwork: "devlocal",
+		TLD:            "dev.local",
+	}
+
+	tests := []struct {
+		name     string
+		project  string
+		service  string
+		cName    string
+		expected string
+	}{
+		{"compose service", "myapp", "web", "web", "myapp.web.localhost"},
+		{"compose api", "myapp", "api", "api", "myapp.api.localhost"},
+		{"standalone", "", "", "my-nginx", "my-nginx.localhost"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			info := &ContainerInfo{
+				Project:       tt.project,
+				Service:       tt.service,
+				ContainerName: tt.cName,
+				IsCompose:     tt.project != "" && tt.service != "",
+			}
+			gen := &Generator{cfg: cfg}
+			got := gen.domainForContainerLocalhost(info)
+			if got != tt.expected {
+				t.Errorf("domainForContainerLocalhost() = %q, want %q", got, tt.expected)
+			}
+		})
+	}
+}
+
 func TestShouldSkip(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -405,6 +440,9 @@ func TestGeneratorSinglePort(t *testing.T) {
 	if !contains(caddyfile, "reverse_proxy nginx:80") {
 		t.Error("expected reverse_proxy nginx:80 in Caddyfile")
 	}
+	if contains(caddyfile, "nginx.localhost") {
+		t.Error("localhost domain should not appear in non-standalone mode")
+	}
 }
 
 func TestStaleCleanup(t *testing.T) {
@@ -540,6 +578,9 @@ func TestStandaloneCaddyfileGeneration(t *testing.T) {
 	if !contains(caddyfile, "nginx.dev.local") {
 		t.Error("expected nginx.dev.local in Caddyfile")
 	}
+	if !contains(caddyfile, "nginx.localhost") {
+		t.Error("expected nginx.localhost in Caddyfile")
+	}
 	if !contains(caddyfile, "reverse_proxy localhost:8080") {
 		t.Errorf("expected reverse_proxy localhost:8080 in Caddyfile, got: %s", caddyfile)
 	}
@@ -607,6 +648,9 @@ func TestStandaloneCustomDomains(t *testing.T) {
 	if contains(caddyfile, "reverse_proxy localhost:3000") {
 		t.Error("should use published port, not private port in standalone mode")
 	}
+	if contains(caddyfile, "myapp.web.localhost") {
+		t.Error("localhost domain should not appear when custom domains are set")
+	}
 }
 
 func TestStandaloneSelectPorts(t *testing.T) {
@@ -642,5 +686,57 @@ func TestStandaloneSelectPorts(t *testing.T) {
 	// SelectedPort should be 0 since no HTTP server is running on those ports
 	if infos[0].SelectedPort != 0 {
 		t.Errorf("expected SelectedPort 0 (no HTTP on published ports), got %d", infos[0].SelectedPort)
+	}
+}
+
+func TestIndexPageStandalone(t *testing.T) {
+	containers := []*ContainerInfo{
+		{
+			ContainerName: "nginx",
+			IsCompose:     false,
+			IsRunning:     true,
+			SelectedPort:  8080,
+		},
+		{
+			Project:       "myapp",
+			Service:       "web",
+			ContainerName: "web",
+			IsCompose:     true,
+			IsRunning:     true,
+			SelectedPort:  3000,
+		},
+	}
+
+	page := GenerateIndexPage("dev.local", true, containers)
+	if !contains(page, "nginx.dev.local") {
+		t.Error("expected nginx.dev.local in index page")
+	}
+	if !contains(page, "nginx.localhost") {
+		t.Error("expected nginx.localhost in index page")
+	}
+	if !contains(page, "myapp.web.dev.local") {
+		t.Error("expected myapp.web.dev.local in index page")
+	}
+	if !contains(page, "myapp.web.localhost") {
+		t.Error("expected myapp.web.localhost in index page")
+	}
+}
+
+func TestIndexPageNonStandalone(t *testing.T) {
+	containers := []*ContainerInfo{
+		{
+			ContainerName: "nginx",
+			IsCompose:     false,
+			IsRunning:     true,
+			SelectedPort:  80,
+		},
+	}
+
+	page := GenerateIndexPage("dev.local", false, containers)
+	if !contains(page, "nginx.dev.local") {
+		t.Error("expected nginx.dev.local in index page")
+	}
+	if contains(page, "nginx.localhost") {
+		t.Error("localhost domain should not appear in non-standalone mode")
 	}
 }

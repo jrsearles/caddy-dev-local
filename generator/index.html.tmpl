@@ -73,6 +73,11 @@
             padding: 2rem;
             text-align: center;
         }
+        .localhost-domain {
+            color: #8b949e;
+            font-size: 0.8rem;
+            margin-top: 0.25rem;
+        }
     </style>
 </head>
 <body>
@@ -92,7 +97,7 @@
         <tbody>
 {{range .Containers}}
             <tr>
-                <td><a href="http://{{.Domain}}">{{.Domain}}</a></td>
+                <td><a href="http://{{.Domain}}">{{.Domain}}</a>{{if .LocalhostDomain}}<div class="localhost-domain"><a href="http://{{.LocalhostDomain}}">{{.LocalhostDomain}}</a></div>{{end}}</td>
                 <td>{{.ContainerName}}</td>
                 <td>{{.TypeBadge}}</td>
                 <td><span class="{{.StatusClass}}">{{.StatusText}}</span></td>

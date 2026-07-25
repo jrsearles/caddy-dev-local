@@ -132,6 +132,7 @@ Containers must publish ports to be reachable in standalone mode. Containers wit
 ```bash
 docker run -d --name my-app -p 8080:80 nginx:alpine
 # Available at https://my-app.dev.local → localhost:8080
+# Also available at https://my-app.localhost → localhost:8080
 ```
 
 ### How Detection Works
@@ -146,7 +147,17 @@ docker run -d --name my-app -p 8080:80 nginx:alpine
 | Proxy target | `{container}:{private_port}` | `localhost:{published_port}` |
 | Port selection | Private (internal) ports | Published (host-mapped) ports |
 | Unpublished containers | Included | Skipped |
+| Domain suffixes | `{tld}` | `{tld}` + `.localhost` |
 | Detection | `--ingress-network` set or `/.dockerenv` present | `/.dockerenv` absent, no ingress network set |
+
+### `.localhost` Domains
+
+In standalone mode, each container also gets a `.localhost` domain in addition to the configured TLD. Browsers treat `.localhost` as a secure context without needing a certificate, so these URLs work without any TLS warnings.
+
+- Compose services: `{project}.{service}.localhost`
+- Standalone containers: `{container-name}.localhost`
+
+These domains are not generated when custom `dev.local.domains` labels are set.
 
 ## Example
 

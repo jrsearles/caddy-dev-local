@@ -17,12 +17,13 @@ var (
 )
 
 type indexRow struct {
-	Domain        string
-	ContainerName string
-	TypeBadge     template.HTML
-	StatusClass   string
-	StatusText    string
-	PortStr       string
+	Domain          string
+	LocalhostDomain string
+	ContainerName   string
+	TypeBadge       template.HTML
+	StatusClass     string
+	StatusText      string
+	PortStr         string
 }
 
 type indexData struct {
@@ -37,7 +38,7 @@ func getIndexTemplate() *template.Template {
 	return indexTemplate
 }
 
-func GenerateIndexPage(tld string, containers []*ContainerInfo) string {
+func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo) string {
 	var rows []indexRow
 	for _, info := range containers {
 		if !info.IsRunning {
@@ -51,6 +52,15 @@ func GenerateIndexPage(tld string, containers []*ContainerInfo) string {
 			domain = info.ContainerName + "." + tld
 		}
 
+		localhostDomain := ""
+		if standalone {
+			if info.IsCompose {
+				localhostDomain = info.Project + "." + info.Service + ".localhost"
+			} else {
+				localhostDomain = info.ContainerName + ".localhost"
+			}
+		}
+
 		typeBadge := template.HTML(`<span class="badge badge-standalone">standalone</span>`)
 		if info.IsCompose {
 			typeBadge = `<span class="badge badge-compose">compose</span>`
@@ -62,12 +72,13 @@ func GenerateIndexPage(tld string, containers []*ContainerInfo) string {
 		}
 
 		rows = append(rows, indexRow{
-			Domain:        domain,
-			ContainerName: info.ContainerName,
-			TypeBadge:     typeBadge,
-			StatusClass:   "status-running",
-			StatusText:    "running",
-			PortStr:       portStr,
+			Domain:          domain,
+			LocalhostDomain: localhostDomain,
+			ContainerName:   info.ContainerName,
+			TypeBadge:       typeBadge,
+			StatusClass:     "status-running",
+			StatusText:      "running",
+			PortStr:         portStr,
 		})
 	}
 
