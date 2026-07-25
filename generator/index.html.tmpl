@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>devlocal — Container Index</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+            background: #0d1117;
+            color: #c9d1d9;
+            padding: 2rem;
+        }
+        h1 {
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+            color: #58a6ff;
+        }
+        .subtitle {
+            color: #8b949e;
+            margin-bottom: 2rem;
+            font-size: 0.875rem;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th {
+            text-align: left;
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid #30363d;
+            color: #8b949e;
+            font-weight: 600;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        td {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid #21262d;
+        }
+        a {
+            color: #58a6ff;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        .status-running {
+            color: #3fb950;
+        }
+        .status-stopped {
+            color: #f85149;
+        }
+        .badge {
+            display: inline-block;
+            padding: 0.15rem 0.5rem;
+            border-radius: 1rem;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .badge-compose {
+            background: #1f3a5f;
+            color: #58a6ff;
+        }
+        .badge-standalone {
+            background: #2d1f3a;
+            color: #bc8cff;
+        }
+        .empty {
+            color: #8b949e;
+            padding: 2rem;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <h1>devlocal</h1>
+    <p class="subtitle">Local Docker container index</p>
+{{if .Containers}}
+    <table>
+        <thead>
+            <tr>
+                <th>Domain</th>
+                <th>Container</th>
+                <th>Type</th>
+                <th>Status</th>
+                <th>Port</th>
+            </tr>
+        </thead>
+        <tbody>
+{{range .Containers}}
+            <tr>
+                <td><a href="http://{{.Domain}}">{{.Domain}}</a></td>
+                <td>{{.ContainerName}}</td>
+                <td>{{.TypeBadge}}</td>
+                <td><span class="{{.StatusClass}}">{{.StatusText}}</span></td>
+                <td>{{.PortStr}}</td>
+            </tr>
+{{end}}
+        </tbody>
+    </table>
+{{else}}
+    <p class="empty">No containers registered.</p>
+{{end}}
+</body>
+</html>

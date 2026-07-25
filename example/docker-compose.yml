@@ -1,0 +1,60 @@
+services:
+  caddy:
+    build:
+      context: ..
+      dockerfile: example/Dockerfile
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - caddy_data:/data
+    networks:
+      - devlocal
+    restart: unless-stopped
+
+  web:
+    image: nginx:alpine
+    volumes:
+      - ./app:/usr/share/nginx/html:ro
+    networks:
+      - devlocal
+    labels:
+      - "dev.local=true"
+
+  api:
+    image: hashicorp/http-echo
+    command: ["-listen=:3000", "-text=Hello from API"]
+    networks:
+      - devlocal
+
+  multi:
+    image: hashicorp/http-echo
+    command: ["-listen=:3000", "-text=Hello from multi-port service"]
+    networks:
+      - devlocal
+    ports:
+      - "3000"
+      - "8080"
+
+  ignored:
+    image: redis:alpine
+    networks:
+      - devlocal
+    labels:
+      - "dev.local=false"
+
+  custom:
+    image: nginx:alpine
+    networks:
+      - devlocal
+    labels:
+      - "dev.local.domains=80:myapp.custom.local;80:myapp.alt.local"
+
+networks:
+  devlocal:
+    name: devlocal
+    driver: bridge
+
+volumes:
+  caddy_data:
