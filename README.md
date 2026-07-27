@@ -103,7 +103,6 @@ services:
 | `--ingress-network` | `DEVLOCAL_INGRESS_NETWORK` | `devlocal` | Docker network name |
 | `--tld` | `DEVLOCAL_TLD` | `dev.local` | Top-level domain |
 | `--stale-ttl` | `DEVLOCAL_STALE_TTL` | `1h` | Keep config for stopped containers |
-| `--poll-interval` | `DEVLOCAL_POLL_INTERVAL` | `30s` | Fallback polling interval |
 | `--probe-timeout` | `DEVLOCAL_PROBE_TIMEOUT` | `2s` | HTTP probe timeout |
 | `--hosts-file` | `DEVLOCAL_HOSTS_FILE` | `true` | Manage `/etc/hosts` entries for domains |
 
@@ -180,7 +179,7 @@ Then visit:
 
 ## How It Works
 
-1. Watches Docker events for container start/stop
+1. Watches Docker events for container lifecycle and network changes on the ingress network
 2. Lists all containers on the configured ingress network
 3. Computes domains from container labels (Compose project/service or container name)
 4. For multi-port containers, probes ports to find the HTTP server (common ports 80, 8080, 443, 8443 are checked first)

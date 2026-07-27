@@ -9,7 +9,6 @@ type Config struct {
 	IngressNetwork string
 	TLD            string
 	StaleTTL       time.Duration
-	PollInterval   time.Duration
 	ProbeTimeout   time.Duration
 	Standalone     bool
 	HostsFile      bool
@@ -25,13 +24,12 @@ func DefaultConfig() *Config {
 		IngressNetwork: getEnvOrDefault("DEVLOCAL_INGRESS_NETWORK", "devlocal"),
 		TLD:            getEnvOrDefault("DEVLOCAL_TLD", "dev.local"),
 		StaleTTL:       getDurationOrDefault("DEVLOCAL_STALE_TTL", time.Hour),
-		PollInterval:   getDurationOrDefault("DEVLOCAL_POLL_INTERVAL", 30*time.Second),
 		ProbeTimeout:   getDurationOrDefault("DEVLOCAL_PROBE_TIMEOUT", 2*time.Second),
 		HostsFile:      getBoolOrDefault("DEVLOCAL_HOSTS_FILE", true),
 	}
 }
 
-func (c *Config) ApplyFlags(ingressNetwork, tld string, staleTTL, pollInterval, probeTimeout time.Duration, hostsFile *bool) {
+func (c *Config) ApplyFlags(ingressNetwork, tld string, staleTTL, probeTimeout time.Duration, hostsFile *bool) {
 	if ingressNetwork != "" {
 		c.IngressNetwork = ingressNetwork
 	}
@@ -40,9 +38,6 @@ func (c *Config) ApplyFlags(ingressNetwork, tld string, staleTTL, pollInterval, 
 	}
 	if staleTTL > 0 {
 		c.StaleTTL = staleTTL
-	}
-	if pollInterval > 0 {
-		c.PollInterval = pollInterval
 	}
 	if probeTimeout > 0 {
 		c.ProbeTimeout = probeTimeout

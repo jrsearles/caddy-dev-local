@@ -18,6 +18,7 @@ import (
 	"github.com/jsearles/caddy-dev-local/docker"
 	"github.com/jsearles/caddy-dev-local/generator"
 	"github.com/jsearles/caddy-dev-local/hosts"
+	"github.com/moby/moby/api/types/events"
 	"github.com/moby/moby/client"
 )
 
@@ -38,9 +39,6 @@ func init() {
 
 			fs.Duration("stale-ttl", 0,
 				"Keep config for stopped containers (env: DEVLOCAL_STALE_TTL)")
-
-			fs.Duration("poll-interval", 0,
-				"Poll interval (env: DEVLOCAL_POLL_INTERVAL)")
 
 			fs.Duration("probe-timeout", 0,
 				"HTTP probe timeout (env: DEVLOCAL_PROBE_TIMEOUT)")
@@ -72,9 +70,6 @@ func cmdFunc(fs caddycmd.Flags) (int, error) {
 	if v := fs.Duration("stale-ttl"); v > 0 {
 		cfg.StaleTTL = v
 	}
-	if v := fs.Duration("poll-interval"); v > 0 {
-		cfg.PollInterval = v
-	}
 	if v := fs.Duration("probe-timeout"); v > 0 {
 		cfg.ProbeTimeout = v
 	}
@@ -84,7 +79,6 @@ func cmdFunc(fs caddycmd.Flags) (int, error) {
 		fs.String("ingress-network"),
 		fs.String("tld"),
 		fs.Duration("stale-ttl"),
-		fs.Duration("poll-interval"),
 		fs.Duration("probe-timeout"),
 		&hostsFile,
 	)
@@ -127,7 +121,6 @@ func cmdFunc(fs caddycmd.Flags) (int, error) {
 	syncHosts(gen, cfg, hostsOK)
 
 	go watchEvents(ctx, dockerClient, gen, cfg, hostsOK)
-	go pollContainers(ctx, cfg, gen, hostsOK)
 	go staleCleanup(ctx, cfg, gen, hostsOK)
 
 	sigCh := make(chan os.Signal, 1)
@@ -148,6 +141,7 @@ func watchEvents(ctx context.Context, dockerClient docker.Client, gen *generator
 
 		f := client.Filters{}
 		f.Add("type", "container")
+		f.Add("type", "network")
 
 		msgCh, errCh := dockerClient.Events(ctx, client.EventsListOptions{
 			Filters: f,
@@ -156,7 +150,6 @@ func watchEvents(ctx context.Context, dockerClient docker.Client, gen *generator
 		throttle := time.NewTimer(100 * time.Millisecond)
 		pending := false
 
-	eventLoop:
 		for {
 			select {
 			case <-ctx.Done():
@@ -164,10 +157,10 @@ func watchEvents(ctx context.Context, dockerClient docker.Client, gen *generator
 				return
 			case event, ok := <-msgCh:
 				if !ok {
-					break eventLoop
+					throttle.Stop()
+					break
 				}
-				switch event.Action {
-				case "start", "stop", "die", "destroy", "create":
+				if shouldRefresh(event, cfg) {
 					if !pending {
 						pending = true
 						throttle.Reset(100 * time.Millisecond)
@@ -176,8 +169,9 @@ func watchEvents(ctx context.Context, dockerClient docker.Client, gen *generator
 			case err, ok := <-errCh:
 				if !ok || err != nil {
 					log.Printf("[devlocal] event stream error: %v, reconnecting in 30s", err)
+					throttle.Stop()
 					time.Sleep(30 * time.Second)
-					break eventLoop
+					break
 				}
 			case <-throttle.C:
 				if pending {
@@ -187,28 +181,25 @@ func watchEvents(ctx context.Context, dockerClient docker.Client, gen *generator
 					loadCaddyConfig(gen, cfg)
 					syncHosts(gen, cfg, hostsOK)
 				}
-				throttle.Stop()
-				break eventLoop
 			}
 		}
 	}
 }
 
-func pollContainers(ctx context.Context, cfg *config.Config, gen *generator.Generator, hostsOK bool) {
-	ticker := time.NewTicker(cfg.PollInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			gen.Refresh(ctx)
-			gen.SelectPorts(ctx)
-			loadCaddyConfig(gen, cfg)
-			syncHosts(gen, cfg, hostsOK)
+func shouldRefresh(event events.Message, cfg *config.Config) bool {
+	switch event.Type {
+	case "container":
+		switch event.Action {
+		case "start", "stop", "die", "destroy", "create":
+			return true
+		}
+	case "network":
+		switch event.Action {
+		case "connect", "disconnect":
+			return event.Actor.Attributes["name"] == cfg.IngressNetwork
 		}
 	}
+	return false
 }
 
 func staleCleanup(ctx context.Context, cfg *config.Config, gen *generator.Generator, hostsOK bool) {
