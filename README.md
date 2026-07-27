@@ -108,12 +108,14 @@ services:
 
 ## Building from Source
 
-Requires [just](https://github.com/casey/just).
+Requires [just](https://github.com/casey/just) and [golangci-lint](https://golangci-lint.run/).
 
 ```bash
-just build-linux-amd64    # Build for linux-amd64
-just build-all             # Build for all platforms
-just lint                  # Run vet + tests
+just install-lint           # Install golangci-lint (one-time)
+just build-linux-amd64      # Build for linux-amd64
+just build-all              # Build for all platforms
+just lint                   # Run linter
+just check                  # Run linter + tests
 ```
 
 See `just --list` for all available recipes.
