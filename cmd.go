@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 	"strings"
@@ -20,6 +19,7 @@ import (
 	"github.com/jsearles/caddy-dev-local/hosts"
 	"github.com/moby/moby/api/types/events"
 	"github.com/moby/moby/client"
+	"go.uber.org/zap"
 )
 
 func init() {
@@ -88,10 +88,12 @@ func cmdFunc(fs caddycmd.Flags) (int, error) {
 		cfg.Standalone = config.DetectStandalone()
 	}
 
+	logger := caddy.Log().Named("devlocal")
+
 	hostsOK := true
 	if cfg.HostsFile {
 		if !hosts.CanWrite() {
-			log.Println("[devlocal] warning: hosts file not writable, skipping hosts file updates")
+			logger.Warn("hosts file not writable, skipping hosts file updates")
 			hostsOK = false
 		}
 	}
@@ -107,18 +109,20 @@ func cmdFunc(fs caddycmd.Flags) (int, error) {
 	gen := generator.NewGenerator(cfg, dockerClient)
 
 	if err := gen.Refresh(ctx); err != nil {
-		log.Printf("[devlocal] initial refresh failed: %v", err)
+		logger.Error("initial refresh failed", zap.Error(err))
 	}
 
 	if err := gen.SelectPorts(ctx); err != nil {
-		log.Printf("[devlocal] initial port selection failed: %v", err)
+		logger.Error("initial port selection failed", zap.Error(err))
 	}
 
 	if err := loadCaddyConfig(gen, cfg); err != nil {
 		return 1, fmt.Errorf("loading initial caddy config: %w", err)
 	}
 
-	syncHosts(gen, cfg, hostsOK)
+	if err := syncHosts(gen, cfg, hostsOK); err != nil {
+		logger.Error("failed to update hosts file", zap.Error(err))
+	}
 
 	go watchEvents(ctx, dockerClient, gen, cfg, hostsOK)
 	go staleCleanup(ctx, cfg, gen, hostsOK)
@@ -132,6 +136,7 @@ func cmdFunc(fs caddycmd.Flags) (int, error) {
 }
 
 func watchEvents(ctx context.Context, dockerClient docker.Client, gen *generator.Generator, cfg *config.Config, hostsOK bool) {
+	logger := caddy.Log().Named("devlocal")
 	for {
 		select {
 		case <-ctx.Done():
@@ -150,17 +155,18 @@ func watchEvents(ctx context.Context, dockerClient docker.Client, gen *generator
 		throttle := time.NewTimer(100 * time.Millisecond)
 		pending := false
 
-		for {
+		streaming := true
+		for streaming {
 			select {
 			case <-ctx.Done():
 				throttle.Stop()
 				return
 			case event, ok := <-msgCh:
 				if !ok {
+					logger.Warn("event stream closed, reconnecting in 30s")
 					throttle.Stop()
-					break
-				}
-				if shouldRefresh(event, cfg) {
+					streaming = false
+				} else if shouldRefresh(event, cfg) {
 					if !pending {
 						pending = true
 						throttle.Reset(100 * time.Millisecond)
@@ -168,10 +174,9 @@ func watchEvents(ctx context.Context, dockerClient docker.Client, gen *generator
 				}
 			case err, ok := <-errCh:
 				if !ok || err != nil {
-					log.Printf("[devlocal] event stream error: %v, reconnecting in 30s", err)
+					logger.Error("event stream error, reconnecting in 30s", zap.Error(err))
 					throttle.Stop()
-					time.Sleep(30 * time.Second)
-					break
+					streaming = false
 				}
 			case <-throttle.C:
 				if pending {
@@ -179,9 +184,18 @@ func watchEvents(ctx context.Context, dockerClient docker.Client, gen *generator
 					gen.Refresh(ctx)
 					gen.SelectPorts(ctx)
 					loadCaddyConfig(gen, cfg)
-					syncHosts(gen, cfg, hostsOK)
+					if err := syncHosts(gen, cfg, hostsOK); err != nil {
+						logger.Error("failed to update hosts file", zap.Error(err))
+					}
 				}
 			}
+		}
+
+		throttle.Stop()
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(30 * time.Second):
 		}
 	}
 }
@@ -213,7 +227,9 @@ func staleCleanup(ctx context.Context, cfg *config.Config, gen *generator.Genera
 		case <-ticker.C:
 			gen.StaleCleanup()
 			loadCaddyConfig(gen, cfg)
-			syncHosts(gen, cfg, hostsOK)
+			if err := syncHosts(gen, cfg, hostsOK); err != nil {
+				caddy.Log().Named("devlocal").Error("failed to update hosts file", zap.Error(err))
+			}
 		}
 	}
 }
@@ -240,20 +256,18 @@ func loadCaddyConfig(gen *generator.Generator, cfg *config.Config) error {
 	return caddy.Load(configJSON, false)
 }
 
-func syncHosts(gen *generator.Generator, cfg *config.Config, hostsOK bool) {
+func syncHosts(gen *generator.Generator, cfg *config.Config, hostsOK bool) error {
 	if !cfg.HostsFile || !hostsOK {
-		return
+		return nil
 	}
-	if err := hosts.Sync(gen.Domains()); err != nil {
-		log.Printf("[devlocal] failed to update hosts file: %v", err)
-	}
+	return hosts.Sync(gen.Domains())
 }
 
 func cleanFunc(fs caddycmd.Flags) (int, error) {
+	logger := caddy.Log().Named("devlocal")
 	if err := hosts.Remove(); err != nil {
-		log.Printf("[devlocal] failed to remove hosts entries: %v", err)
 		return 1, err
 	}
-	log.Println("[devlocal] hosts file entries removed")
+	logger.Info("hosts file entries removed")
 	return 0, nil
 }
