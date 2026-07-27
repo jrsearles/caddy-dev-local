@@ -21,7 +21,7 @@ type DockerClient struct {
 }
 
 func NewClient() (*DockerClient, error) {
-	apiClient, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	apiClient, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation()) //nolint:govet,staticcheck // inline false positive from external package; deprecated but required
 	if err != nil {
 		return nil, err
 	}
@@ -57,7 +57,7 @@ func (c *DockerClient) NetworkInspect(ctx context.Context, networkID string) (ne
 	return result.Network, nil
 }
 
-func HasNetwork(c container.Summary, networkName string) bool {
+func HasNetwork(c *container.Summary, networkName string) bool {
 	if c.NetworkSettings == nil {
 		return false
 	}
@@ -69,22 +69,22 @@ func HasNetwork(c container.Summary, networkName string) bool {
 	return false
 }
 
-func LabelValue(c container.Summary, key string) string {
+func LabelValue(c *container.Summary, key string) string {
 	if c.Labels == nil {
 		return ""
 	}
 	return c.Labels[key]
 }
 
-func ComposeProject(c container.Summary) string {
+func ComposeProject(c *container.Summary) string {
 	return LabelValue(c, "com.docker.compose.project")
 }
 
-func ComposeService(c container.Summary) string {
+func ComposeService(c *container.Summary) string {
 	return LabelValue(c, "com.docker.compose.service")
 }
 
-func ContainerName(c container.Summary) string {
+func ContainerName(c *container.Summary) string {
 	for _, name := range c.Names {
 		if len(name) > 0 {
 			n := name

@@ -1,0 +1,63 @@
+version: "2"
+
+run:
+  timeout: 2m
+
+linters:
+  default: standard
+  enable:
+    - bodyclose
+    - copyloopvar
+    - dupword
+    - durationcheck
+    - errname
+    - errorlint
+    - exhaustive
+    - goconst
+    - gocritic
+    - gosec
+    - makezero
+    - misspell
+    - nilerr
+    - prealloc
+    - unconvert
+    - unparam
+    - usestdlibvars
+    - wastedassign
+
+  settings:
+    errorlint:
+      asserts: false
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+    govet:
+      enable:
+        - shadow
+    misspell:
+      locale: US
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - performance
+
+  exclusions:
+    presets:
+      - comments
+      - std-error-handling
+      - common-false-positives
+      - legacy
+    rules:
+      - path: _test\.go$
+        linters:
+          - gosec
+          - unparam
+          - goconst
+
+formatters:
+  enable:
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/jsearles/caddy-dev-local

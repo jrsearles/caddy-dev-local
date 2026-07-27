@@ -45,7 +45,7 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo)
 			continue
 		}
 
-		domain := ""
+		var domain string
 		if info.IsCompose {
 			domain = info.Project + "." + info.Service + "." + tld
 		} else {

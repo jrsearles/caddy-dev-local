@@ -10,12 +10,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jsearles/caddy-dev-local/config"
-	"github.com/jsearles/caddy-dev-local/docker"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/events"
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
+
+	"github.com/jsearles/caddy-dev-local/config"
+	"github.com/jsearles/caddy-dev-local/docker"
 )
 
 type mockDocker struct {
@@ -51,11 +52,11 @@ func makeContainer(id, name, project, service string, ports []container.PortSumm
 		labels["com.docker.compose.service"] = service
 	}
 	return container.Summary{
-		ID:    id,
-		Names: []string{"/" + name},
-		Ports: ports,
+		ID:     id,
+		Names:  []string{"/" + name},
+		Ports:  ports,
 		Labels: labels,
-		State: state,
+		State:  state,
 		NetworkSettings: &container.NetworkSettingsSummary{
 			Networks: map[string]*network.EndpointSettings{
 				"devlocal": {IPAddress: netip.MustParseAddr("172.18.0.2")},
@@ -152,7 +153,7 @@ func TestShouldSkip(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := container.Summary{Labels: tt.labels}
+			c := &container.Summary{Labels: tt.labels}
 			got := shouldSkip(c)
 			if got != tt.want {
 				t.Errorf("shouldSkip() = %v, want %v", got, tt.want)
@@ -204,7 +205,7 @@ func TestExtractPorts(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := container.Summary{Ports: tt.ports}
+			c := &container.Summary{Ports: tt.ports}
 			got := extractPorts(c)
 			if len(got) != len(tt.want) {
 				t.Errorf("extractPorts() = %v, want %v", got, tt.want)
@@ -297,7 +298,7 @@ func TestProbeHTTPPort(t *testing.T) {
 
 	_, portStr, _ := net.SplitHostPort(ts.Listener.Addr().String())
 	var port uint16
-	fmt.Sscanf(portStr, "%d", &port)
+	fmt.Sscanf(portStr, "%d", &port) //nolint:errcheck // test helper, value validated below
 
 	got, err := ProbeHTTPPort("localhost", []uint16{port}, 2*time.Second)
 	if err != nil {
@@ -316,17 +317,17 @@ func TestProbeHTTPPortNoHTTP(t *testing.T) {
 	defer ln.Close()
 
 	go func() {
-		conn, err := ln.Accept()
-		if err != nil {
+		conn, acceptErr := ln.Accept()
+		if acceptErr != nil {
 			return
 		}
-		conn.Write([]byte("not http"))
+		conn.Write([]byte("not http")) //nolint:errcheck // test helper
 		conn.Close()
 	}()
 
 	_, portStr, _ := net.SplitHostPort(ln.Addr().String())
 	var port uint16
-	fmt.Sscanf(portStr, "%d", &port)
+	fmt.Sscanf(portStr, "%d", &port) //nolint:errcheck // test helper, value validated below
 
 	_, err = ProbeHTTPPort("localhost", []uint16{port}, 500*time.Millisecond)
 	if err == nil {
@@ -398,7 +399,7 @@ func TestGeneratorCustomDomainsOverride(t *testing.T) {
 		t.Fatalf("Refresh() error = %v", err)
 	}
 
-	gen.SelectPorts(ctx)
+	gen.SelectPorts(ctx) //nolint:errcheck // test helper
 
 	caddyfile := gen.GenerateCaddyfile()
 	if len(caddyfile) == 0 {
@@ -430,8 +431,8 @@ func TestGeneratorSinglePort(t *testing.T) {
 	gen := NewGenerator(cfg, mock)
 	ctx := context.Background()
 
-	gen.Refresh(ctx)
-	gen.SelectPorts(ctx)
+	gen.Refresh(ctx)     //nolint:errcheck // test helper
+	gen.SelectPorts(ctx) //nolint:errcheck // test helper
 
 	caddyfile := gen.GenerateCaddyfile()
 	if !contains(caddyfile, "nginx.dev.local") {
@@ -513,10 +514,10 @@ func TestHasNetwork(t *testing.T) {
 		},
 	}
 
-	if !docker.HasNetwork(c, "devlocal") {
+	if !docker.HasNetwork(&c, "devlocal") {
 		t.Error("expected HasNetwork to return true for devlocal")
 	}
-	if docker.HasNetwork(c, "missing") {
+	if docker.HasNetwork(&c, "missing") {
 		t.Error("expected HasNetwork to return false for missing")
 	}
 }
@@ -525,7 +526,7 @@ func TestContainerName(t *testing.T) {
 	c := container.Summary{
 		Names: []string{"/my-container"},
 	}
-	got := docker.ContainerName(c)
+	got := docker.ContainerName(&c)
 	if got != "my-container" {
 		t.Errorf("ContainerName() = %q, want %q", got, "my-container")
 	}
@@ -534,7 +535,7 @@ func TestContainerName(t *testing.T) {
 		Names: []string{},
 		ID:    "abc123def456",
 	}
-	got2 := docker.ContainerName(c2)
+	got2 := docker.ContainerName(&c2)
 	if got2 != "abc123def456" {
 		t.Errorf("ContainerName() = %q, want %q", got2, "abc123def456")
 	}
@@ -571,8 +572,8 @@ func TestStandaloneCaddyfileGeneration(t *testing.T) {
 	gen := NewGenerator(cfg, mock)
 	ctx := context.Background()
 
-	gen.Refresh(ctx)
-	gen.SelectPorts(ctx)
+	gen.Refresh(ctx)     //nolint:errcheck // test helper
+	gen.SelectPorts(ctx) //nolint:errcheck // test helper
 
 	caddyfile := gen.GenerateCaddyfile()
 	if !contains(caddyfile, "nginx.dev.local") {
@@ -607,8 +608,8 @@ func TestStandaloneSkipsUnpublishedContainers(t *testing.T) {
 	gen := NewGenerator(cfg, mock)
 	ctx := context.Background()
 
-	gen.Refresh(ctx)
-	gen.SelectPorts(ctx)
+	gen.Refresh(ctx)     //nolint:errcheck // test helper
+	gen.SelectPorts(ctx) //nolint:errcheck // test helper
 
 	caddyfile := gen.GenerateCaddyfile()
 	if len(caddyfile) > 0 {
@@ -635,8 +636,8 @@ func TestStandaloneCustomDomains(t *testing.T) {
 	gen := NewGenerator(cfg, mock)
 	ctx := context.Background()
 
-	gen.Refresh(ctx)
-	gen.SelectPorts(ctx)
+	gen.Refresh(ctx)     //nolint:errcheck // test helper
+	gen.SelectPorts(ctx) //nolint:errcheck // test helper
 
 	caddyfile := gen.GenerateCaddyfile()
 	if !contains(caddyfile, "api.custom.local") {
@@ -675,8 +676,8 @@ func TestStandaloneSelectPorts(t *testing.T) {
 	gen := NewGenerator(cfg, mock)
 	ctx := context.Background()
 
-	gen.Refresh(ctx)
-	gen.SelectPorts(ctx)
+	gen.Refresh(ctx)     //nolint:errcheck // test helper
+	gen.SelectPorts(ctx) //nolint:errcheck // test helper
 
 	infos := gen.Containers()
 	if len(infos) != 1 {
@@ -761,8 +762,8 @@ func TestDomainsComposeAndStandalone(t *testing.T) {
 	gen := NewGenerator(cfg, mock)
 	ctx := context.Background()
 
-	gen.Refresh(ctx)
-	gen.SelectPorts(ctx)
+	gen.Refresh(ctx)     //nolint:errcheck // test helper
+	gen.SelectPorts(ctx) //nolint:errcheck // test helper
 
 	domains := gen.Domains()
 	if len(domains) != 2 {
@@ -794,8 +795,8 @@ func TestDomainsIncludesLocalhost(t *testing.T) {
 	gen := NewGenerator(cfg, mock)
 	ctx := context.Background()
 
-	gen.Refresh(ctx)
-	gen.SelectPorts(ctx)
+	gen.Refresh(ctx)     //nolint:errcheck // test helper
+	gen.SelectPorts(ctx) //nolint:errcheck // test helper
 
 	domains := gen.Domains()
 	if len(domains) != 2 {
@@ -827,8 +828,8 @@ func TestDomainsCustomDomains(t *testing.T) {
 	gen := NewGenerator(cfg, mock)
 	ctx := context.Background()
 
-	gen.Refresh(ctx)
-	gen.SelectPorts(ctx)
+	gen.Refresh(ctx)     //nolint:errcheck // test helper
+	gen.SelectPorts(ctx) //nolint:errcheck // test helper
 
 	domains := gen.Domains()
 	if len(domains) != 2 {
@@ -862,8 +863,8 @@ func TestDomainsExcludesStopped(t *testing.T) {
 	gen := NewGenerator(cfg, mock)
 	ctx := context.Background()
 
-	gen.Refresh(ctx)
-	gen.SelectPorts(ctx)
+	gen.Refresh(ctx)     //nolint:errcheck // test helper
+	gen.SelectPorts(ctx) //nolint:errcheck // test helper
 
 	domains := gen.Domains()
 	if len(domains) != 1 {
@@ -897,8 +898,8 @@ func TestDomainsSorted(t *testing.T) {
 	gen := NewGenerator(cfg, mock)
 	ctx := context.Background()
 
-	gen.Refresh(ctx)
-	gen.SelectPorts(ctx)
+	gen.Refresh(ctx)     //nolint:errcheck // test helper
+	gen.SelectPorts(ctx) //nolint:errcheck // test helper
 
 	domains := gen.Domains()
 	expected := []string{"alpha.dev.local", "middle.dev.local", "zebra.dev.local"}

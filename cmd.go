@@ -11,15 +11,16 @@ import (
 	"time"
 
 	"github.com/caddyserver/caddy/v2"
-	caddycmd "github.com/caddyserver/caddy/v2/cmd"
 	"github.com/caddyserver/caddy/v2/caddyconfig"
+	caddycmd "github.com/caddyserver/caddy/v2/cmd"
+	"github.com/moby/moby/api/types/events"
+	"github.com/moby/moby/client"
+	"go.uber.org/zap"
+
 	"github.com/jsearles/caddy-dev-local/config"
 	"github.com/jsearles/caddy-dev-local/docker"
 	"github.com/jsearles/caddy-dev-local/generator"
 	"github.com/jsearles/caddy-dev-local/hosts"
-	"github.com/moby/moby/api/types/events"
-	"github.com/moby/moby/client"
-	"go.uber.org/zap"
 )
 
 func init() {
@@ -166,7 +167,7 @@ func watchEvents(ctx context.Context, dockerClient docker.Client, gen *generator
 					logger.Warn("event stream closed, reconnecting in 30s")
 					throttle.Stop()
 					streaming = false
-				} else if shouldRefresh(event, cfg) {
+				} else if shouldRefresh(&event, cfg) {
 					if !pending {
 						pending = true
 						throttle.Reset(100 * time.Millisecond)
@@ -181,9 +182,11 @@ func watchEvents(ctx context.Context, dockerClient docker.Client, gen *generator
 			case <-throttle.C:
 				if pending {
 					pending = false
-					gen.Refresh(ctx)
-					gen.SelectPorts(ctx)
-					loadCaddyConfig(gen, cfg)
+					gen.Refresh(ctx)     //nolint:errcheck // non-critical, logged via logger
+					gen.SelectPorts(ctx) //nolint:errcheck // non-critical, logged via logger
+					if err := loadCaddyConfig(gen, cfg); err != nil {
+						logger.Error("failed to reload caddy config", zap.Error(err))
+					}
 					if err := syncHosts(gen, cfg, hostsOK); err != nil {
 						logger.Error("failed to update hosts file", zap.Error(err))
 					}
@@ -200,15 +203,15 @@ func watchEvents(ctx context.Context, dockerClient docker.Client, gen *generator
 	}
 }
 
-func shouldRefresh(event events.Message, cfg *config.Config) bool {
-	switch event.Type {
+func shouldRefresh(event *events.Message, cfg *config.Config) bool {
+	switch string(event.Type) {
 	case "container":
-		switch event.Action {
+		switch string(event.Action) {
 		case "start", "stop", "die", "destroy", "create":
 			return true
 		}
 	case "network":
-		switch event.Action {
+		switch string(event.Action) {
 		case "connect", "disconnect":
 			return event.Actor.Attributes["name"] == cfg.IngressNetwork
 		}
@@ -226,7 +229,9 @@ func staleCleanup(ctx context.Context, cfg *config.Config, gen *generator.Genera
 			return
 		case <-ticker.C:
 			gen.StaleCleanup()
-			loadCaddyConfig(gen, cfg)
+			if err := loadCaddyConfig(gen, cfg); err != nil {
+				caddy.Log().Named("devlocal").Error("failed to reload caddy config", zap.Error(err))
+			}
 			if err := syncHosts(gen, cfg, hostsOK); err != nil {
 				caddy.Log().Named("devlocal").Error("failed to update hosts file", zap.Error(err))
 			}

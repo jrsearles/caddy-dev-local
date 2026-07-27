@@ -1,6 +1,7 @@
 package hosts
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -83,8 +84,8 @@ func TestSyncSortsDomains(t *testing.T) {
 		t.Fatal(err)
 	}
 	content, _ := os.ReadFile(path)
-	aIdx := strings.Index(string(content), "a.dev.local")
-	zIdx := strings.Index(string(content), "z.dev.local")
+	aIdx := bytes.Index(content, []byte("a.dev.local"))
+	zIdx := bytes.Index(content, []byte("z.dev.local"))
 	if aIdx > zIdx {
 		t.Error("domains should be sorted alphabetically")
 	}
@@ -165,7 +166,9 @@ func tempHosts(t *testing.T, content string) string {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "hosts")
 	if content != "" {
-		os.WriteFile(path, []byte(content), 0644)
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
 	}
 	return path
 }

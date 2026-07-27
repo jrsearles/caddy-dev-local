@@ -4,12 +4,19 @@ artifacts := env_var_or_default("ARTIFACTS", "./artifacts")
 plugin := "github.com/jsearles/caddy-dev-local"
 
 # Build binaries for all platforms
-build-all: lint build-linux-amd64 build-linux-arm64 build-windows-amd64
+build-all: check build-linux-amd64 build-linux-arm64 build-windows-amd64
 
-# Run static analysis and tests
+# Run linter
 lint:
-    go vet ./...
+    golangci-lint run ./...
+
+# Run linter and tests
+check: lint
     go test -race ./...
+
+[private]
+install-lint:
+    curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.12.2
 
 [private]
 xcaddy:

@@ -74,7 +74,7 @@ func ProbeHTTPPort(host string, ports []uint16, timeout time.Duration) (uint16, 
 
 	for _, port := range sorted {
 		url := fmt.Sprintf("http://%s:%d/", host, port)
-		req, err := http.NewRequest("GET", url, nil)
+		req, err := http.NewRequest(http.MethodGet, url, nil)
 		if err != nil {
 			continue
 		}

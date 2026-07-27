@@ -101,7 +101,7 @@ func buildBlock(domains []string) string {
 	sb.WriteString("\n")
 	sb.WriteString("# Managed by caddy-dev-local — do not edit.\n")
 	for _, d := range sorted {
-		sb.WriteString(fmt.Sprintf("127.0.0.1    %s\n", d))
+		fmt.Fprintf(&sb, "127.0.0.1    %s\n", d)
 	}
 	sb.WriteString(endMarker)
 	sb.WriteString("\n")
@@ -174,11 +174,11 @@ func replaceBlock(content, newBlock string) string {
 
 func writeHostsFile(path, content string) error {
 	if runtime.GOOS == "windows" {
-		return os.WriteFile(path, []byte(content), 0644)
+		return os.WriteFile(path, []byte(content), 0644) //nolint:gosec // 0644 matches standard /etc/hosts permissions
 	}
 
 	tmp := path + ".devlocal.tmp"
-	if err := os.WriteFile(tmp, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(tmp, []byte(content), 0644); err != nil { //nolint:gosec // 0644 matches standard /etc/hosts permissions
 		return fmt.Errorf("writing temp hosts file: %w", err)
 	}
 	if err := os.Rename(tmp, path); err != nil {

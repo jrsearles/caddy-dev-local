@@ -87,7 +87,8 @@ func (g *Generator) Refresh(ctx context.Context) error {
 	seen := make(map[string]bool)
 	now := time.Now()
 
-	for _, c := range containers {
+	for i := range containers {
+		c := &containers[i]
 		if !docker.HasNetwork(c, g.cfg.IngressNetwork) {
 			continue
 		}
@@ -99,7 +100,7 @@ func (g *Generator) Refresh(ctx context.Context) error {
 
 		seen[info.ContainerID] = true
 
-		if c.State == "running" {
+		if containers[i].State == "running" {
 			info.IsRunning = true
 			info.LastStopped = time.Time{}
 		} else {
@@ -123,7 +124,7 @@ func (g *Generator) Refresh(ctx context.Context) error {
 	return nil
 }
 
-func (g *Generator) buildContainerInfo(c container.Summary) *ContainerInfo {
+func (g *Generator) buildContainerInfo(c *container.Summary) *ContainerInfo {
 	if shouldSkip(c) {
 		return nil
 	}
@@ -177,11 +178,12 @@ func (g *Generator) SelectPorts(ctx context.Context) error {
 				}
 			}
 
-			if len(pubPorts) == 0 {
+			switch {
+			case len(pubPorts) == 0:
 				continue
-			} else if len(pubPorts) == 1 {
+			case len(pubPorts) == 1:
 				info.SelectedPort = pubPorts[0]
-			} else {
+			default:
 				port, err := ProbeHTTPPort("localhost", pubPorts, g.cfg.ProbeTimeout)
 				if err == nil {
 					info.SelectedPort = port
@@ -259,7 +261,9 @@ func (g *Generator) GenerateCaddyfile() string {
 	}
 
 	var sb strings.Builder
-	getCaddyfileTemplate().Execute(&sb, data)
+	if err := getCaddyfileTemplate().Execute(&sb, data); err != nil {
+		return fmt.Sprintf("template error: %s", err)
+	}
 	return sb.String()
 }
 
@@ -297,7 +301,7 @@ func (g *Generator) customDomains(info *ContainerInfo) []CustomDomain {
 		}
 
 		var port uint16
-		fmt.Sscanf(parts[0], "%d", &port)
+		fmt.Sscanf(parts[0], "%d", &port) //nolint:errcheck // port defaults to 0 on failure
 		if port == 0 {
 			continue
 		}
@@ -317,7 +321,7 @@ func (g *Generator) Containers() []*ContainerInfo {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 
-	var result []*ContainerInfo
+	result := make([]*ContainerInfo, 0, len(g.containers))
 	for _, info := range g.containers {
 		result = append(result, info)
 	}
@@ -383,16 +387,16 @@ func (g *Generator) StaleCleanup() {
 	}
 }
 
-func shouldSkip(c container.Summary) bool {
+func shouldSkip(c *container.Summary) bool {
 	val := docker.LabelValue(c, "dev.local")
 	switch strings.ToLower(val) {
-	case "false", "0", "no":
+	case "false", "0", "no": //nolint:goconst // string literals in switch
 		return true
 	}
 	return false
 }
 
-func extractPorts(c container.Summary) []uint16 {
+func extractPorts(c *container.Summary) []uint16 {
 	portSet := make(map[uint16]bool)
 	var ports []uint16
 
