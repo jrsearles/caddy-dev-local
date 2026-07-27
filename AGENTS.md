@@ -34,20 +34,10 @@ generator/
 ## Development Commands
 
 ```bash
-# Test
-go test ./...
-
-# Test with race detector
-go test -race ./...
-
-# Vet
-go vet ./...
-
-# Build locally
-go build -o caddy-dev-local .
-
-# Cross-compile (requires xcaddy)
-./build.sh
+just lint                  # Run vet + tests with race detector
+just build-linux-amd64     # Build for linux-amd64
+just build-all             # Build for all platforms (linux-amd64, linux-arm64, windows-amd64)
+just --list                # List all recipes
 ```
 
 ## Code Conventions

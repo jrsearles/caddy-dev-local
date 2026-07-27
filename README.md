@@ -108,16 +108,15 @@ services:
 
 ## Building from Source
 
-```bash
-go build -o caddy-dev-local .
-./caddy-dev-local devlocal
-```
-
-Or with Docker:
+Requires [just](https://github.com/casey/just).
 
 ```bash
-docker build -t caddy-dev-local .
+just build-linux-amd64    # Build for linux-amd64
+just build-all             # Build for all platforms
+just lint                  # Run vet + tests
 ```
+
+See `just --list` for all available recipes.
 
 ## Standalone Mode
 
@@ -126,8 +125,8 @@ When running the binary directly on your host (not inside Docker), caddy-dev-loc
 ### Quick Start
 
 ```bash
-go build -o caddy-dev-local .
-./caddy-dev-local devlocal
+just build-linux-amd64
+./artifacts/binaries/linux-amd64/caddy devlocal
 ```
 
 Containers must publish ports to be reachable in standalone mode. Containers without published ports are automatically skipped.

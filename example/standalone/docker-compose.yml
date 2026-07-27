@@ -1,0 +1,49 @@
+services:
+  web:
+    image: nginx:alpine
+    volumes:
+      - ../app:/usr/share/nginx/html:ro
+    networks:
+      - devlocal
+    ports:
+      - "8080:80"
+    labels:
+      - "dev.local=true"
+
+  api:
+    image: hashicorp/http-echo
+    command: ["-listen=:3000", "-text=Hello from API"]
+    networks:
+      - devlocal
+    ports:
+      - "9090:3000"
+
+  multi:
+    image: hashicorp/http-echo
+    command: ["-listen=:3000", "-text=Hello from multi-port service"]
+    networks:
+      - devlocal
+    ports:
+      - "3000:3000"
+      - "8081:8080"
+
+  ignored:
+    image: redis:alpine
+    networks:
+      - devlocal
+    labels:
+      - "dev.local=false"
+
+  custom:
+    image: nginx:alpine
+    networks:
+      - devlocal
+    ports:
+      - "8082:80"
+    labels:
+      - "dev.local.domains=80:myapp.custom.local;80:myapp.alt.local"
+
+networks:
+  devlocal:
+    name: devlocal
+    driver: bridge
