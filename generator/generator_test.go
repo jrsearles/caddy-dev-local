@@ -776,7 +776,7 @@ func TestDomainsComposeAndStandalone(t *testing.T) {
 	}
 }
 
-func TestDomainsExcludesLocalhost(t *testing.T) {
+func TestDomainsIncludesLocalhost(t *testing.T) {
 	containers := []container.Summary{
 		makeContainer("c1", "nginx", "", "",
 			[]container.PortSummary{{PrivatePort: 80, PublicPort: 8080}},
@@ -798,11 +798,14 @@ func TestDomainsExcludesLocalhost(t *testing.T) {
 	gen.SelectPorts(ctx)
 
 	domains := gen.Domains()
-	if len(domains) != 1 {
-		t.Fatalf("expected 1 domain, got %d: %v", len(domains), domains)
+	if len(domains) != 2 {
+		t.Fatalf("expected 2 domains, got %d: %v", len(domains), domains)
 	}
 	if domains[0] != "nginx.dev.local" {
 		t.Errorf("expected nginx.dev.local, got %s", domains[0])
+	}
+	if domains[1] != "nginx.localhost" {
+		t.Errorf("expected nginx.localhost, got %s", domains[1])
 	}
 }
 

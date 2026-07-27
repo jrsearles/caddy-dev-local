@@ -341,9 +341,6 @@ func (g *Generator) Domains() []string {
 
 		if custom := g.customDomains(info); len(custom) > 0 {
 			for _, cd := range custom {
-				if strings.HasSuffix(cd.Domain, ".localhost") {
-					continue
-				}
 				if !seen[cd.Domain] {
 					seen[cd.Domain] = true
 					domains = append(domains, cd.Domain)
@@ -357,9 +354,16 @@ func (g *Generator) Domains() []string {
 		}
 
 		d := g.domainForContainer(info)
-		if !strings.HasSuffix(d, ".localhost") && !seen[d] {
+		if !seen[d] {
 			seen[d] = true
 			domains = append(domains, d)
+		}
+		if g.cfg.Standalone {
+			ld := g.domainForContainerLocalhost(info)
+			if !seen[ld] {
+				seen[ld] = true
+				domains = append(domains, ld)
+			}
 		}
 	}
 

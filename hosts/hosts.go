@@ -99,6 +99,7 @@ func buildBlock(domains []string) string {
 	var sb strings.Builder
 	sb.WriteString(beginMarker)
 	sb.WriteString("\n")
+	sb.WriteString("# Managed by caddy-dev-local — do not edit.\n")
 	for _, d := range sorted {
 		sb.WriteString(fmt.Sprintf("127.0.0.1    %s\n", d))
 	}

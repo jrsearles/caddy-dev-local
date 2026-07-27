@@ -195,12 +195,15 @@ Entries are written inside a managed block with searchable markers:
 
 ```
 # dev-local:BEGIN
+# Managed by caddy-dev-local — do not edit.
 127.0.0.1    myapp.web.dev.local
+127.0.0.1    myapp.web.localhost
 127.0.0.1    my-nginx.dev.local
+127.0.0.1    my-nginx.localhost
 # dev-local:END
 ```
 
-The block is updated on every config reload — added when containers start, removed when they stop. Entries are only written for `.dev.local` (or custom TLD) domains; `.localhost` domains are excluded since browsers handle those natively.
+The block is updated on every config reload — added when containers start, removed when they stop. Both `.dev.local` and `.localhost` domains are included so non-browser tools (curl, API clients, etc.) can resolve them without relying on DNS.
 
 ### Opt Out
 

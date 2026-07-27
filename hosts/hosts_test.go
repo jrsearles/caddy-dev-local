@@ -9,7 +9,7 @@ import (
 
 func TestBuildBlock(t *testing.T) {
 	block := buildBlock([]string{"b.dev.local", "a.dev.local"})
-	expected := "# dev-local:BEGIN\n127.0.0.1    a.dev.local\n127.0.0.1    b.dev.local\n# dev-local:END\n"
+	expected := "# dev-local:BEGIN\n# Managed by caddy-dev-local — do not edit.\n127.0.0.1    a.dev.local\n127.0.0.1    b.dev.local\n# dev-local:END\n"
 	if block != expected {
 		t.Errorf("buildBlock mismatch\ngot:\n%s\nwant:\n%s", block, expected)
 	}
@@ -17,7 +17,7 @@ func TestBuildBlock(t *testing.T) {
 
 func TestBuildBlockEmpty(t *testing.T) {
 	block := buildBlock(nil)
-	expected := "# dev-local:BEGIN\n# dev-local:END\n"
+	expected := "# dev-local:BEGIN\n# Managed by caddy-dev-local — do not edit.\n# dev-local:END\n"
 	if block != expected {
 		t.Errorf("buildBlock empty mismatch\ngot:\n%s\nwant:\n%s", block, expected)
 	}
@@ -41,7 +41,7 @@ func TestSyncCreatesNewBlock(t *testing.T) {
 }
 
 func TestSyncReplacesExistingBlock(t *testing.T) {
-	initial := "10.0.0.1 other.dev.local\n# dev-local:BEGIN\n127.0.0.1    old.dev.local\n# dev-local:END\n"
+	initial := "10.0.0.1 other.dev.local\n# dev-local:BEGIN\n# Managed by caddy-dev-local — do not edit.\n127.0.0.1    old.dev.local\n# dev-local:END\n"
 	path := tempHosts(t, initial)
 
 	if err := syncToFile(path, []string{"new.dev.local"}); err != nil {
@@ -60,7 +60,7 @@ func TestSyncReplacesExistingBlock(t *testing.T) {
 }
 
 func TestSyncNoOpWhenUnchanged(t *testing.T) {
-	initial := "# dev-local:BEGIN\n127.0.0.1    foo.dev.local\n# dev-local:END\n"
+	initial := "# dev-local:BEGIN\n# Managed by caddy-dev-local — do not edit.\n127.0.0.1    foo.dev.local\n# dev-local:END\n"
 	path := tempHosts(t, initial)
 
 	info1, _ := os.Stat(path)
@@ -91,7 +91,7 @@ func TestSyncSortsDomains(t *testing.T) {
 }
 
 func TestRemoveDeletesBlock(t *testing.T) {
-	initial := "10.0.0.1 keep.dev.local\n# dev-local:BEGIN\n127.0.0.1    remove.dev.local\n# dev-local:END\n"
+	initial := "10.0.0.1 keep.dev.local\n# dev-local:BEGIN\n# Managed by caddy-dev-local — do not edit.\n127.0.0.1    remove.dev.local\n# dev-local:END\n"
 	path := tempHosts(t, initial)
 
 	if err := removeFromFile(path); err != nil {
@@ -107,7 +107,7 @@ func TestRemoveDeletesBlock(t *testing.T) {
 }
 
 func TestRemoveOnlyOurBlock(t *testing.T) {
-	initial := "10.0.0.1 other.dev.local\n# dev-local:BEGIN\n127.0.0.1    managed.dev.local\n# dev-local:END\n10.0.0.1 another.dev.local\n"
+	initial := "10.0.0.1 other.dev.local\n# dev-local:BEGIN\n# Managed by caddy-dev-local — do not edit.\n127.0.0.1    managed.dev.local\n# dev-local:END\n10.0.0.1 another.dev.local\n"
 	path := tempHosts(t, initial)
 
 	if err := removeFromFile(path); err != nil {
