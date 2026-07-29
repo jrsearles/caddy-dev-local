@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"strings"
 	"testing"
 	"time"
 
@@ -1024,5 +1025,51 @@ func TestDomainsSorted(t *testing.T) {
 		if d != expected[i] {
 			t.Errorf("domains[%d] = %s, want %s", i, d, expected[i])
 		}
+	}
+}
+
+func TestGenerateCaddyfileMergesDuplicateDomains(t *testing.T) {
+	containers := []container.Summary{
+		makeContainer("c1", "web", "myapp", "web",
+			[]container.PortSummary{{PrivatePort: 3000, PublicPort: 0}},
+			nil, "running"),
+		makeContainer("c2", "web", "myapp", "web",
+			[]container.PortSummary{{PrivatePort: 3001, PublicPort: 0}},
+			nil, "running"),
+	}
+
+	mock := &mockDocker{containers: containers}
+	cfg := &config.Config{
+		IngressNetwork: "devlocal",
+		TLD:            "dev.local",
+		StaleTTL:       time.Hour,
+	}
+
+	gen := NewGenerator(cfg, mock)
+	gen.probeFn = func(host string, ports []uint16, timeout time.Duration) (uint16, error) {
+		return ports[0], nil
+	}
+
+	ctx := context.Background()
+
+	gen.Refresh(ctx)     //nolint:errcheck // test helper
+	gen.SelectPorts(ctx) //nolint:errcheck // test helper
+
+	caddyfile := gen.GenerateCaddyfile()
+
+	if !contains(caddyfile, "myapp.web.dev.local") {
+		t.Error("expected domain in Caddyfile")
+	}
+
+	if !contains(caddyfile, "reverse_proxy") {
+		t.Error("expected reverse_proxy directive in Caddyfile")
+	}
+
+	if !contains(caddyfile, "web:3000") || !contains(caddyfile, "web:3001") {
+		t.Error("expected both upstream targets in Caddyfile")
+	}
+
+	if strings.Count(caddyfile, "myapp.web.dev.local") != 1 {
+		t.Errorf("expected domain to appear exactly once (deduped), got multiple occurrences")
 	}
 }

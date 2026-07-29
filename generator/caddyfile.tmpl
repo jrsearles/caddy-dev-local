@@ -1,6 +1,6 @@
 {{range .Entries}}{{.Domain}} {
     tls internal
-    reverse_proxy {{.ProxyTarget}}
+    reverse_proxy {{join .ProxyTargets " "}}
 }
 
 {{end}}

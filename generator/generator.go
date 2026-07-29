@@ -20,11 +20,13 @@ import (
 
 //go:embed caddyfile.tmpl
 var caddyfileTemplate string
-var caddyfileTemplateObj = template.Must(template.New("caddyfile").Parse(caddyfileTemplate))
+var caddyfileTemplateObj = template.Must(template.New("caddyfile").Funcs(template.FuncMap{
+	"join": strings.Join,
+}).Parse(caddyfileTemplate))
 
 type caddyfileEntry struct {
-	Domain      string
-	ProxyTarget string
+	Domain       string
+	ProxyTargets []string
 }
 
 type caddyfileData struct {
@@ -237,7 +239,11 @@ func (g *Generator) GenerateCaddyfile() string {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 
-	var data caddyfileData
+	merged := make(map[string][]string)
+
+	addTarget := func(domain, target string) {
+		merged[domain] = append(merged[domain], target)
+	}
 
 	for _, info := range g.containers {
 		if !info.IsRunning {
@@ -246,20 +252,17 @@ func (g *Generator) GenerateCaddyfile() string {
 
 		if customDomains := g.customDomains(info); len(customDomains) > 0 {
 			for _, cd := range customDomains {
-				var proxyTarget string
+				var target string
 				if g.cfg.Standalone {
 					if pub, ok := info.PublishedPorts[cd.Port]; ok {
-						proxyTarget = fmt.Sprintf("localhost:%d", pub)
+						target = fmt.Sprintf("localhost:%d", pub)
 					} else {
-						proxyTarget = fmt.Sprintf("localhost:%d", cd.Port)
+						target = fmt.Sprintf("localhost:%d", cd.Port)
 					}
 				} else {
-					proxyTarget = fmt.Sprintf("%s:%d", info.ContainerName, cd.Port)
+					target = fmt.Sprintf("%s:%d", info.ContainerName, cd.Port)
 				}
-				data.Entries = append(data.Entries, caddyfileEntry{
-					Domain:      cd.Domain,
-					ProxyTarget: proxyTarget,
-				})
+				addTarget(cd.Domain, target)
 			}
 			continue
 		}
@@ -269,24 +272,35 @@ func (g *Generator) GenerateCaddyfile() string {
 		}
 
 		domain := g.domainForContainer(info)
-		var proxyTarget string
+		var target string
 		if g.cfg.Standalone {
-			proxyTarget = fmt.Sprintf("localhost:%d", info.SelectedPort)
+			target = fmt.Sprintf("localhost:%d", info.SelectedPort)
 		} else {
-			proxyTarget = fmt.Sprintf("%s:%d", info.ContainerName, info.SelectedPort)
+			target = fmt.Sprintf("%s:%d", info.ContainerName, info.SelectedPort)
 		}
-		data.Entries = append(data.Entries, caddyfileEntry{
-			Domain:      domain,
-			ProxyTarget: proxyTarget,
-		})
+		addTarget(domain, target)
 
 		if g.cfg.Standalone {
-			localhostDomain := g.domainForContainerLocalhost(info)
-			data.Entries = append(data.Entries, caddyfileEntry{
-				Domain:      localhostDomain,
-				ProxyTarget: proxyTarget,
-			})
+			addTarget(g.domainForContainerLocalhost(info), target)
 		}
+	}
+
+	domains := make([]string, 0, len(merged))
+	for d := range merged {
+		domains = append(domains, d)
+	}
+	sort.Strings(domains)
+
+	data := caddyfileData{
+		Entries: make([]caddyfileEntry, 0, len(domains)),
+	}
+	for _, d := range domains {
+		targets := merged[d]
+		slices.Sort(targets)
+		data.Entries = append(data.Entries, caddyfileEntry{
+			Domain:       d,
+			ProxyTargets: targets,
+		})
 	}
 
 	var sb strings.Builder
