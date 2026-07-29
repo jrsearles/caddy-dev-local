@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"strings"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -109,6 +109,15 @@ func cmdFunc(fs caddycmd.Flags) (int, error) {
 
 	gen := generator.NewGenerator(cfg, dockerClient)
 
+	cacheDir, err := os.UserCacheDir()
+	if err != nil {
+		return 1, fmt.Errorf("getting cache dir: %w", err)
+	}
+	indexDir := filepath.Join(cacheDir, "caddy-dev-local")
+	if err := os.MkdirAll(indexDir, 0755); err != nil {
+		return 1, fmt.Errorf("creating index dir: %w", err)
+	}
+
 	if err := gen.Refresh(ctx); err != nil {
 		logger.Error("initial refresh failed", zap.Error(err))
 	}
@@ -117,7 +126,7 @@ func cmdFunc(fs caddycmd.Flags) (int, error) {
 		logger.Error("initial port selection failed", zap.Error(err))
 	}
 
-	if err := loadCaddyConfig(gen, cfg); err != nil {
+	if err := loadCaddyConfig(gen, cfg, indexDir); err != nil {
 		return 1, fmt.Errorf("loading initial caddy config: %w", err)
 	}
 
@@ -125,8 +134,8 @@ func cmdFunc(fs caddycmd.Flags) (int, error) {
 		logger.Error("failed to update hosts file", zap.Error(err))
 	}
 
-	go watchEvents(ctx, dockerClient, gen, cfg, hostsOK)
-	go staleCleanup(ctx, cfg, gen, hostsOK)
+	go watchEvents(ctx, dockerClient, gen, cfg, hostsOK, indexDir)
+	go staleCleanup(ctx, cfg, gen, hostsOK, indexDir)
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
@@ -136,7 +145,7 @@ func cmdFunc(fs caddycmd.Flags) (int, error) {
 	return 0, nil
 }
 
-func watchEvents(ctx context.Context, dockerClient docker.Client, gen *generator.Generator, cfg *config.Config, hostsOK bool) {
+func watchEvents(ctx context.Context, dockerClient docker.Client, gen *generator.Generator, cfg *config.Config, hostsOK bool, indexDir string) {
 	logger := caddy.Log().Named("devlocal")
 	for {
 		select {
@@ -184,7 +193,7 @@ func watchEvents(ctx context.Context, dockerClient docker.Client, gen *generator
 					pending = false
 					gen.Refresh(ctx)     //nolint:errcheck // non-critical, logged via logger
 					gen.SelectPorts(ctx) //nolint:errcheck // non-critical, logged via logger
-					if err := loadCaddyConfig(gen, cfg); err != nil {
+					if err := loadCaddyConfig(gen, cfg, indexDir); err != nil {
 						logger.Error("failed to reload caddy config", zap.Error(err))
 					}
 					if err := syncHosts(gen, cfg, hostsOK); err != nil {
@@ -204,22 +213,27 @@ func watchEvents(ctx context.Context, dockerClient docker.Client, gen *generator
 }
 
 func shouldRefresh(event *events.Message, cfg *config.Config) bool {
-	switch string(event.Type) {
-	case "container":
-		switch string(event.Action) {
-		case "start", "stop", "die", "destroy", "create":
+	switch event.Type {
+	case events.ContainerEventType:
+		switch event.Action {
+		case events.ActionStart, events.ActionStop, events.ActionDie, events.ActionDestroy, events.ActionCreate:
 			return true
+		default:
+			return false
 		}
-	case "network":
-		switch string(event.Action) {
-		case "connect", "disconnect":
+	case events.NetworkEventType:
+		switch event.Action {
+		case events.ActionConnect, events.ActionDisconnect:
 			return event.Actor.Attributes["name"] == cfg.IngressNetwork
+		default:
+			return false
 		}
+	default:
+		return false
 	}
-	return false
 }
 
-func staleCleanup(ctx context.Context, cfg *config.Config, gen *generator.Generator, hostsOK bool) {
+func staleCleanup(ctx context.Context, cfg *config.Config, gen *generator.Generator, hostsOK bool, indexDir string) {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 
@@ -229,7 +243,7 @@ func staleCleanup(ctx context.Context, cfg *config.Config, gen *generator.Genera
 			return
 		case <-ticker.C:
 			gen.StaleCleanup()
-			if err := loadCaddyConfig(gen, cfg); err != nil {
+			if err := loadCaddyConfig(gen, cfg, indexDir); err != nil {
 				caddy.Log().Named("devlocal").Error("failed to reload caddy config", zap.Error(err))
 			}
 			if err := syncHosts(gen, cfg, hostsOK); err != nil {
@@ -239,12 +253,16 @@ func staleCleanup(ctx context.Context, cfg *config.Config, gen *generator.Genera
 	}
 }
 
-func loadCaddyConfig(gen *generator.Generator, cfg *config.Config) error {
+func loadCaddyConfig(gen *generator.Generator, cfg *config.Config, indexDir string) error {
 	caddyfile := gen.GenerateCaddyfile()
 
 	indexPage := generator.GenerateIndexPage(cfg.TLD, cfg.Standalone, gen.Containers())
-	indexBlock := fmt.Sprintf("%s {\n    tls internal\n    respond `%s` 200\n}\n",
-		cfg.TLD, strings.ReplaceAll(indexPage, "`", "\\`"))
+	if err := os.WriteFile(filepath.Join(indexDir, "index.html"), []byte(indexPage), 0600); err != nil {
+		return fmt.Errorf("writing index page: %w", err)
+	}
+
+	indexBlock := fmt.Sprintf("%s {\n    root * %s\n    file_server\n}\n",
+		cfg.TLD, indexDir)
 
 	fullCaddyfile := indexBlock + "\n" + caddyfile
 
@@ -265,7 +283,7 @@ func syncHosts(gen *generator.Generator, cfg *config.Config, hostsOK bool) error
 	if !cfg.HostsFile || !hostsOK {
 		return nil
 	}
-	return hosts.Sync(gen.Domains())
+	return hosts.Sync(cfg.TLD, gen.Domains())
 }
 
 func cleanFunc(fs caddycmd.Flags) (int, error) {

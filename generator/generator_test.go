@@ -220,10 +220,7 @@ func TestExtractPorts(t *testing.T) {
 	}
 }
 
-func TestCustomDomains(t *testing.T) {
-	cfg := &config.Config{TLD: "dev.local"}
-	gen := &Generator{cfg: cfg}
-
+func TestParseCustomDomains(t *testing.T) {
 	tests := []struct {
 		name  string
 		label string
@@ -269,17 +266,15 @@ func TestCustomDomains(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			info := &ContainerInfo{
-				Labels: map[string]string{"dev.local.domains": tt.label},
-			}
-			got := gen.customDomains(info)
+			labels := map[string]string{"dev.local.domains": tt.label}
+			got := parseCustomDomains(labels)
 			if len(got) != len(tt.want) {
-				t.Errorf("customDomains() = %v, want %v", got, tt.want)
+				t.Errorf("parseCustomDomains() = %v, want %v", got, tt.want)
 				return
 			}
 			for i := range got {
 				if got[i] != tt.want[i] {
-					t.Errorf("customDomains()[%d] = %v, want %v", i, got[i], tt.want[i])
+					t.Errorf("parseCustomDomains()[%d] = %v, want %v", i, got[i], tt.want[i])
 				}
 			}
 		})
@@ -674,8 +669,11 @@ func TestStandaloneSelectPorts(t *testing.T) {
 	}
 
 	gen := NewGenerator(cfg, mock)
-	ctx := context.Background()
+	gen.probeFn = func(host string, ports []uint16, timeout time.Duration) (uint16, error) {
+		return 0, fmt.Errorf("no HTTP port found")
+	}
 
+	ctx := context.Background()
 	gen.Refresh(ctx)     //nolint:errcheck // test helper
 	gen.SelectPorts(ctx) //nolint:errcheck // test helper
 
@@ -684,7 +682,6 @@ func TestStandaloneSelectPorts(t *testing.T) {
 		t.Fatalf("expected 1 container, got %d", len(infos))
 	}
 
-	// SelectedPort should be 0 since no HTTP server is running on those ports
 	if infos[0].SelectedPort != 0 {
 		t.Errorf("expected SelectedPort 0 (no HTTP on published ports), got %d", infos[0].SelectedPort)
 	}
@@ -739,6 +736,123 @@ func TestIndexPageNonStandalone(t *testing.T) {
 	}
 	if contains(page, "nginx.localhost") {
 		t.Error("localhost domain should not appear in non-standalone mode")
+	}
+}
+
+func TestIndexPageIPAddressDockerMode(t *testing.T) {
+	containers := []*ContainerInfo{
+		{
+			ContainerName: "nginx",
+			IsCompose:     false,
+			IsRunning:     true,
+			SelectedPort:  80,
+			IPAddress:     "172.18.0.2",
+		},
+	}
+
+	page := GenerateIndexPage("dev.local", false, containers)
+	if !contains(page, "172.18.0.2") {
+		t.Error("expected container IP in index page for Docker mode")
+	}
+}
+
+func TestIndexPageIPAddressStandalone(t *testing.T) {
+	containers := []*ContainerInfo{
+		{
+			ContainerName: "nginx",
+			IsCompose:     false,
+			IsRunning:     true,
+			SelectedPort:  8080,
+			IPAddress:     "172.18.0.2",
+		},
+	}
+
+	page := GenerateIndexPage("dev.local", true, containers)
+	if contains(page, "172.18.0.2") {
+		t.Error("expected container IP to be absent in standalone mode")
+	}
+}
+
+func TestIndexPageIPAddressCustomDomainDockerMode(t *testing.T) {
+	containers := []*ContainerInfo{
+		{
+			ContainerName: "web",
+			IsRunning:     true,
+			IPAddress:     "172.18.0.3",
+			CustomDomains: []CustomDomain{
+				{Port: 3000, Domain: "api.custom.local"},
+			},
+		},
+	}
+
+	page := GenerateIndexPage("dev.local", false, containers)
+	if !contains(page, "172.18.0.3") {
+		t.Error("expected container IP in index page for custom domains in Docker mode")
+	}
+	if !contains(page, "api.custom.local") {
+		t.Error("expected custom domain in index page")
+	}
+}
+
+func TestIndexPageStoppedContainer(t *testing.T) {
+	stopped := time.Date(2026, 7, 28, 12, 30, 0, 0, time.UTC)
+	containers := []*ContainerInfo{
+		{
+			ContainerName: "api",
+			IsCompose:     false,
+			IsRunning:     false,
+			LastStopped:   stopped,
+			SelectedPort:  9090,
+		},
+	}
+
+	page := GenerateIndexPage("dev.local", false, containers)
+	if !contains(page, "api.dev.local") {
+		t.Error("expected api.dev.local in index page")
+	}
+	if !contains(page, "status-stopped") {
+		t.Error("expected stopped status indicator")
+	}
+	if !contains(page, "stopped") {
+		t.Error("expected 'stopped' text")
+	}
+	if !contains(page, "2026-07-28 12:30:00") {
+		t.Error("expected stopped timestamp")
+	}
+	if !contains(page, "class=\"stopped\"") {
+		t.Error("expected stopped row class")
+	}
+}
+
+func TestIndexPageCustomDomains(t *testing.T) {
+	containers := []*ContainerInfo{
+		{
+			ContainerName: "web",
+			IsRunning:     true,
+			CustomDomains: []CustomDomain{
+				{Port: 3000, Domain: "api.custom.local"},
+				{Port: 8080, Domain: "admin.custom.local"},
+			},
+		},
+		{
+			ContainerName: "nginx",
+			IsRunning:     true,
+			SelectedPort:  80,
+		},
+	}
+
+	page := GenerateIndexPage("dev.local", false, containers)
+	if !contains(page, "api.custom.local") {
+		t.Error("expected api.custom.local in index page")
+	}
+	if !contains(page, "admin.custom.local") {
+		t.Error("expected admin.custom.local in index page")
+	}
+	if !contains(page, "nginx.dev.local") {
+		t.Error("expected nginx.dev.local in index page")
+	}
+	if contains(page, "web.dev.local") {
+		t.Error("auto-generated domain should not appear when custom domains are set")
 	}
 }
 

@@ -9,24 +9,32 @@ import (
 )
 
 func TestBuildBlock(t *testing.T) {
-	block := buildBlock([]string{"b.dev.local", "a.dev.local"})
-	expected := "# dev-local:BEGIN\n# Managed by caddy-dev-local — do not edit.\n127.0.0.1    a.dev.local\n127.0.0.1    b.dev.local\n# dev-local:END\n"
+	block := buildBlock("dev.local", []string{"b.dev.local", "a.dev.local"})
+	expected := "# dev-local:BEGIN\n# Managed by caddy-dev-local — do not edit.\n127.0.0.1    dev.local\n127.0.0.1    a.dev.local\n127.0.0.1    b.dev.local\n# dev-local:END\n"
 	if block != expected {
 		t.Errorf("buildBlock mismatch\ngot:\n%s\nwant:\n%s", block, expected)
 	}
 }
 
 func TestBuildBlockEmpty(t *testing.T) {
-	block := buildBlock(nil)
-	expected := "# dev-local:BEGIN\n# Managed by caddy-dev-local — do not edit.\n# dev-local:END\n"
+	block := buildBlock("dev.local", nil)
+	expected := "# dev-local:BEGIN\n# Managed by caddy-dev-local — do not edit.\n127.0.0.1    dev.local\n# dev-local:END\n"
 	if block != expected {
 		t.Errorf("buildBlock empty mismatch\ngot:\n%s\nwant:\n%s", block, expected)
 	}
 }
 
+func TestBuildBlockTDLDedup(t *testing.T) {
+	block := buildBlock("dev.local", []string{"dev.local", "a.dev.local"})
+	expected := "# dev-local:BEGIN\n# Managed by caddy-dev-local — do not edit.\n127.0.0.1    dev.local\n127.0.0.1    a.dev.local\n# dev-local:END\n"
+	if block != expected {
+		t.Errorf("buildBlock dedup mismatch\ngot:\n%s\nwant:\n%s", block, expected)
+	}
+}
+
 func TestSyncCreatesNewBlock(t *testing.T) {
 	path := tempHosts(t, "")
-	if err := syncToFile(path, []string{"foo.dev.local"}); err != nil {
+	if err := syncToFile(path, "dev.local", []string{"foo.dev.local"}); err != nil {
 		t.Fatal(err)
 	}
 	content, _ := os.ReadFile(path)
@@ -45,7 +53,7 @@ func TestSyncReplacesExistingBlock(t *testing.T) {
 	initial := "10.0.0.1 other.dev.local\n# dev-local:BEGIN\n# Managed by caddy-dev-local — do not edit.\n127.0.0.1    old.dev.local\n# dev-local:END\n"
 	path := tempHosts(t, initial)
 
-	if err := syncToFile(path, []string{"new.dev.local"}); err != nil {
+	if err := syncToFile(path, "dev.local", []string{"new.dev.local"}); err != nil {
 		t.Fatal(err)
 	}
 	content, _ := os.ReadFile(path)
@@ -67,7 +75,7 @@ func TestSyncNoOpWhenUnchanged(t *testing.T) {
 	info1, _ := os.Stat(path)
 	modTime1 := info1.ModTime()
 
-	if err := syncToFile(path, []string{"foo.dev.local"}); err != nil {
+	if err := syncToFile(path, "dev.local", []string{"foo.dev.local"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -80,7 +88,7 @@ func TestSyncNoOpWhenUnchanged(t *testing.T) {
 
 func TestSyncSortsDomains(t *testing.T) {
 	path := tempHosts(t, "")
-	if err := syncToFile(path, []string{"z.dev.local", "a.dev.local", "m.dev.local"}); err != nil {
+	if err := syncToFile(path, "dev.local", []string{"z.dev.local", "a.dev.local", "m.dev.local"}); err != nil {
 		t.Fatal(err)
 	}
 	content, _ := os.ReadFile(path)
@@ -149,7 +157,7 @@ func TestSyncAppendsToExistingContent(t *testing.T) {
 	initial := "10.0.0.1 existing.dev.local\n"
 	path := tempHosts(t, initial)
 
-	if err := syncToFile(path, []string{"new.dev.local"}); err != nil {
+	if err := syncToFile(path, "dev.local", []string{"new.dev.local"}); err != nil {
 		t.Fatal(err)
 	}
 	content, _ := os.ReadFile(path)

@@ -4,9 +4,9 @@ go 1.26
 
 require (
 	github.com/caddyserver/caddy/v2 v2.11.4
-	github.com/docker/docker v28.5.2+incompatible
 	github.com/moby/moby/api v1.55.0
 	github.com/moby/moby/client v0.5.0
+	go.uber.org/zap v1.28.0
 )
 
 require (
@@ -54,7 +54,6 @@ require (
 	go.opentelemetry.io/otel/trace v1.43.0 // indirect
 	go.uber.org/automaxprocs v1.6.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	go.uber.org/zap v1.28.0 // indirect
 	go.uber.org/zap/exp v0.3.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect

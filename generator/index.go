@@ -5,24 +5,22 @@ import (
 	"html/template"
 	"strconv"
 	"strings"
-	"sync"
 )
 
 //go:embed index.html.tmpl
 var indexTemplateHTML string
-
-var (
-	indexTemplateOnce sync.Once
-	indexTemplate     *template.Template
-)
+var indexTemplate = template.Must(template.New("index").Parse(indexTemplateHTML))
 
 type indexRow struct {
 	Domain          string
 	LocalhostDomain string
 	ContainerName   string
-	TypeBadge       template.HTML
-	StatusClass     string
-	StatusText      string
+	IPAddress       string
+	ComposeProject  string
+	ComposeService  string
+	IsRunning       bool
+	StartedAt       string
+	StoppedAt       string
 	PortStr         string
 }
 
@@ -31,17 +29,39 @@ type indexData struct {
 	Containers []indexRow
 }
 
-func getIndexTemplate() *template.Template {
-	indexTemplateOnce.Do(func() {
-		indexTemplate = template.Must(template.New("index").Parse(indexTemplateHTML))
-	})
-	return indexTemplate
-}
-
 func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo) string {
-	var rows []indexRow
+	rows := make([]indexRow, 0, len(containers))
 	for _, info := range containers {
-		if !info.IsRunning {
+		composeProject := ""
+		composeService := ""
+		if info.IsCompose {
+			composeProject = info.Project
+			composeService = info.Service
+		}
+
+		stoppedAt := ""
+		if !info.IsRunning && !info.LastStopped.IsZero() {
+			stoppedAt = info.LastStopped.Format("2006-01-02 15:04:05")
+		}
+
+		if len(info.CustomDomains) > 0 {
+			for _, cd := range info.CustomDomains {
+				ipAddress := ""
+				if !standalone {
+					ipAddress = info.IPAddress
+				}
+				rows = append(rows, indexRow{
+					Domain:         cd.Domain,
+					ContainerName:  info.ContainerName,
+					IPAddress:      ipAddress,
+					ComposeProject: composeProject,
+					ComposeService: composeService,
+					IsRunning:      info.IsRunning,
+					StartedAt:      info.Created.Format("2006-01-02 15:04:05"),
+					StoppedAt:      stoppedAt,
+					PortStr:        strconv.FormatUint(uint64(cd.Port), 10),
+				})
+			}
 			continue
 		}
 
@@ -61,23 +81,26 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo)
 			}
 		}
 
-		typeBadge := template.HTML(`<span class="badge badge-standalone">standalone</span>`)
-		if info.IsCompose {
-			typeBadge = `<span class="badge badge-compose">compose</span>`
-		}
-
 		portStr := "-"
 		if info.SelectedPort > 0 {
 			portStr = strconv.FormatUint(uint64(info.SelectedPort), 10)
+		}
+
+		ipAddress := ""
+		if !standalone {
+			ipAddress = info.IPAddress
 		}
 
 		rows = append(rows, indexRow{
 			Domain:          domain,
 			LocalhostDomain: localhostDomain,
 			ContainerName:   info.ContainerName,
-			TypeBadge:       typeBadge,
-			StatusClass:     "status-running",
-			StatusText:      "running",
+			IPAddress:       ipAddress,
+			ComposeProject:  composeProject,
+			ComposeService:  composeService,
+			IsRunning:       info.IsRunning,
+			StartedAt:       info.Created.Format("2006-01-02 15:04:05"),
+			StoppedAt:       stoppedAt,
 			PortStr:         portStr,
 		})
 	}
@@ -88,7 +111,7 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo)
 	}
 
 	var sb strings.Builder
-	if err := getIndexTemplate().Execute(&sb, data); err != nil {
+	if err := indexTemplate.Execute(&sb, data); err != nil {
 		return "template error: " + err.Error()
 	}
 	return sb.String()

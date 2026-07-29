@@ -29,16 +29,16 @@ func CanWrite() bool {
 	return true
 }
 
-func Sync(domains []string) error {
-	return syncToFile(FilePath(), domains)
+func Sync(tld string, domains []string) error {
+	return syncToFile(FilePath(), tld, domains)
 }
 
 func Remove() error {
 	return removeFromFile(FilePath())
 }
 
-func syncToFile(path string, domains []string) error {
-	expected := buildBlock(domains)
+func syncToFile(path string, tld string, domains []string) error {
+	expected := buildBlock(tld, domains)
 
 	existing, err := readBlock(path)
 	if err != nil && !os.IsNotExist(err) {
@@ -91,7 +91,7 @@ func removeFromFile(path string) error {
 	return writeHostsFile(path, newContent)
 }
 
-func buildBlock(domains []string) string {
+func buildBlock(tld string, domains []string) string {
 	sorted := make([]string, len(domains))
 	copy(sorted, domains)
 	sort.Strings(sorted)
@@ -100,7 +100,11 @@ func buildBlock(domains []string) string {
 	sb.WriteString(beginMarker)
 	sb.WriteString("\n")
 	sb.WriteString("# Managed by caddy-dev-local — do not edit.\n")
+	fmt.Fprintf(&sb, "127.0.0.1    %s\n", tld)
 	for _, d := range sorted {
+		if d == tld {
+			continue
+		}
 		fmt.Fprintf(&sb, "127.0.0.1    %s\n", d)
 	}
 	sb.WriteString(endMarker)

@@ -4,6 +4,7 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -19,18 +20,7 @@ import (
 
 //go:embed caddyfile.tmpl
 var caddyfileTemplate string
-
-var (
-	caddyfileTemplateOnce sync.Once
-	caddyfileTemplateObj  *template.Template
-)
-
-func getCaddyfileTemplate() *template.Template {
-	caddyfileTemplateOnce.Do(func() {
-		caddyfileTemplateObj = template.Must(template.New("caddyfile").Parse(caddyfileTemplate))
-	})
-	return caddyfileTemplateObj
-}
+var caddyfileTemplateObj = template.Must(template.New("caddyfile").Parse(caddyfileTemplate))
 
 type caddyfileEntry struct {
 	Domain      string
@@ -46,13 +36,16 @@ type ContainerInfo struct {
 	ContainerName  string
 	Project        string
 	Service        string
+	IPAddress      string
 	Ports          []uint16
 	PublishedPorts map[uint16]uint16
 	SelectedPort   uint16
 	IsCompose      bool
 	IsRunning      bool
 	LastStopped    time.Time
+	Created        time.Time
 	Labels         map[string]string
+	CustomDomains  []CustomDomain
 }
 
 type CustomDomain struct {
@@ -60,11 +53,14 @@ type CustomDomain struct {
 	Domain string
 }
 
+type probeFunc func(host string, ports []uint16, timeout time.Duration) (uint16, error)
+
 type Generator struct {
 	cfg        *config.Config
 	docker     docker.Client
 	mu         sync.RWMutex
 	containers map[string]*ContainerInfo
+	probeFn    probeFunc
 }
 
 func NewGenerator(cfg *config.Config, dockerClient docker.Client) *Generator {
@@ -72,6 +68,7 @@ func NewGenerator(cfg *config.Config, dockerClient docker.Client) *Generator {
 		cfg:        cfg,
 		docker:     dockerClient,
 		containers: make(map[string]*ContainerInfo),
+		probeFn:    ProbeHTTPPort,
 	}
 }
 
@@ -89,7 +86,7 @@ func (g *Generator) Refresh(ctx context.Context) error {
 
 	for i := range containers {
 		c := &containers[i]
-		if !docker.HasNetwork(c, g.cfg.IngressNetwork) {
+		if !g.cfg.Standalone && !docker.HasNetwork(c, g.cfg.IngressNetwork) {
 			continue
 		}
 
@@ -105,6 +102,8 @@ func (g *Generator) Refresh(ctx context.Context) error {
 			info.LastStopped = time.Time{}
 		} else {
 			if info.IsRunning {
+				info.LastStopped = now
+			} else if _, existed := g.containers[info.ContainerID]; !existed {
 				info.LastStopped = now
 			}
 			info.IsRunning = false
@@ -143,15 +142,25 @@ func (g *Generator) buildContainerInfo(c *container.Summary) *ContainerInfo {
 		}
 	}
 
+	ipAddress := ""
+	if c.NetworkSettings != nil {
+		if ep, ok := c.NetworkSettings.Networks[g.cfg.IngressNetwork]; ok {
+			ipAddress = ep.IPAddress.String()
+		}
+	}
+
 	info := &ContainerInfo{
 		ContainerID:    c.ID,
 		ContainerName:  name,
 		Project:        project,
 		Service:        service,
+		IPAddress:      ipAddress,
 		Ports:          ports,
 		PublishedPorts: publishedPorts,
 		IsCompose:      isCompose,
+		Created:        time.Unix(c.Created, 0),
 		Labels:         c.Labels,
+		CustomDomains:  parseCustomDomains(c.Labels),
 	}
 
 	return info
@@ -184,7 +193,7 @@ func (g *Generator) SelectPorts(ctx context.Context) error {
 			case len(pubPorts) == 1:
 				info.SelectedPort = pubPorts[0]
 			default:
-				port, err := ProbeHTTPPort("localhost", pubPorts, g.cfg.ProbeTimeout)
+				port, err := g.probeFn("localhost", pubPorts, g.cfg.ProbeTimeout)
 				if err == nil {
 					info.SelectedPort = port
 				}
@@ -193,7 +202,7 @@ func (g *Generator) SelectPorts(ctx context.Context) error {
 			if len(info.Ports) == 1 {
 				info.SelectedPort = info.Ports[0]
 			} else if len(info.Ports) > 1 {
-				port, err := ProbeHTTPPort(info.ContainerName, info.Ports, g.cfg.ProbeTimeout)
+				port, err := g.probeFn(info.ContainerName, info.Ports, g.cfg.ProbeTimeout)
 				if err == nil {
 					info.SelectedPort = port
 				}
@@ -261,7 +270,7 @@ func (g *Generator) GenerateCaddyfile() string {
 	}
 
 	var sb strings.Builder
-	if err := getCaddyfileTemplate().Execute(&sb, data); err != nil {
+	if err := caddyfileTemplateObj.Execute(&sb, data); err != nil {
 		return fmt.Sprintf("template error: %s", err)
 	}
 	return sb.String()
@@ -281,15 +290,15 @@ func (g *Generator) domainForContainerLocalhost(info *ContainerInfo) string {
 	return fmt.Sprintf("%s.localhost", info.ContainerName)
 }
 
-func (g *Generator) customDomains(info *ContainerInfo) []CustomDomain {
-	label := getLabel(info.Labels, "dev.local.domains")
+func parseCustomDomains(labels map[string]string) []CustomDomain {
+	label := getLabel(labels, "dev.local.domains")
 	if label == "" {
 		return nil
 	}
 
 	var domains []CustomDomain
-	entries := strings.Split(label, ";")
-	for _, entry := range entries {
+	entries := strings.SplitSeq(label, ";")
+	for entry := range entries {
 		entry = strings.TrimSpace(entry)
 		if entry == "" {
 			continue
@@ -315,6 +324,10 @@ func (g *Generator) customDomains(info *ContainerInfo) []CustomDomain {
 	}
 
 	return domains
+}
+
+func (g *Generator) customDomains(info *ContainerInfo) []CustomDomain {
+	return info.CustomDomains
 }
 
 func (g *Generator) Containers() []*ContainerInfo {
@@ -418,10 +431,7 @@ func extractPorts(c *container.Summary) []uint16 {
 		}
 	}
 
-	sort.Slice(ports, func(i, j int) bool {
-		return ports[i] < ports[j]
-	})
-
+	slices.Sort(ports)
 	return ports
 }
 

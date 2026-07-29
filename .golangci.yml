@@ -26,6 +26,8 @@ linters:
     - wastedassign
 
   settings:
+    exhaustive:
+      default-signifies-exhaustive: true
     errorlint:
       asserts: false
     goconst:

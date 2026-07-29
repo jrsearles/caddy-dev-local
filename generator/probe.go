@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"slices"
 	"time"
 )
 
@@ -32,13 +33,7 @@ func preferPorts(ports []uint16) []uint16 {
 		if !portSet[p] {
 			continue
 		}
-		isCommon := false
-		for _, cp := range commonHTTPPorts {
-			if p == cp {
-				isCommon = true
-				break
-			}
-		}
+		isCommon := slices.Contains(commonHTTPPorts, p)
 		if !isCommon {
 			rest = append(rest, p)
 		}

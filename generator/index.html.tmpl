@@ -78,6 +78,14 @@
             font-size: 0.8rem;
             margin-top: 0.25rem;
         }
+        .ip-address {
+            color: #8b949e;
+            font-size: 0.8rem;
+            margin-top: 0.25rem;
+        }
+        tr.stopped {
+            opacity: 0.5;
+        }
     </style>
 </head>
 <body>
@@ -89,18 +97,18 @@
             <tr>
                 <th>Domain</th>
                 <th>Container</th>
-                <th>Type</th>
+                <th>Compose</th>
                 <th>Status</th>
                 <th>Port</th>
             </tr>
         </thead>
         <tbody>
 {{range .Containers}}
-            <tr>
-                <td><a href="http://{{.Domain}}">{{.Domain}}</a>{{if .LocalhostDomain}}<div class="localhost-domain"><a href="http://{{.LocalhostDomain}}">{{.LocalhostDomain}}</a></div>{{end}}</td>
-                <td>{{.ContainerName}}</td>
-                <td>{{.TypeBadge}}</td>
-                <td><span class="{{.StatusClass}}">{{.StatusText}}</span></td>
+            <tr{{if not .IsRunning}} class="stopped"{{end}}>
+                <td><a href="https://{{.Domain}}">{{.Domain}}</a>{{if .LocalhostDomain}}<div class="localhost-domain"><a href="https://{{.LocalhostDomain}}">{{.LocalhostDomain}}</a></div>{{end}}</td>
+                <td>{{.ContainerName}}{{if .IPAddress}}<div class="ip-address">{{.IPAddress}}</div>{{end}}</td>
+                <td>{{if .ComposeProject}}<span class="badge badge-compose">{{.ComposeProject}}/{{.ComposeService}}</span>{{else}}<span class="badge badge-standalone">standalone</span>{{end}}</td>
+                <td>{{if .IsRunning}}<span class="status-running">running</span><br>{{.StartedAt}}{{else}}<span class="status-stopped">stopped</span><br>{{.StoppedAt}}{{end}}</td>
                 <td>{{.PortStr}}</td>
             </tr>
 {{end}}
