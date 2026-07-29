@@ -153,6 +153,9 @@ func watchEvents(ctx context.Context, dockerClient docker.Client, gen *generator
 		f := client.Filters{}
 		f.Add("type", "container")
 		f.Add("type", "network")
+		if !cfg.Standalone {
+			f.Add("network", cfg.IngressNetwork)
+		}
 
 		msgCh, errCh := dockerClient.Events(ctx, client.EventsListOptions{
 			Filters: f,
