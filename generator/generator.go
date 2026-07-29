@@ -81,6 +81,25 @@ func (g *Generator) Refresh(ctx context.Context) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
+	g.refreshLocked(containers)
+	return nil
+}
+
+func (g *Generator) RefreshAndSelect(ctx context.Context) error {
+	containers, err := g.docker.ContainerList(ctx, client.ContainerListOptions{All: true})
+	if err != nil {
+		return fmt.Errorf("listing containers: %w", err)
+	}
+
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	g.refreshLocked(containers)
+	g.selectPortsLocked()
+	return nil
+}
+
+func (g *Generator) refreshLocked(containers []container.Summary) {
 	seen := make(map[string]bool)
 	now := time.Now()
 
@@ -119,8 +138,6 @@ func (g *Generator) Refresh(ctx context.Context) error {
 			}
 		}
 	}
-
-	return nil
 }
 
 func (g *Generator) buildContainerInfo(c *container.Summary) *ContainerInfo {
@@ -170,6 +187,11 @@ func (g *Generator) SelectPorts(ctx context.Context) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
+	g.selectPortsLocked()
+	return nil
+}
+
+func (g *Generator) selectPortsLocked() {
 	for _, info := range g.containers {
 		if !info.IsRunning {
 			continue
@@ -209,8 +231,6 @@ func (g *Generator) SelectPorts(ctx context.Context) error {
 			}
 		}
 	}
-
-	return nil
 }
 
 func (g *Generator) GenerateCaddyfile() string {

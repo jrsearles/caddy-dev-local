@@ -118,12 +118,8 @@ func cmdFunc(fs caddycmd.Flags) (int, error) {
 		return 1, fmt.Errorf("creating index dir: %w", err)
 	}
 
-	if err := gen.Refresh(ctx); err != nil {
+	if err := gen.RefreshAndSelect(ctx); err != nil {
 		logger.Error("initial refresh failed", zap.Error(err))
-	}
-
-	if err := gen.SelectPorts(ctx); err != nil {
-		logger.Error("initial port selection failed", zap.Error(err))
 	}
 
 	if err := loadCaddyConfig(gen, cfg, indexDir); err != nil {
@@ -191,8 +187,7 @@ func watchEvents(ctx context.Context, dockerClient docker.Client, gen *generator
 			case <-throttle.C:
 				if pending {
 					pending = false
-					gen.Refresh(ctx)     //nolint:errcheck // non-critical, logged via logger
-					gen.SelectPorts(ctx) //nolint:errcheck // non-critical, logged via logger
+					gen.RefreshAndSelect(ctx) //nolint:errcheck // non-critical, logged via logger
 					if err := loadCaddyConfig(gen, cfg, indexDir); err != nil {
 						logger.Error("failed to reload caddy config", zap.Error(err))
 					}
