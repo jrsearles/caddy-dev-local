@@ -5,8 +5,6 @@ services:
     #   - ../app:/usr/share/nginx/html:ro
     ports:
       - "8080:80"
-    labels:
-      - "dev.local=true"
 
   api:
     image: hashicorp/http-echo
@@ -32,4 +30,13 @@ services:
       - "8082:80"
     labels:
       - "dev.local.domains=8082:myapp.custom.local;8082:myapp.alt.local"
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: app
+    ports:
+      - "5432:5432"
 

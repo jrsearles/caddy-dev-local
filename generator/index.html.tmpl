@@ -39,6 +39,7 @@
         td {
             padding: 0.75rem 1rem;
             border-bottom: 1px solid #21262d;
+            vertical-align: top;
         }
         a {
             color: #58a6ff;
@@ -73,10 +74,9 @@
             padding: 2rem;
             text-align: center;
         }
-        .localhost-domain {
+        .port {
             color: #8b949e;
             font-size: 0.8rem;
-            margin-top: 0.25rem;
         }
         .ip-address {
             color: #8b949e;
@@ -91,25 +91,25 @@
 <body>
     <h1>devlocal</h1>
     <p class="subtitle">Local Docker container index</p>
-{{if .Containers}}
+{{if .DisplayRows}}
     <table>
         <thead>
             <tr>
                 <th>Domain</th>
                 <th>Container</th>
+                <th>Image</th>
                 <th>Compose</th>
                 <th>Status</th>
-                <th>Port</th>
             </tr>
         </thead>
         <tbody>
-{{range .Containers}}
+{{range .DisplayRows}}
             <tr{{if not .IsRunning}} class="stopped"{{end}}>
-                <td><a href="https://{{.Domain}}">{{.Domain}}</a>{{if .LocalhostDomain}}<div class="localhost-domain"><a href="https://{{.LocalhostDomain}}">{{.LocalhostDomain}}</a></div>{{end}}</td>
-                <td>{{.ContainerName}}{{if .IPAddress}}<div class="ip-address">{{.IPAddress}}</div>{{end}}</td>
-                <td>{{if .ComposeProject}}<span class="badge badge-compose">{{.ComposeProject}}/{{.ComposeService}}</span>{{else}}<span class="badge badge-standalone">standalone</span>{{end}}</td>
-                <td>{{if .IsRunning}}<span class="status-running">running</span><br>{{.StartedAt}}{{else}}<span class="status-stopped">stopped</span><br>{{.StoppedAt}}{{end}}</td>
-                <td>{{.PortStr}}</td>
+                <td><a href="https://{{.Domain}}">{{.Domain}}</a> <span class="port">:{{.PortStr}}</span></td>
+                {{if .IsFirst}}<td{{if gt .RowSpan 1}} rowspan="{{.RowSpan}}"{{end}}>{{.ContainerName}}{{if .IPAddress}}<div class="ip-address">{{.IPAddress}}</div>{{end}}</td>
+                <td{{if gt .RowSpan 1}} rowspan="{{.RowSpan}}"{{end}}>{{.Image}}</td>
+                <td{{if gt .RowSpan 1}} rowspan="{{.RowSpan}}"{{end}}>{{if .ComposeProject}}<span class="badge badge-compose">{{.ComposeProject}}/{{.ComposeService}}</span>{{else}}<span class="badge badge-standalone">standalone</span>{{end}}</td>
+                <td{{if gt .RowSpan 1}} rowspan="{{.RowSpan}}"{{end}}>{{if .IsRunning}}<span class="status-running">running</span><br>{{.StartedAt}}{{else}}<span class="status-stopped">stopped</span><br>{{.StoppedAt}}{{end}}</td>{{end}}
             </tr>
 {{end}}
         </tbody>

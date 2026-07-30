@@ -36,6 +36,7 @@ type caddyfileData struct {
 type ContainerInfo struct {
 	ContainerID    string
 	ContainerName  string
+	Image          string
 	Project        string
 	Service        string
 	IPAddress      string
@@ -171,6 +172,7 @@ func (g *Generator) buildContainerInfo(c *container.Summary) *ContainerInfo {
 	info := &ContainerInfo{
 		ContainerID:    c.ID,
 		ContainerName:  name,
+		Image:          c.Image,
 		Project:        project,
 		Service:        service,
 		IPAddress:      ipAddress,
@@ -214,22 +216,16 @@ func (g *Generator) selectPortsLocked() {
 			switch {
 			case len(pubPorts) == 0:
 				continue
-			case len(pubPorts) == 1:
-				info.SelectedPort = pubPorts[0]
 			default:
 				port, err := g.probeFn("localhost", pubPorts, g.cfg.ProbeTimeout)
 				if err == nil {
 					info.SelectedPort = port
 				}
 			}
-		} else {
-			if len(info.Ports) == 1 {
-				info.SelectedPort = info.Ports[0]
-			} else if len(info.Ports) > 1 {
-				port, err := g.probeFn(info.ContainerName, info.Ports, g.cfg.ProbeTimeout)
-				if err == nil {
-					info.SelectedPort = port
-				}
+		} else if len(info.Ports) > 0 {
+			port, err := g.probeFn(info.ContainerName, info.Ports, g.cfg.ProbeTimeout)
+			if err == nil {
+				info.SelectedPort = port
 			}
 		}
 	}

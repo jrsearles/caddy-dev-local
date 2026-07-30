@@ -425,6 +425,9 @@ func TestGeneratorSinglePort(t *testing.T) {
 	}
 
 	gen := NewGenerator(cfg, mock)
+	gen.probeFn = func(host string, ports []uint16, timeout time.Duration) (uint16, error) {
+		return ports[0], nil
+	}
 	ctx := context.Background()
 
 	gen.Refresh(ctx)     //nolint:errcheck // test helper
@@ -566,6 +569,9 @@ func TestStandaloneCaddyfileGeneration(t *testing.T) {
 	}
 
 	gen := NewGenerator(cfg, mock)
+	gen.probeFn = func(host string, ports []uint16, timeout time.Duration) (uint16, error) {
+		return ports[0], nil
+	}
 	ctx := context.Background()
 
 	gen.Refresh(ctx)     //nolint:errcheck // test helper
@@ -875,6 +881,9 @@ func TestDomainsComposeAndStandalone(t *testing.T) {
 	}
 
 	gen := NewGenerator(cfg, mock)
+	gen.probeFn = func(host string, ports []uint16, timeout time.Duration) (uint16, error) {
+		return ports[0], nil
+	}
 	ctx := context.Background()
 
 	gen.Refresh(ctx)     //nolint:errcheck // test helper
@@ -908,6 +917,9 @@ func TestDomainsIncludesLocalhost(t *testing.T) {
 	}
 
 	gen := NewGenerator(cfg, mock)
+	gen.probeFn = func(host string, ports []uint16, timeout time.Duration) (uint16, error) {
+		return ports[0], nil
+	}
 	ctx := context.Background()
 
 	gen.Refresh(ctx)     //nolint:errcheck // test helper
@@ -976,6 +988,9 @@ func TestDomainsExcludesStopped(t *testing.T) {
 	}
 
 	gen := NewGenerator(cfg, mock)
+	gen.probeFn = func(host string, ports []uint16, timeout time.Duration) (uint16, error) {
+		return ports[0], nil
+	}
 	ctx := context.Background()
 
 	gen.Refresh(ctx)     //nolint:errcheck // test helper
@@ -1011,6 +1026,9 @@ func TestDomainsSorted(t *testing.T) {
 	}
 
 	gen := NewGenerator(cfg, mock)
+	gen.probeFn = func(host string, ports []uint16, timeout time.Duration) (uint16, error) {
+		return ports[0], nil
+	}
 	ctx := context.Background()
 
 	gen.Refresh(ctx)     //nolint:errcheck // test helper
