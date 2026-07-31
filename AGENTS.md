@@ -7,7 +7,8 @@ caddy-dev-local is a Caddy plugin that auto-registers `.dev.local` domains for D
 ## Architecture
 
 ```
-cmd.go              Caddy subcommand "devlocal", event loop, config reload
+cmd.go              Caddy subcommand "devlocal", event loop, hosts management
+caddy.go            Caddy config loading, adaptation, global options extraction, reload logic
 module.go           Registers CaddyDevLocal as a Caddy module
 config/config.go    Config struct, defaults, env vars, standalone detection
 docker/client.go    Docker client wrapper, label extraction helpers
@@ -48,6 +49,10 @@ just --list                # List all recipes
 - Test file mirrors source: `generator.go` -> `generator_test.go`
 - Tests use `contains()` helper for substring checks in generated output
 - Config values come from flags, env vars, or defaults (in that priority)
+- Static Caddyfile (user config) is restricted to global options only; site blocks are stripped with a warning
+- `loadUserGlobalOptions()` adapts user Caddyfile and loads global options via `caddy.Load()`
+- `loadDevlocalViaAPI()` posts devlocal routes (index + containers) via Caddy admin API
+- `reloadCaddyConfig()` updates container routes incrementally via admin API on Docker events
 - Always update README.md when making user-facing changes
 
 ## Dependencies

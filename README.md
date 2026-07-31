@@ -105,6 +105,23 @@ services:
 | `--stale-ttl` | `DEVLOCAL_STALE_TTL` | `1h` | Keep config for stopped containers |
 | `--probe-timeout` | `DEVLOCAL_PROBE_TIMEOUT` | `2s` | HTTP probe timeout |
 | `--hosts-file` | `DEVLOCAL_HOSTS_FILE` | `true` | Manage `/etc/hosts` entries for domains |
+| `--config` | `DEVLOCAL_CONFIG` | (auto-detect) | Path to a static Caddyfile for global options only |
+
+## Custom Caddyfile
+
+caddy-dev-local auto-detects `Caddyfile`, `Caddyfile.json`, `Caddyfile.json5`, or `Caddyfile.yaml` in the working directory. Use `--config` or `DEVLOCAL_CONFIG` to specify a different path.
+
+**The static Caddyfile is for global options only.** Site blocks (e.g., `example.com { ... }`) are ignored with a warning. Use the [admin API](https://caddyserver.com/docs/api) for site configuration — caddy-dev-local manages container routes via the API automatically.
+
+Example global options:
+
+```
+{
+    email admin@example.com
+    debug
+    grace_period 10s
+}
+```
 
 ## Building from Source
 
