@@ -14,6 +14,7 @@ var indexTemplate = template.Must(template.New("index").Parse(indexTemplateHTML)
 type domainEntry struct {
 	Domain  string
 	PortStr string
+	URL     string
 }
 
 type indexRow struct {
@@ -31,6 +32,7 @@ type indexRow struct {
 type displayRow struct {
 	Domain         string
 	PortStr        string
+	URL            string
 	ContainerName  string
 	Image          string
 	IPAddress      string
@@ -52,6 +54,16 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo)
 	groups := make([]indexRow, 0, len(containers))
 
 	for _, info := range containers {
+		if info.SelectedPort == 0 && len(info.CustomDomains) == 0 {
+			if standalone {
+				if len(info.PublishedPorts) == 0 {
+					continue
+				}
+			} else if len(info.Ports) == 0 {
+				continue
+			}
+		}
+
 		composeProject := ""
 		composeService := ""
 		if info.IsCompose {
@@ -61,7 +73,7 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo)
 
 		stoppedAt := ""
 		if !info.IsRunning && !info.LastStopped.IsZero() {
-			stoppedAt = info.LastStopped.Format("2006-01-02 15:04:05")
+			stoppedAt = info.LastStopped.Format("2006-01-02 15:04")
 		}
 
 		ipAddress := ""
@@ -76,6 +88,7 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo)
 				domains = append(domains, domainEntry{
 					Domain:  cd.Domain,
 					PortStr: strconv.FormatUint(uint64(cd.Port), 10),
+					URL:     "https://" + cd.Domain,
 				})
 			}
 		} else {
@@ -86,14 +99,30 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo)
 				domain = info.ContainerName + "." + tld
 			}
 
+			portStrs := make([]string, 0, len(info.Ports))
+			for _, p := range info.Ports {
+				port := p
+				if standalone {
+					if pub, ok := info.PublishedPorts[p]; ok {
+						port = pub
+					}
+				}
+				portStrs = append(portStrs, strconv.FormatUint(uint64(port), 10))
+			}
 			portStr := "-"
+			if len(portStrs) > 0 {
+				portStr = strings.Join(portStrs, ", ")
+			}
+
+			url := ""
 			if info.SelectedPort > 0 {
-				portStr = strconv.FormatUint(uint64(info.SelectedPort), 10)
+				url = "https://" + domain
 			}
 
 			domains = append(domains, domainEntry{
 				Domain:  domain,
 				PortStr: portStr,
+				URL:     url,
 			})
 
 			if standalone {
@@ -103,9 +132,14 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo)
 				} else {
 					localhostDomain = info.ContainerName + ".localhost"
 				}
+				localhostURL := ""
+				if info.SelectedPort > 0 {
+					localhostURL = "https://" + localhostDomain
+				}
 				domains = append(domains, domainEntry{
 					Domain:  localhostDomain,
 					PortStr: portStr,
+					URL:     localhostURL,
 				})
 			}
 		}
@@ -118,7 +152,7 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo)
 			ComposeProject: composeProject,
 			ComposeService: composeService,
 			IsRunning:      info.IsRunning,
-			StartedAt:      info.Created.Format("2006-01-02 15:04:05"),
+			StartedAt:      info.Created.Format("2006-01-02 15:04"),
 			StoppedAt:      stoppedAt,
 		})
 	}
@@ -129,6 +163,7 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo)
 			rows = append(rows, displayRow{
 				Domain:         d.Domain,
 				PortStr:        d.PortStr,
+				URL:            d.URL,
 				ContainerName:  groups[gi].ContainerName,
 				Image:          groups[gi].Image,
 				IPAddress:      groups[gi].IPAddress,

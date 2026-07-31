@@ -397,7 +397,13 @@ func (g *Generator) Domains() []string {
 		}
 
 		if info.SelectedPort == 0 {
-			continue
+			if g.cfg.Standalone {
+				if len(info.PublishedPorts) == 0 {
+					continue
+				}
+			} else if len(info.Ports) == 0 {
+				continue
+			}
 		}
 
 		d := g.domainForContainer(info)

@@ -105,7 +105,7 @@
         <tbody>
 {{range .DisplayRows}}
             <tr{{if not .IsRunning}} class="stopped"{{end}}>
-                <td><a href="https://{{.Domain}}">{{.Domain}}</a> <span class="port">:{{.PortStr}}</span></td>
+                <td>{{if .URL}}<a href="{{.URL}}">{{.Domain}}</a>{{else}}{{.Domain}}{{end}} <span class="port">:{{.PortStr}}</span></td>
                 {{if .IsFirst}}<td{{if gt .RowSpan 1}} rowspan="{{.RowSpan}}"{{end}}>{{.ContainerName}}{{if .IPAddress}}<div class="ip-address">{{.IPAddress}}</div>{{end}}</td>
                 <td{{if gt .RowSpan 1}} rowspan="{{.RowSpan}}"{{end}}>{{.Image}}</td>
                 <td{{if gt .RowSpan 1}} rowspan="{{.RowSpan}}"{{end}}>{{if .ComposeProject}}<span class="badge badge-compose">{{.ComposeProject}}/{{.ComposeService}}</span>{{else}}<span class="badge badge-standalone">standalone</span>{{end}}</td>

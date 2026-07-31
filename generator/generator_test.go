@@ -823,7 +823,7 @@ func TestIndexPageStoppedContainer(t *testing.T) {
 	if !contains(page, "stopped") {
 		t.Error("expected 'stopped' text")
 	}
-	if !contains(page, "2026-07-28 12:30:00") {
+	if !contains(page, "2026-07-28 12:30") {
 		t.Error("expected stopped timestamp")
 	}
 	if !contains(page, "class=\"stopped\"") {
@@ -860,6 +860,72 @@ func TestIndexPageCustomDomains(t *testing.T) {
 	}
 	if contains(page, "web.dev.local") {
 		t.Error("auto-generated domain should not appear when custom domains are set")
+	}
+}
+
+func TestIndexPagePortsWithoutHTTP(t *testing.T) {
+	containers := []*ContainerInfo{
+		{
+			ContainerName:  "web",
+			Project:        "myapp",
+			Service:        "web",
+			IsCompose:      true,
+			IsRunning:      true,
+			Ports:          []uint16{3000},
+			PublishedPorts: map[uint16]uint16{3000: 9090},
+		},
+		{
+			ContainerName:  "nginx",
+			IsRunning:      true,
+			Ports:          []uint16{80},
+			PublishedPorts: map[uint16]uint16{80: 8080},
+		},
+		{
+			ContainerName:  "api",
+			IsRunning:      true,
+			Ports:          []uint16{4000, 5000},
+			PublishedPorts: map[uint16]uint16{4000: 9000, 5000: 9001},
+		},
+	}
+
+	page := GenerateIndexPage("dev.local", false, containers)
+	if !contains(page, "myapp.web.dev.local") {
+		t.Error("expected myapp.web.dev.local in index page")
+	}
+	if !contains(page, "nginx.dev.local") {
+		t.Error("expected nginx.dev.local in index page")
+	}
+	if !contains(page, ":3000") {
+		t.Error("expected port 3000 for compose container in docker mode")
+	}
+	if !contains(page, ":80") {
+		t.Error("expected port 80 for standalone container in docker mode")
+	}
+	if contains(page, "href=\"http://") {
+		t.Error("expected no http links for containers without HTTP in docker mode")
+	}
+	if contains(page, "href=\"https://") {
+		t.Error("expected no https links for containers without HTTP in docker mode")
+	}
+
+	pageStandalone := GenerateIndexPage("dev.local", true, containers)
+	if !contains(pageStandalone, "nginx.localhost") {
+		t.Error("expected nginx.localhost in standalone index page")
+	}
+	if !contains(pageStandalone, ":9090") {
+		t.Error("expected published port 9090 in standalone mode")
+	}
+	if !contains(pageStandalone, ":8080") {
+		t.Error("expected published port 8080 in standalone mode")
+	}
+	if contains(pageStandalone, "href=\"") {
+		t.Error("expected no links at all for containers without HTTP in standalone mode")
+	}
+	if !contains(page, ":4000, 5000") {
+		t.Error("expected multiple ports 4000, 5000 for multi-port container in docker mode")
+	}
+	if !contains(pageStandalone, ":9000, 9001") {
+		t.Error("expected published ports 9000, 9001 for multi-port container in standalone mode")
 	}
 }
 
@@ -1043,6 +1109,128 @@ func TestDomainsSorted(t *testing.T) {
 		if d != expected[i] {
 			t.Errorf("domains[%d] = %s, want %s", i, d, expected[i])
 		}
+	}
+}
+
+func TestDomainsIncludesPortsWithoutHTTP_DockerMode(t *testing.T) {
+	containers := []container.Summary{
+		makeContainer("c1", "web", "myapp", "web",
+			[]container.PortSummary{{PrivatePort: 3000, PublicPort: 0}},
+			nil, "running"),
+	}
+
+	mock := &mockDocker{containers: containers}
+	cfg := &config.Config{
+		IngressNetwork: "devlocal",
+		TLD:            "dev.local",
+		StaleTTL:       time.Hour,
+		Standalone:     false,
+	}
+
+	gen := NewGenerator(cfg, mock)
+	gen.probeFn = func(host string, ports []uint16, timeout time.Duration) (uint16, error) {
+		return 0, fmt.Errorf("no HTTP port found")
+	}
+	ctx := context.Background()
+
+	gen.Refresh(ctx)     //nolint:errcheck // test helper
+	gen.SelectPorts(ctx) //nolint:errcheck // test helper
+
+	domains := gen.Domains()
+	if len(domains) != 1 {
+		t.Fatalf("expected 1 domain, got %d: %v", len(domains), domains)
+	}
+	if domains[0] != "myapp.web.dev.local" {
+		t.Errorf("expected myapp.web.dev.local, got %s", domains[0])
+	}
+}
+
+func TestDomainsIncludesPortsWithoutHTTP_Standalone(t *testing.T) {
+	containers := []container.Summary{
+		makeContainer("c1", "nginx", "", "",
+			[]container.PortSummary{{PrivatePort: 80, PublicPort: 8080}},
+			nil, "running"),
+	}
+
+	mock := &mockDocker{containers: containers}
+	cfg := &config.Config{
+		IngressNetwork: "devlocal",
+		TLD:            "dev.local",
+		StaleTTL:       time.Hour,
+		Standalone:     true,
+	}
+
+	gen := NewGenerator(cfg, mock)
+	gen.probeFn = func(host string, ports []uint16, timeout time.Duration) (uint16, error) {
+		return 0, fmt.Errorf("no HTTP port found")
+	}
+	ctx := context.Background()
+
+	gen.Refresh(ctx)     //nolint:errcheck // test helper
+	gen.SelectPorts(ctx) //nolint:errcheck // test helper
+
+	domains := gen.Domains()
+	if len(domains) != 2 {
+		t.Fatalf("expected 2 domains, got %d: %v", len(domains), domains)
+	}
+	if domains[0] != "nginx.dev.local" {
+		t.Errorf("expected nginx.dev.local, got %s", domains[0])
+	}
+	if domains[1] != "nginx.localhost" {
+		t.Errorf("expected nginx.localhost, got %s", domains[1])
+	}
+}
+
+func TestDomainsExcludesUnpublishedInStandalone(t *testing.T) {
+	containers := []container.Summary{
+		makeContainer("c1", "internal", "", "",
+			[]container.PortSummary{{PrivatePort: 80, PublicPort: 0}},
+			nil, "running"),
+	}
+
+	mock := &mockDocker{containers: containers}
+	cfg := &config.Config{
+		IngressNetwork: "devlocal",
+		TLD:            "dev.local",
+		StaleTTL:       time.Hour,
+		Standalone:     true,
+	}
+
+	gen := NewGenerator(cfg, mock)
+	ctx := context.Background()
+
+	gen.Refresh(ctx)     //nolint:errcheck // test helper
+	gen.SelectPorts(ctx) //nolint:errcheck // test helper
+
+	domains := gen.Domains()
+	if len(domains) != 0 {
+		t.Errorf("expected 0 domains for unpublished container in standalone mode, got %d: %v", len(domains), domains)
+	}
+}
+
+func TestDomainsExcludesPortless(t *testing.T) {
+	containers := []container.Summary{
+		makeContainer("c1", "web", "myapp", "web",
+			nil,
+			nil, "running"),
+	}
+
+	mock := &mockDocker{containers: containers}
+	cfg := &config.Config{
+		IngressNetwork: "devlocal",
+		TLD:            "dev.local",
+		StaleTTL:       time.Hour,
+	}
+
+	gen := NewGenerator(cfg, mock)
+	ctx := context.Background()
+
+	gen.Refresh(ctx)     //nolint:errcheck // test helper
+	gen.SelectPorts(ctx) //nolint:errcheck // test helper
+
+	domains := gen.Domains()
+	if len(domains) != 0 {
+		t.Errorf("expected 0 domains for portless container in Docker mode, got %d: %v", len(domains), domains)
 	}
 }
 
