@@ -18,11 +18,13 @@ import (
 )
 
 type adminAPI struct {
-	mu           sync.Mutex
-	baseURL      string
-	client       *http.Client
-	prevRoutes   map[string]json.RawMessage
-	prevPolicies map[string]json.RawMessage
+	mu              sync.Mutex
+	baseURL         string
+	client          *http.Client
+	prevRoutes      map[string]json.RawMessage
+	prevPolicies    map[string]json.RawMessage
+	applyMu         sync.Mutex
+	lastFingerprint string
 }
 
 func newAdminAPI() *adminAPI {
@@ -33,6 +35,26 @@ func newAdminAPI() *adminAPI {
 			Timeout:   30 * time.Second,
 		},
 	}
+}
+
+func (a *adminAPI) tryBeginApply() bool {
+	return a.applyMu.TryLock()
+}
+
+func (a *adminAPI) endApply() {
+	a.applyMu.Unlock()
+}
+
+func (a *adminAPI) fingerprint() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.lastFingerprint
+}
+
+func (a *adminAPI) setFingerprint(fp string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.lastFingerprint = fp
 }
 
 func (a *adminAPI) request(method, path, contentType string, body []byte) (int, error) {

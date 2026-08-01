@@ -155,6 +155,40 @@ func TestAdaptUserConfigKeepsSiteBlocks(t *testing.T) {
 	}
 }
 
+func TestFingerprintDomains(t *testing.T) {
+	a := map[string][]string{
+		"b.dev.local": {"127.0.0.1:8080", "127.0.0.1:8081"},
+		"a.dev.local": {"127.0.0.1:8082"},
+	}
+	b := map[string][]string{
+		"a.dev.local": {"127.0.0.1:8082"},
+		"b.dev.local": {"127.0.0.1:8081", "127.0.0.1:8080"},
+	}
+
+	if fingerprintDomains(a) != fingerprintDomains(b) {
+		t.Error("fingerprint must be order-independent for both domains and targets")
+	}
+
+	c := map[string][]string{
+		"a.dev.local": {"127.0.0.1:8082"},
+		"b.dev.local": {"127.0.0.1:8080"},
+	}
+	if fingerprintDomains(a) == fingerprintDomains(c) {
+		t.Error("fingerprints must differ when targets differ")
+	}
+
+	d := map[string][]string{
+		"a.dev.local": {"127.0.0.1:8082"},
+	}
+	if fingerprintDomains(b) == fingerprintDomains(d) {
+		t.Error("fingerprints must differ when a domain is removed")
+	}
+
+	if fingerprintDomains(nil) != fingerprintDomains(map[string][]string{}) {
+		t.Error("nil and empty maps must fingerprint identically")
+	}
+}
+
 func TestInjectListenPorts(t *testing.T) {
 	tests := []struct {
 		name          string

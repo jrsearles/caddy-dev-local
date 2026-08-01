@@ -47,6 +47,9 @@ func init() {
 			fs.Bool("hosts-file", true,
 				"Manage /etc/hosts entries for domains (env: DEVLOCAL_HOSTS_FILE)")
 
+			fs.Duration("poll-interval", 0,
+				"Periodic full refresh as a safety net for missed events (env: DEVLOCAL_POLL_INTERVAL, default 30s, 0 disables)")
+
 			fs.String("config", "",
 				"Path to Caddyfile or config file (env: DEVLOCAL_CONFIG)")
 
@@ -136,6 +139,9 @@ func cmdFunc(fs caddycmd.Flags) (int, error) {
 
 	go watchEvents(ctx, dockerClient, gen, cfg, hostsOK, indexDir, api)
 	go staleCleanup(ctx, cfg, gen, hostsOK, indexDir, api)
+	if cfg.PollInterval > 0 {
+		go pollLoop(ctx, cfg, gen, hostsOK, indexDir, api)
+	}
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
@@ -146,18 +152,32 @@ func cmdFunc(fs caddycmd.Flags) (int, error) {
 }
 
 func applyCommandFlags(cfg *config.Config, fs caddycmd.Flags) {
-	var hostsFile *bool
+	var o config.FlagOverrides
+	if fs.Changed("ingress-network") {
+		v := fs.String("ingress-network")
+		o.IngressNetwork = &v
+	}
+	if fs.Changed("tld") {
+		v := fs.String("tld")
+		o.TLD = &v
+	}
+	if fs.Changed("stale-ttl") {
+		v := fs.Duration("stale-ttl")
+		o.StaleTTL = &v
+	}
+	if fs.Changed("probe-timeout") {
+		v := fs.Duration("probe-timeout")
+		o.ProbeTimeout = &v
+	}
 	if fs.Changed("hosts-file") {
 		v := fs.Bool("hosts-file")
-		hostsFile = &v
+		o.HostsFile = &v
 	}
-	cfg.ApplyFlags(
-		fs.String("ingress-network"),
-		fs.String("tld"),
-		fs.Duration("stale-ttl"),
-		fs.Duration("probe-timeout"),
-		hostsFile,
-	)
+	if fs.Changed("poll-interval") {
+		v := fs.Duration("poll-interval")
+		o.PollInterval = &v
+	}
+	cfg.ApplyFlags(o)
 }
 
 func watchEvents(ctx context.Context, dockerClient docker.Client, gen *generator.Generator, cfg *config.Config, hostsOK bool, indexDir string, api *adminAPI) {
@@ -263,11 +283,33 @@ func staleCleanup(ctx context.Context, cfg *config.Config, gen *generator.Genera
 	}
 }
 
+func pollLoop(ctx context.Context, cfg *config.Config, gen *generator.Generator, hostsOK bool, indexDir string, api *adminAPI) {
+	ticker := time.NewTicker(cfg.PollInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			gen.RefreshAndSelect(ctx) //nolint:errcheck // non-critical, logged via logger
+			applyDevlocal(gen, cfg, indexDir, api, hostsOK)
+		}
+	}
+}
+
 func applyDevlocal(gen *generator.Generator, cfg *config.Config, indexDir string, api *adminAPI, hostsOK bool) {
 	logger := caddy.Log().Named(appName)
-	if err := reloadCaddyConfig(gen, cfg, indexDir, api); err != nil {
+	if !api.tryBeginApply() {
+		logger.Debug("apply in flight, skipping")
+		return
+	}
+	defer api.endApply()
+
+	applied, err := reloadCaddyConfig(gen, cfg, indexDir, api)
+	if err != nil {
 		logger.Error("failed to reload caddy config", zap.Error(err))
-	} else {
+	} else if applied {
 		logger.Info("reloaded config",
 			zap.Int("containers", len(gen.Containers())),
 			zap.Int("domains", len(gen.Domains())),

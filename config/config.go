@@ -12,6 +12,7 @@ type Config struct {
 	ProbeTimeout   time.Duration
 	Standalone     bool
 	HostsFile      bool
+	PollInterval   time.Duration
 }
 
 func DetectStandalone() bool {
@@ -26,24 +27,37 @@ func DefaultConfig() *Config {
 		StaleTTL:       getDurationOrDefault("DEVLOCAL_STALE_TTL", time.Hour),
 		ProbeTimeout:   getDurationOrDefault("DEVLOCAL_PROBE_TIMEOUT", 2*time.Second),
 		HostsFile:      getBoolOrDefault("DEVLOCAL_HOSTS_FILE", true),
+		PollInterval:   getDurationOrDefault("DEVLOCAL_POLL_INTERVAL", 30*time.Second),
 	}
 }
 
-func (c *Config) ApplyFlags(ingressNetwork, tld string, staleTTL, probeTimeout time.Duration, hostsFile *bool) {
-	if ingressNetwork != "" {
-		c.IngressNetwork = ingressNetwork
+type FlagOverrides struct {
+	IngressNetwork *string
+	TLD            *string
+	StaleTTL       *time.Duration
+	ProbeTimeout   *time.Duration
+	HostsFile      *bool
+	PollInterval   *time.Duration
+}
+
+func (c *Config) ApplyFlags(o FlagOverrides) {
+	if o.IngressNetwork != nil {
+		c.IngressNetwork = *o.IngressNetwork
 	}
-	if tld != "" {
-		c.TLD = tld
+	if o.TLD != nil {
+		c.TLD = *o.TLD
 	}
-	if staleTTL > 0 {
-		c.StaleTTL = staleTTL
+	if o.StaleTTL != nil {
+		c.StaleTTL = *o.StaleTTL
 	}
-	if probeTimeout > 0 {
-		c.ProbeTimeout = probeTimeout
+	if o.ProbeTimeout != nil {
+		c.ProbeTimeout = *o.ProbeTimeout
 	}
-	if hostsFile != nil {
-		c.HostsFile = *hostsFile
+	if o.HostsFile != nil {
+		c.HostsFile = *o.HostsFile
+	}
+	if o.PollInterval != nil {
+		c.PollInterval = *o.PollInterval
 	}
 }
 

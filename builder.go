@@ -24,6 +24,12 @@ type devlocalConfig struct {
 	indexRoute json.RawMessage
 }
 
+type devlocalAutosave struct {
+	Routes     map[string]json.RawMessage `json:"routes"`
+	Policies   map[string]json.RawMessage `json:"policies"`
+	IndexRoute json.RawMessage            `json:"index_route"`
+}
+
 func devlocalRouteID(host string) string {
 	return "devlocal-route-" + strings.ReplaceAll(host, ".", "-")
 }

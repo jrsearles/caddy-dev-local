@@ -105,7 +105,10 @@ services:
 | `--stale-ttl` | `DEVLOCAL_STALE_TTL` | `1h` | Keep config for stopped containers |
 | `--probe-timeout` | `DEVLOCAL_PROBE_TIMEOUT` | `2s` | HTTP probe timeout |
 | `--hosts-file` | `DEVLOCAL_HOSTS_FILE` | `true` | Manage `/etc/hosts` entries for domains |
+| `--poll-interval` | `DEVLOCAL_POLL_INTERVAL` | `30s` | Periodic full refresh as a safety net for missed Docker events; `0` disables |
 | `--config` | `DEVLOCAL_CONFIG` | (auto-detect) | Path to a static Caddyfile loaded as-is |
+
+> **Note:** The periodic poll backstops any reloads skipped while another reload is in flight. Disabling it (`--poll-interval=0`) is not recommended when running with heavy container churn, since concurrent Docker events can then drop an apply with no scheduled re-check.
 
 ## Custom Caddyfile
 
@@ -194,6 +197,16 @@ Then visit:
 5. In Docker mode, probes via the container name; in standalone mode, probes via `localhost`
 6. Builds the devlocal config directly as JSON — one `reverse_proxy` route per domain, a single merged `tls internal` policy, and an index page route for the TLD
 7. Loads the user Caddyfile as-is with `caddy.Load`, then applies the devlocal routes and TLS policy through Caddy's [admin API](https://caddyserver.com/docs/api) using diff-based patching — only added, removed, or changed routes/policies are touched, so reloads are incremental with zero downtime
+8. Polls Docker every `--poll-interval` (default 30s) as a safety net for missed events; if nothing changed, the reload is skipped entirely via a fingerprint of the current domains
+
+## Generated Files
+
+caddy-dev-local writes two files to the user cache directory (`os.UserCacheDir()/caddy-dev-local`):
+
+| File | Purpose |
+|---|---|
+| `index.html` | Served at the TLD (e.g. `http://dev.local`) as a status page listing discovered containers |
+| `devlocal.json` | The last successfully applied devlocal config (routes, TLS policy, index route) — useful for debugging; only rewritten when the config actually changes |
 
 ## Hosts File
 

@@ -2,10 +2,14 @@ package caddydevlocal
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 
 	"github.com/caddyserver/caddy/v2"
@@ -18,7 +22,7 @@ import (
 )
 
 func initCaddyConfig(gen *generator.Generator, cfg *config.Config, indexDir string, api *adminAPI, userConfigPath string) error {
-	logger := caddy.Log().Named("devlocal")
+	logger := caddy.Log().Named(appName)
 	indexPage := generator.GenerateIndexPage(cfg.TLD, cfg.Standalone, gen.Containers())
 	if err := os.WriteFile(filepath.Join(indexDir, "index.html"), []byte(indexPage), 0600); err != nil {
 		return fmt.Errorf("writing index page: %w", err)
@@ -68,6 +72,9 @@ func initCaddyConfig(gen *generator.Generator, cfg *config.Config, indexDir stri
 	if err := postDevlocalViaAPI(api, devlocal); err != nil {
 		return fmt.Errorf("applying devlocal config: %w", err)
 	}
+
+	api.setFingerprint(fingerprintDomains(gen.DomainTargets()))
+	writeDevlocalAutosave(indexDir, devlocal)
 
 	logger.Info("loaded initial config", zap.Int("domains", len(gen.Domains())))
 	return nil
@@ -174,16 +181,67 @@ func postDevlocalViaAPI(api *adminAPI, devlocal *devlocalConfig) error {
 	return api.reconcileDevlocal(devlocal.routes, devlocal.policies)
 }
 
-func reloadCaddyConfig(gen *generator.Generator, cfg *config.Config, indexDir string, api *adminAPI) error {
+func reloadCaddyConfig(gen *generator.Generator, cfg *config.Config, indexDir string, api *adminAPI) (bool, error) {
+	logger := caddy.Log().Named(appName)
+
+	domains := gen.DomainTargets()
+	fp := fingerprintDomains(domains)
+	if fp == api.fingerprint() {
+		logger.Debug("no changes to apply")
+		return false, nil
+	}
+
 	indexPage := generator.GenerateIndexPage(cfg.TLD, cfg.Standalone, gen.Containers())
 	if err := os.WriteFile(filepath.Join(indexDir, "index.html"), []byte(indexPage), 0600); err != nil {
-		return fmt.Errorf("writing index page: %w", err)
+		return false, fmt.Errorf("writing index page: %w", err)
 	}
 
-	devlocal, err := buildDevlocalConfig(cfg.TLD, indexDir, gen.DomainTargets())
+	devlocal, err := buildDevlocalConfig(cfg.TLD, indexDir, domains)
 	if err != nil {
-		return fmt.Errorf("building devlocal config: %w", err)
+		return false, fmt.Errorf("building devlocal config: %w", err)
 	}
 
-	return api.reconcileDevlocal(devlocal.routes, devlocal.policies)
+	if err := api.reconcileDevlocal(devlocal.routes, devlocal.policies); err != nil {
+		return false, err
+	}
+
+	api.setFingerprint(fp)
+	writeDevlocalAutosave(indexDir, devlocal)
+	return true, nil
+}
+
+func fingerprintDomains(targets map[string][]string) string {
+	domains := make([]string, 0, len(targets))
+	for d := range targets {
+		domains = append(domains, d)
+	}
+	slices.Sort(domains)
+
+	h := sha256.New()
+	for _, d := range domains {
+		io.WriteString(h, d) //nolint:errcheck // sha256 writer never errors
+		h.Write([]byte{0})
+		for _, t := range slices.Sorted(slices.Values(targets[d])) {
+			io.WriteString(h, t) //nolint:errcheck // sha256 writer never errors
+			h.Write([]byte{0})
+		}
+		h.Write([]byte("\n"))
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+func writeDevlocalAutosave(indexDir string, devlocal *devlocalConfig) {
+	logger := caddy.Log().Named(appName)
+	data, err := json.MarshalIndent(devlocalAutosave{
+		Routes:     devlocal.routes,
+		Policies:   devlocal.policies,
+		IndexRoute: devlocal.indexRoute,
+	}, "", "  ")
+	if err != nil {
+		logger.Warn("failed to marshal devlocal autosave", zap.Error(err))
+		return
+	}
+	if err := os.WriteFile(filepath.Join(indexDir, "devlocal.json"), data, 0600); err != nil {
+		logger.Warn("failed to write devlocal autosave", zap.Error(err))
+	}
 }
