@@ -398,15 +398,14 @@ func TestGeneratorCustomDomainsOverride(t *testing.T) {
 
 	gen.SelectPorts(ctx) //nolint:errcheck // test helper
 
-	caddyfile := gen.GenerateCaddyfile()
-	if len(caddyfile) == 0 {
-		t.Fatal("expected non-empty Caddyfile")
+	targets := gen.DomainTargets()
+	if len(targets) != 1 {
+		t.Fatalf("expected 1 domain, got %d: %v", len(targets), targets)
 	}
-
-	if !contains(caddyfile, "api.custom.local") {
-		t.Error("expected custom domain in Caddyfile")
+	if _, ok := targets["api.custom.local"]; !ok {
+		t.Error("expected custom domain in targets")
 	}
-	if contains(caddyfile, "myapp.web.dev.local") {
+	if _, ok := targets["myapp.web.dev.local"]; ok {
 		t.Error("auto-registered domain should not appear when custom domains are set")
 	}
 }
@@ -434,14 +433,11 @@ func TestGeneratorSinglePort(t *testing.T) {
 	gen.Refresh(ctx)     //nolint:errcheck // test helper
 	gen.SelectPorts(ctx) //nolint:errcheck // test helper
 
-	caddyfile := gen.GenerateCaddyfile()
-	if !contains(caddyfile, "nginx.dev.local") {
-		t.Error("expected nginx.dev.local in Caddyfile")
+	targets := gen.DomainTargets()
+	if !slices.Equal(targets["nginx.dev.local"], []string{"nginx:80"}) {
+		t.Errorf("expected reverse proxy target nginx:80, got %v", targets["nginx.dev.local"])
 	}
-	if !contains(caddyfile, "reverse_proxy nginx:80") {
-		t.Error("expected reverse_proxy nginx:80 in Caddyfile")
-	}
-	if contains(caddyfile, "nginx.localhost") {
+	if _, ok := targets["nginx.localhost"]; ok {
 		t.Error("localhost domain should not appear in non-standalone mode")
 	}
 }
@@ -642,18 +638,19 @@ func TestStandaloneCaddyfileGeneration(t *testing.T) {
 	gen.Refresh(ctx)     //nolint:errcheck // test helper
 	gen.SelectPorts(ctx) //nolint:errcheck // test helper
 
-	caddyfile := gen.GenerateCaddyfile()
-	if !contains(caddyfile, "nginx.dev.local") {
-		t.Error("expected nginx.dev.local in Caddyfile")
+	targets := gen.DomainTargets()
+	if !slices.Equal(targets["nginx.dev.local"], []string{"localhost:8080"}) {
+		t.Errorf("expected reverse_proxy localhost:8080 in standalone mode, got %v", targets["nginx.dev.local"])
 	}
-	if !contains(caddyfile, "nginx.localhost") {
-		t.Error("expected nginx.localhost in Caddyfile")
+	if !slices.Equal(targets["nginx.localhost"], []string{"localhost:8080"}) {
+		t.Errorf("expected nginx.localhost target, got %v", targets["nginx.localhost"])
 	}
-	if !contains(caddyfile, "reverse_proxy localhost:8080") {
-		t.Errorf("expected reverse_proxy localhost:8080 in Caddyfile, got: %s", caddyfile)
-	}
-	if contains(caddyfile, "reverse_proxy nginx:") {
-		t.Error("should not use container name in standalone mode")
+	for _, upstreams := range targets {
+		for _, u := range upstreams {
+			if strings.HasPrefix(u, "nginx:") {
+				t.Error("should not use container name in standalone mode")
+			}
+		}
 	}
 }
 
@@ -678,9 +675,8 @@ func TestStandaloneSkipsUnpublishedContainers(t *testing.T) {
 	gen.Refresh(ctx)     //nolint:errcheck // test helper
 	gen.SelectPorts(ctx) //nolint:errcheck // test helper
 
-	caddyfile := gen.GenerateCaddyfile()
-	if len(caddyfile) > 0 {
-		t.Errorf("expected empty Caddyfile for unpublished container in standalone mode, got: %s", caddyfile)
+	if targets := gen.DomainTargets(); len(targets) > 0 {
+		t.Errorf("expected no targets for unpublished container in standalone mode, got %v", targets)
 	}
 }
 
@@ -706,17 +702,18 @@ func TestStandaloneCustomDomains(t *testing.T) {
 	gen.Refresh(ctx)     //nolint:errcheck // test helper
 	gen.SelectPorts(ctx) //nolint:errcheck // test helper
 
-	caddyfile := gen.GenerateCaddyfile()
-	if !contains(caddyfile, "api.custom.local") {
-		t.Error("expected custom domain in Caddyfile")
+	targets := gen.DomainTargets()
+	if !slices.Equal(targets["api.custom.local"], []string{"localhost:9090"}) {
+		t.Errorf("expected custom domain target localhost:9090 (published port), got %v", targets["api.custom.local"])
 	}
-	if !contains(caddyfile, "reverse_proxy localhost:9090") {
-		t.Errorf("expected reverse_proxy localhost:9090 (published port) in Caddyfile, got: %s", caddyfile)
+	for _, upstreams := range targets {
+		for _, u := range upstreams {
+			if u == "localhost:3000" {
+				t.Error("should use published port, not private port in standalone mode")
+			}
+		}
 	}
-	if contains(caddyfile, "reverse_proxy localhost:3000") {
-		t.Error("should use published port, not private port in standalone mode")
-	}
-	if contains(caddyfile, "myapp.web.localhost") {
+	if _, ok := targets["myapp.web.localhost"]; ok {
 		t.Error("localhost domain should not appear when custom domains are set")
 	}
 }
@@ -1296,52 +1293,6 @@ func TestDomainsExcludesPortless(t *testing.T) {
 	domains := gen.Domains()
 	if len(domains) != 0 {
 		t.Errorf("expected 0 domains for portless container in Docker mode, got %d: %v", len(domains), domains)
-	}
-}
-
-func TestGenerateCaddyfileMergesDuplicateDomains(t *testing.T) {
-	containers := []container.Summary{
-		makeContainer("c1", "web", "myapp", "web",
-			[]container.PortSummary{{PrivatePort: 3000, PublicPort: 0}},
-			nil, "running"),
-		makeContainer("c2", "web", "myapp", "web",
-			[]container.PortSummary{{PrivatePort: 3001, PublicPort: 0}},
-			nil, "running"),
-	}
-
-	mock := &mockDocker{containers: containers}
-	cfg := &config.Config{
-		IngressNetwork: "devlocal",
-		TLD:            "dev.local",
-		StaleTTL:       time.Hour,
-	}
-
-	gen := NewGenerator(cfg, mock)
-	gen.probeFn = func(host string, ports []uint16, timeout time.Duration) (uint16, error) {
-		return ports[0], nil
-	}
-
-	ctx := context.Background()
-
-	gen.Refresh(ctx)     //nolint:errcheck // test helper
-	gen.SelectPorts(ctx) //nolint:errcheck // test helper
-
-	caddyfile := gen.GenerateCaddyfile()
-
-	if !contains(caddyfile, "myapp.web.dev.local") {
-		t.Error("expected domain in Caddyfile")
-	}
-
-	if !contains(caddyfile, "reverse_proxy") {
-		t.Error("expected reverse_proxy directive in Caddyfile")
-	}
-
-	if !contains(caddyfile, "web:3000") || !contains(caddyfile, "web:3001") {
-		t.Error("expected both upstream targets in Caddyfile")
-	}
-
-	if strings.Count(caddyfile, "myapp.web.dev.local") != 1 {
-		t.Errorf("expected domain to appear exactly once (deduped), got multiple occurrences")
 	}
 }
 

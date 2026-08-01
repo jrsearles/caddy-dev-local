@@ -2,13 +2,11 @@ package generator
 
 import (
 	"context"
-	_ "embed"
 	"fmt"
 	"slices"
 	"sort"
 	"strings"
 	"sync"
-	"text/template"
 	"time"
 
 	"github.com/jsearles/caddy-dev-local/config"
@@ -17,21 +15,6 @@ import (
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 )
-
-//go:embed caddyfile.tmpl
-var caddyfileTemplate string
-var caddyfileTemplateObj = template.Must(template.New("caddyfile").Funcs(template.FuncMap{
-	"join": strings.Join,
-}).Parse(caddyfileTemplate))
-
-type caddyfileEntry struct {
-	Domain       string
-	ProxyTargets []string
-}
-
-type caddyfileData struct {
-	Entries []caddyfileEntry
-}
 
 type ContainerInfo struct {
 	ContainerID    string
@@ -296,32 +279,6 @@ func (g *Generator) DomainTargets() map[string][]string {
 	}
 
 	return merged
-}
-
-func (g *Generator) GenerateCaddyfile() string {
-	targets := g.DomainTargets()
-
-	domains := make([]string, 0, len(targets))
-	for d := range targets {
-		domains = append(domains, d)
-	}
-	sort.Strings(domains)
-
-	data := caddyfileData{
-		Entries: make([]caddyfileEntry, 0, len(domains)),
-	}
-	for _, d := range domains {
-		data.Entries = append(data.Entries, caddyfileEntry{
-			Domain:       d,
-			ProxyTargets: targets[d],
-		})
-	}
-
-	var sb strings.Builder
-	if err := caddyfileTemplateObj.Execute(&sb, data); err != nil {
-		return fmt.Sprintf("template error: %s", err)
-	}
-	return sb.String()
 }
 
 func (g *Generator) domainForContainer(info *ContainerInfo) string {

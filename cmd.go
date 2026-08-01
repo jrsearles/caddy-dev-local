@@ -25,12 +25,12 @@ import (
 
 func init() {
 	caddycmd.RegisterCommand(caddycmd.Command{
-		Name:  "devlocal",
+		Name:  appName,
 		Func:  cmdFunc,
 		Usage: "[flags]",
 		Short: "Run caddy as a devlocal docker proxy",
 		Flags: func() *flag.FlagSet {
-			fs := flag.NewFlagSet("devlocal", flag.ExitOnError)
+			fs := flag.NewFlagSet(appName, flag.ExitOnError)
 
 			fs.String("ingress-network", "",
 				"Docker network name (env: DEVLOCAL_INGRESS_NETWORK)")
@@ -64,28 +64,7 @@ func init() {
 
 func cmdFunc(fs caddycmd.Flags) (int, error) {
 	cfg := config.DefaultConfig()
-
-	if v := fs.String("ingress-network"); v != "" {
-		cfg.IngressNetwork = v
-	}
-	if v := fs.String("tld"); v != "" {
-		cfg.TLD = v
-	}
-	if v := fs.Duration("stale-ttl"); v > 0 {
-		cfg.StaleTTL = v
-	}
-	if v := fs.Duration("probe-timeout"); v > 0 {
-		cfg.ProbeTimeout = v
-	}
-
-	hostsFile := fs.Bool("hosts-file")
-	cfg.ApplyFlags(
-		fs.String("ingress-network"),
-		fs.String("tld"),
-		fs.Duration("stale-ttl"),
-		fs.Duration("probe-timeout"),
-		&hostsFile,
-	)
+	applyCommandFlags(cfg, fs)
 
 	configPath := fs.String("config")
 	if configPath == "" {
@@ -100,7 +79,7 @@ func cmdFunc(fs caddycmd.Flags) (int, error) {
 		cfg.Standalone = config.DetectStandalone()
 	}
 
-	logger := caddy.Log().Named("devlocal")
+	logger := caddy.Log().Named(appName)
 
 	mode := "docker"
 	if cfg.Standalone {
@@ -166,8 +145,23 @@ func cmdFunc(fs caddycmd.Flags) (int, error) {
 	return 0, nil
 }
 
+func applyCommandFlags(cfg *config.Config, fs caddycmd.Flags) {
+	var hostsFile *bool
+	if fs.Changed("hosts-file") {
+		v := fs.Bool("hosts-file")
+		hostsFile = &v
+	}
+	cfg.ApplyFlags(
+		fs.String("ingress-network"),
+		fs.String("tld"),
+		fs.Duration("stale-ttl"),
+		fs.Duration("probe-timeout"),
+		hostsFile,
+	)
+}
+
 func watchEvents(ctx context.Context, dockerClient docker.Client, gen *generator.Generator, cfg *config.Config, hostsOK bool, indexDir string, api *adminAPI) {
-	logger := caddy.Log().Named("devlocal")
+	logger := caddy.Log().Named(appName)
 	logger.Info("watching docker events")
 	for {
 		select {
@@ -217,17 +211,7 @@ func watchEvents(ctx context.Context, dockerClient docker.Client, gen *generator
 				if pending {
 					pending = false
 					gen.RefreshAndSelect(ctx) //nolint:errcheck // non-critical, logged via logger
-					if err := reloadCaddyConfig(gen, cfg, indexDir, api); err != nil {
-						logger.Error("failed to reload caddy config", zap.Error(err))
-					} else {
-						logger.Info("reloaded config",
-							zap.Int("containers", len(gen.Containers())),
-							zap.Int("domains", len(gen.Domains())),
-						)
-					}
-					if err := syncHosts(gen, cfg, hostsOK); err != nil {
-						logger.Error("failed to update hosts file", zap.Error(err))
-					}
+					applyDevlocal(gen, cfg, indexDir, api, hostsOK)
 				}
 			}
 		}
@@ -263,7 +247,7 @@ func shouldRefresh(event *events.Message, cfg *config.Config) bool {
 }
 
 func staleCleanup(ctx context.Context, cfg *config.Config, gen *generator.Generator, hostsOK bool, indexDir string, api *adminAPI) {
-	logger := caddy.Log().Named("devlocal")
+	logger := caddy.Log().Named(appName)
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 
@@ -274,13 +258,23 @@ func staleCleanup(ctx context.Context, cfg *config.Config, gen *generator.Genera
 		case <-ticker.C:
 			gen.StaleCleanup()
 			logger.Debug("stale cleanup completed")
-			if err := reloadCaddyConfig(gen, cfg, indexDir, api); err != nil {
-				logger.Error("failed to reload caddy config", zap.Error(err))
-			}
-			if err := syncHosts(gen, cfg, hostsOK); err != nil {
-				caddy.Log().Named("devlocal").Error("failed to update hosts file", zap.Error(err))
-			}
+			applyDevlocal(gen, cfg, indexDir, api, hostsOK)
 		}
+	}
+}
+
+func applyDevlocal(gen *generator.Generator, cfg *config.Config, indexDir string, api *adminAPI, hostsOK bool) {
+	logger := caddy.Log().Named(appName)
+	if err := reloadCaddyConfig(gen, cfg, indexDir, api); err != nil {
+		logger.Error("failed to reload caddy config", zap.Error(err))
+	} else {
+		logger.Info("reloaded config",
+			zap.Int("containers", len(gen.Containers())),
+			zap.Int("domains", len(gen.Domains())),
+		)
+	}
+	if err := syncHosts(gen, cfg, hostsOK); err != nil {
+		logger.Error("failed to update hosts file", zap.Error(err))
 	}
 }
 
@@ -292,7 +286,7 @@ func syncHosts(gen *generator.Generator, cfg *config.Config, hostsOK bool) error
 }
 
 func cleanFunc(fs caddycmd.Flags) (int, error) {
-	logger := caddy.Log().Named("devlocal")
+	logger := caddy.Log().Named(appName)
 	if err := hosts.Remove(); err != nil {
 		return 1, err
 	}
@@ -313,6 +307,7 @@ func detectUserConfig() string {
 const (
 	adapterJSON      = "json"
 	adapterCaddyfile = "caddyfile"
+	appName          = "devlocal"
 )
 
 func adapterFor(configPath string) string {

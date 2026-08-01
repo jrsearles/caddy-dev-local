@@ -2,6 +2,7 @@ package caddydevlocal
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,6 +13,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/cenkalti/backoff/v5"
 )
 
 type adminAPI struct {
@@ -33,43 +36,48 @@ func newAdminAPI() *adminAPI {
 }
 
 func (a *adminAPI) request(method, path, contentType string, body []byte) (int, error) {
-	var (
-		status int
-		err    error
-	)
-	for attempt := 0; attempt < 3; attempt++ {
-		status, _, err = a.rawRequest(method, path, contentType, body)
-		if err == nil {
-			return status, nil
-		}
-		if method != http.MethodGet && method != http.MethodPut && method != http.MethodPatch && method != http.MethodDelete {
-			return status, err
-		}
-		if !isTransientNetError(err) {
-			return status, err
-		}
-		time.Sleep(time.Duration(attempt+1) * 200 * time.Millisecond)
-	}
+	status, _, err := a.doRequest(method, path, contentType, body)
 	return status, err
 }
 
 func (a *adminAPI) getConfig(path string) (int, []byte, error) {
+	return a.doRequest(http.MethodGet, path, "", nil)
+}
+
+func (a *adminAPI) doRequest(method, path, contentType string, body []byte) (int, []byte, error) {
 	var (
 		status int
-		body   []byte
-		err    error
+		resp   []byte
 	)
-	for attempt := 0; attempt < 3; attempt++ {
-		status, body, err = a.rawRequest(http.MethodGet, path, "", nil)
+
+	operation := func() (struct{}, error) {
+		s, b, err := a.rawRequest(method, path, contentType, body)
+		status, resp = s, b
 		if err == nil {
-			return status, body, nil
+			return struct{}{}, nil
 		}
-		if !isTransientNetError(err) {
-			return status, nil, err
+		// Only idempotent methods are safe to retry; non-transient errors are permanent.
+		if method == http.MethodPost || !isTransientNetError(err) {
+			return struct{}{}, backoff.Permanent(err)
 		}
-		time.Sleep(time.Duration(attempt+1) * 200 * time.Millisecond)
+		return struct{}{}, err
 	}
-	return status, body, err
+
+	if _, err := backoff.Retry(context.Background(), operation,
+		backoff.WithMaxTries(3),
+		backoff.WithBackOff(exponentialBackOff()),
+	); err != nil {
+		return status, resp, err
+	}
+	return status, resp, nil
+}
+
+func exponentialBackOff() backoff.BackOff {
+	b := backoff.NewExponentialBackOff()
+	b.InitialInterval = 200 * time.Millisecond
+	b.Multiplier = 2
+	b.RandomizationFactor = 0
+	return b
 }
 
 func (a *adminAPI) rawRequest(method, path, contentType string, body []byte) (int, []byte, error) {
@@ -177,58 +185,51 @@ func (a *adminAPI) effectivePorts() (httpPort, httpsPort int, err error) {
 }
 
 func (a *adminAPI) ensureServer() error {
-	status, err := a.getStatus("/config/apps/http/servers/" + devlocalServerName)
-	if err != nil {
-		return err
-	}
-	if status != http.StatusOK {
-		httpPort, httpsPort, pErr := a.effectivePorts()
-		if pErr != nil {
-			return pErr
+	serverPath := "/config/apps/http/servers/" + devlocalServerName
+	if err := a.ensureResource(serverPath, func() ([]byte, error) {
+		httpPort, httpsPort, err := a.effectivePorts()
+		if err != nil {
+			return nil, err
 		}
 		listenAny := []any{
 			net.JoinHostPort("", strconv.Itoa(httpsPort)),
 			net.JoinHostPort("", strconv.Itoa(httpPort)),
 		}
-		serverBody, mErr := json.Marshal(map[string]any{"listen": listenAny, "routes": []any{}})
-		if mErr != nil {
-			return mErr
-		}
-		status, err = a.doPut("/config/apps/http/servers/"+devlocalServerName, serverBody)
-		if err != nil {
-			return err
-		}
-		if status != http.StatusConflict && (status < 200 || status > 299) {
-			return fmt.Errorf("ensuring server: status %d", status)
-		}
+		return json.Marshal(map[string]any{"listen": listenAny, "routes": []any{}})
+	}, "server"); err != nil {
+		return err
 	}
 
-	status, err = a.getStatus("/config/apps/http/servers/" + devlocalServerName + "/routes")
+	if err := a.ensureResource(serverPath+"/routes", func() ([]byte, error) {
+		return []byte(`[]`), nil
+	}, "routes"); err != nil {
+		return err
+	}
+
+	return a.ensureResource("/config/apps/tls/automation/policies", func() ([]byte, error) {
+		return []byte(`[]`), nil
+	}, "TLS policies")
+}
+
+func (a *adminAPI) ensureResource(path string, makeBody func() ([]byte, error), what string) error {
+	status, err := a.getStatus(path)
 	if err != nil {
 		return err
 	}
-	if status != http.StatusOK {
-		status, err = a.doPut("/config/apps/http/servers/"+devlocalServerName+"/routes", []byte(`[]`))
-		if err != nil {
-			return err
-		}
-		if status != http.StatusConflict && (status < 200 || status > 299) {
-			return fmt.Errorf("ensuring routes: status %d", status)
-		}
+	if status == http.StatusOK {
+		return nil
 	}
 
-	status, err = a.getStatus("/config/apps/tls/automation/policies")
+	body, err := makeBody()
 	if err != nil {
 		return err
 	}
-	if status != http.StatusOK {
-		status, err = a.doPut("/config/apps/tls/automation/policies", []byte(`[]`))
-		if err != nil {
-			return err
-		}
-		if status != http.StatusConflict && (status < 200 || status > 299) {
-			return fmt.Errorf("ensuring TLS policies: status %d", status)
-		}
+	status, err = a.doPut(path, body)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusConflict && (status < 200 || status > 299) {
+		return fmt.Errorf("ensuring %s: status %d", what, status)
 	}
 	return nil
 }
