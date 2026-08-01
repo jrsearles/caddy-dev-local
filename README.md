@@ -14,6 +14,7 @@ A Caddy plugin that automatically registers `{project}.{service}.dev.local` doma
 - **Hosts file integration** — Automatically adds entries to `/etc/hosts` for local DNS resolution
 - **Index page** — Visit `dev.local` to see all registered containers
 - **Stale cleanup** — Stopped containers stay listed on the index page (marked stopped) until the stale TTL expires, then their config is removed
+- **Standalone hosts binary** — `devlocal-hosts` watches Docker and maintains hosts entries without running a proxy
 
 ## Quick Start
 
@@ -124,6 +125,7 @@ Requires [just](https://github.com/casey/just) and [golangci-lint](https://golan
 just install-lint           # Install golangci-lint (one-time)
 just build-linux-amd64      # Build for linux-amd64
 just build-all              # Build for all platforms
+just build-hosts            # Build the standalone devlocal-hosts binaries
 just lint                   # Run linter
 just check                  # Run linter + tests
 ```
@@ -242,11 +244,49 @@ Remove all devlocal entries from the hosts file:
 
 ```bash
 caddy devlocal-clean
+# or
+devlocal-hosts clean
 ```
 
 ### Permissions
 
 On Linux, writing to `/etc/hosts` requires root. If the process doesn't have write permission, caddy-dev-local logs a warning and skips hosts file updates (Caddy still works normally).
+
+## Standalone Hosts Binary
+
+`devlocal-hosts` is a standalone executable that watches Docker and maintains hosts file entries **without running Caddy or any proxy**. It shares the exact same discovery logic, labels, and domain conventions as the Caddy plugin, so the hostnames it registers always match what the proxy would serve. It's useful when you only want DNS resolution for your containers and don't need a reverse proxy.
+
+### Build
+
+```bash
+just build-hosts
+./artifacts/binaries/linux-amd64/devlocal-hosts
+```
+
+### Usage
+
+```bash
+devlocal-hosts            # Run in the foreground, watching Docker events
+devlocal-hosts clean      # Remove all devlocal entries from the hosts file
+devlocal-hosts --help
+```
+
+Flags mirror the Caddy plugin's shared options (same env vars, defaults, and precedence):
+
+| Flag | Env Var | Default | Description |
+|---|---|---|---|
+| `--ingress-network` | `DEVLOCAL_INGRESS_NETWORK` | `devlocal` | Docker network name |
+| `--tld` | `DEVLOCAL_TLD` | `dev.local` | Top-level domain |
+| `--stale-ttl` | `DEVLOCAL_STALE_TTL` | `1h` | Keep entries for stopped containers |
+| `--poll-interval` | `DEVLOCAL_POLL_INTERVAL` | `30s` | Periodic full refresh as a safety net for missed events; `0` disables |
+| `--probe-timeout` | `DEVLOCAL_PROBE_TIMEOUT` | `2s` | Accepted for flag parity; probing is skipped (see below) |
+
+Notes:
+
+- **No port probing** — the domain set is identical to the proxy's, but no HTTP requests are made; port probing only exists to pick a proxy target port.
+- **Standalone detection** — auto-detected exactly like the plugin (no `/.dockerenv` and no explicit ingress network → standalone mode, which also registers `.localhost` variants).
+- **Permissions** — requires root to write `/etc/hosts`; exits with an error if the hosts file isn't writable (unlike the plugin, which warns and continues).
+- **Index page** — not generated; this binary only maintains the hosts file.
 
 ## Acknowledgements
 

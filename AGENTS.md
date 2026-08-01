@@ -7,11 +7,15 @@ caddy-dev-local is a Caddy plugin that auto-registers `.dev.local` domains for D
 ## Architecture
 
 ```
-cmd.go              Caddy subcommand "devlocal", event loop, hosts management
+cmd.go              Caddy subcommand "devlocal", hosts management wiring, caddy reload driver
+cmd/devlocal-hosts/ Standalone hosts-only binary (no Caddy): watches Docker, writes hosts file
 caddy.go            Caddy config loading, user config adapt/load, devlocal apply, reload logic
 admin.go            Admin API client: diff-based reconcile of routes/policies, server ensure
 builder.go          Direct JSON config construction (routes, merged TLS policy, index route)
 config/config.go    Config struct, defaults, env vars, standalone detection
+config/flags.go     Shared flag registration/application and config resolution for both entry points
+discovery/
+  discovery.go      Caddy-free controller: event watch + poll + stale cleanup driving refresh/apply callbacks
 docker/client.go    Docker client wrapper, label extraction helpers
 generator/
   generator.go      Core logic: refresh, port selection, domain->target computation
@@ -32,6 +36,7 @@ generator/
   - Standalone container: `{container-name}.{tld}` (e.g., `my-nginx.dev.local`)
   - Standalone also registers `.localhost` variants (e.g., `myapp.web.localhost`, `my-nginx.localhost`)
 - **Custom domains**: Containers can override auto-registration via `dev.local.domains` label (format: `port:domain;port:domain`). When set, auto-generated domain is skipped.
+- **Two entry points share one discovery driver**: `cmd.go` (Caddy plugin, refresh = `gen.RefreshAndSelect`, apply = caddy reload + hosts sync) and `cmd/devlocal-hosts` (standalone hosts-only binary, refresh = `gen.Refresh` with no port probing, apply = hosts sync) both drive `discovery.Controller`; the driver is Caddy-free so the standalone binary has zero caddy dependencies
 
 ## Development Commands
 
@@ -39,6 +44,7 @@ generator/
 just lint                  # Run vet + tests with race detector
 just build-linux-amd64     # Build for linux-amd64
 just build-all             # Build for all platforms (linux-amd64, linux-arm64, windows-amd64)
+just build-hosts           # Build the standalone devlocal-hosts binaries for all platforms
 just --list                # List all recipes
 ```
 
