@@ -119,16 +119,26 @@ func (g *Generator) refreshLocked(containers []container.Summary) {
 
 		seen[info.ContainerID] = true
 
+		prev, existed := g.containers[info.ContainerID]
+
 		if containers[i].State == "running" {
 			info.IsRunning = true
 			info.LastStopped = time.Time{}
 		} else {
-			if info.IsRunning {
-				info.LastStopped = now
-			} else if _, existed := g.containers[info.ContainerID]; !existed {
+			info.IsRunning = false
+			if existed {
+				info.Ports = prev.Ports
+				info.PublishedPorts = prev.PublishedPorts
+				info.SelectedPort = prev.SelectedPort
+				info.IPAddress = prev.IPAddress
+				if prev.IsRunning {
+					info.LastStopped = now
+				} else {
+					info.LastStopped = prev.LastStopped
+				}
+			} else {
 				info.LastStopped = now
 			}
-			info.IsRunning = false
 		}
 
 		g.containers[info.ContainerID] = info
@@ -231,7 +241,7 @@ func (g *Generator) selectPortsLocked() {
 	}
 }
 
-func (g *Generator) GenerateCaddyfile() string {
+func (g *Generator) DomainTargets() map[string][]string {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 
@@ -281,8 +291,18 @@ func (g *Generator) GenerateCaddyfile() string {
 		}
 	}
 
-	domains := make([]string, 0, len(merged))
 	for d := range merged {
+		slices.Sort(merged[d])
+	}
+
+	return merged
+}
+
+func (g *Generator) GenerateCaddyfile() string {
+	targets := g.DomainTargets()
+
+	domains := make([]string, 0, len(targets))
+	for d := range targets {
 		domains = append(domains, d)
 	}
 	sort.Strings(domains)
@@ -291,11 +311,9 @@ func (g *Generator) GenerateCaddyfile() string {
 		Entries: make([]caddyfileEntry, 0, len(domains)),
 	}
 	for _, d := range domains {
-		targets := merged[d]
-		slices.Sort(targets)
 		data.Entries = append(data.Entries, caddyfileEntry{
 			Domain:       d,
-			ProxyTargets: targets,
+			ProxyTargets: targets[d],
 		})
 	}
 

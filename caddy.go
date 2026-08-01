@@ -1,14 +1,16 @@
 package caddydevlocal
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
+	"strconv"
 
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig"
+	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"go.uber.org/zap"
 
 	"github.com/jsearles/caddy-dev-local/config"
@@ -22,176 +24,154 @@ func initCaddyConfig(gen *generator.Generator, cfg *config.Config, indexDir stri
 		return fmt.Errorf("writing index page: %w", err)
 	}
 
-	indexBlock := fmt.Sprintf("%s {\n    root * %s\n    file_server\n}\n",
-		cfg.TLD, indexDir)
+	httpPort, httpsPort := 80, 443
 
-	devlocalCaddyfile := gen.GenerateCaddyfile()
-
+	userJSON := []byte("{}")
 	if userConfigPath != "" {
 		adapterName := adapterFor(userConfigPath)
-		if adapterName == "caddyfile" {
-			userText, err := os.ReadFile(userConfigPath) //nolint:gosec
-			if err != nil {
-				return fmt.Errorf("reading user config: %w", err)
-			}
-			warn, err := loadUserGlobalOptions(userText)
-			if err != nil {
-				return fmt.Errorf("loading user global options: %w", err)
-			}
-			if warn != "" {
-				logger.Warn(warn)
-			}
-			devlocalText := indexBlock + "\n" + devlocalCaddyfile
-			return loadDevlocalViaAPI([]byte(devlocalText), cfg.TLD, api)
+		userText, err := os.ReadFile(userConfigPath) //nolint:gosec
+		if err != nil {
+			return fmt.Errorf("reading user config: %w", err)
 		}
-		return loadStructuredConfig(api, userConfigPath, adapterName, gen, cfg, indexBlock)
+		if adapterName == adapterCaddyfile {
+			parsedHTTP, parsedHTTPS, _, pErr := parseCaddyfileListenPorts(userText)
+			if pErr != nil {
+				return fmt.Errorf("parsing caddyfile: %w", pErr)
+			}
+			if parsedHTTP > 0 {
+				httpPort = parsedHTTP
+			}
+			if parsedHTTPS > 0 {
+				httpsPort = parsedHTTPS
+			}
+		}
+		userJSON, err = adaptUserConfig(userText, adapterName)
+		if err != nil {
+			return fmt.Errorf("adapting user config: %w", err)
+		}
 	}
 
-	fullText := indexBlock + "\n" + devlocalCaddyfile
-	if err := loadCaddyfileConfig([]byte(fullText), cfg.TLD, api); err != nil {
-		return err
+	userJSON, err := injectListenPorts(userJSON, httpPort, httpsPort)
+	if err != nil {
+		return fmt.Errorf("injecting listen ports: %w", err)
 	}
+
+	devlocal, err := buildDevlocalConfig(cfg.TLD, indexDir, gen.DomainTargets())
+	if err != nil {
+		return fmt.Errorf("building devlocal config: %w", err)
+	}
+
+	if err := caddy.Load(userJSON, false); err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
+
+	if err := postDevlocalViaAPI(api, devlocal); err != nil {
+		return fmt.Errorf("applying devlocal config: %w", err)
+	}
+
 	logger.Info("loaded initial config", zap.Int("domains", len(gen.Domains())))
 	return nil
 }
 
-func loadCaddyfileConfig(source []byte, tld string, api *adminAPI) error {
-	adapter := caddyconfig.GetAdapter("caddyfile")
-	if adapter == nil {
-		return fmt.Errorf("caddyfile adapter not found")
+func parseCaddyfileListenPorts(source []byte) (httpPort, httpsPort int, ok bool, err error) {
+	if len(bytes.TrimSpace(source)) == 0 {
+		return 0, 0, false, nil
 	}
-	configJSON, _, err := adapter.Adapt(source, nil)
+	blocks, err := caddyfile.Parse("Caddyfile", source)
 	if err != nil {
-		return fmt.Errorf("adapting caddyfile: %w", err)
+		return 0, 0, false, err
 	}
-
-	modifiedJSON, routeIDs, policyIDs, err := injectDevlocalIDs(configJSON, tld)
-	if err != nil {
-		return fmt.Errorf("injecting devlocal IDs: %w", err)
+	if len(blocks) == 0 || len(blocks[0].Keys) > 0 {
+		return 0, 0, false, nil
 	}
-
-	if err := caddy.Load(modifiedJSON, false); err != nil {
-		return fmt.Errorf("loading config: %w", err)
-	}
-
-	api.prevRouteIDs = routeIDs
-	api.prevPolicyIDs = policyIDs
-	return nil
-}
-
-func loadUserGlobalOptions(source []byte) (string, error) {
-	adapter := caddyconfig.GetAdapter("caddyfile")
-	if adapter == nil {
-		return "", fmt.Errorf("caddyfile adapter not found")
-	}
-	configJSON, _, err := adapter.Adapt(source, nil)
-	if err != nil {
-		return "", fmt.Errorf("adapting caddyfile: %w", err)
-	}
-
-	var config map[string]any
-	if uErr := json.Unmarshal(configJSON, &config); uErr != nil {
-		return "", uErr
-	}
-
-	var warn string
-	if apps, ok := config["apps"].(map[string]any); ok {
-		if http, ok := apps["http"].(map[string]any); ok {
-			if servers, ok := http["servers"].(map[string]any); ok {
-				for name := range servers {
-					warn = fmt.Sprintf("static Caddyfile contains site block for server %q; site blocks are ignored. Use the admin API for site configuration.", name)
-					break
-				}
+	for _, segment := range blocks[0].Segments {
+		disp := caddyfile.NewDispenser(segment)
+		if !disp.Next() {
+			continue
+		}
+		switch disp.Val() {
+		case "http_port":
+			port, pErr := parsePortOption(disp, "http_port")
+			if pErr != nil {
+				return 0, 0, false, pErr
 			}
+			httpPort = port
+		case "https_port":
+			port, pErr := parsePortOption(disp, "https_port")
+			if pErr != nil {
+				return 0, 0, false, pErr
+			}
+			httpsPort = port
 		}
 	}
-
-	delete(config, "apps")
-
-	if len(config) > 0 {
-		result, err := json.Marshal(config)
-		if err != nil {
-			return "", err
-		}
-		if err := caddy.Load(result, false); err != nil {
-			return "", fmt.Errorf("loading global options: %w", err)
-		}
-	}
-
-	return warn, nil
+	return httpPort, httpsPort, httpPort > 0 || httpsPort > 0, nil
 }
 
-func loadDevlocalViaAPI(source []byte, tld string, api *adminAPI) error {
-	if len(source) == 0 {
-		return nil
+func parsePortOption(disp *caddyfile.Dispenser, name string) (int, error) {
+	var str string
+	if !disp.AllArgs(&str) {
+		return 0, fmt.Errorf("%s requires a single argument at line %d", name, disp.Line())
 	}
-	adapter := caddyconfig.GetAdapter("caddyfile")
-	if adapter == nil {
-		return fmt.Errorf("caddyfile adapter not found")
-	}
-	configJSON, _, err := adapter.Adapt(source, nil)
+	port, err := strconv.Atoi(str)
 	if err != nil {
-		return fmt.Errorf("adapting devlocal config: %w", err)
+		return 0, fmt.Errorf("invalid %s %q: %w", name, str, err)
 	}
+	return port, nil
+}
 
-	modifiedJSON, _, _, err := injectDevlocalIDs(configJSON, tld)
+func adaptUserConfig(source []byte, adapterName string) ([]byte, error) {
+	if adapterName == adapterJSON {
+		return source, nil
+	}
+	if adapterName == adapterCaddyfile && len(bytes.TrimSpace(source)) == 0 {
+		return []byte("{}"), nil
+	}
+	jsonAdapter := caddyconfig.GetAdapter(adapterName)
+	if jsonAdapter == nil {
+		return nil, fmt.Errorf("%s adapter not found", adapterName)
+	}
+	adapted, _, err := jsonAdapter.Adapt(source, nil)
 	if err != nil {
-		return fmt.Errorf("injecting devlocal IDs: %w", err)
+		return nil, fmt.Errorf("adapting %s config: %w", adapterName, err)
 	}
+	return adapted, nil
+}
 
+func injectListenPorts(userJSON []byte, httpPort, httpsPort int) ([]byte, error) {
+	var cfg map[string]any
+	if err := json.Unmarshal(userJSON, &cfg); err != nil {
+		return nil, fmt.Errorf("unmarshaling user config: %w", err)
+	}
+	apps, _ := cfg["apps"].(map[string]any)
+	httpApp, _ := apps["http"].(map[string]any)
+	if servers, _ := httpApp["servers"].(map[string]any); len(servers) > 0 {
+		return userJSON, nil
+	}
+	if httpApp == nil {
+		httpApp = map[string]any{}
+		if apps == nil {
+			apps = map[string]any{}
+			cfg["apps"] = apps
+		}
+		apps["http"] = httpApp
+	}
+	if _, ok := httpApp["http_port"]; !ok {
+		httpApp["http_port"] = httpPort
+	}
+	if _, ok := httpApp["https_port"]; !ok {
+		httpApp["https_port"] = httpsPort
+	}
+	return json.Marshal(cfg)
+}
+
+func postDevlocalViaAPI(api *adminAPI, devlocal *devlocalConfig) error {
 	if err := api.ensureServer(); err != nil {
 		return fmt.Errorf("ensuring server: %w", err)
 	}
-
-	return api.syncDevlocal(modifiedJSON)
-}
-
-func loadStructuredConfig(api *adminAPI, configPath, adapterName string, gen *generator.Generator, cfg *config.Config, indexBlock string) error {
-	userRaw, err := os.ReadFile(configPath) //nolint:gosec
-	if err != nil {
-		return fmt.Errorf("reading user config: %w", err)
+	if err := api.postRoute(devlocal.indexRoute); err != nil {
+		return fmt.Errorf("posting index route: %w", err)
 	}
-
-	var userConfig []byte
-	if adapterName == "json" {
-		userConfig = userRaw
-	} else {
-		jsonAdapter := caddyconfig.GetAdapter(adapterName)
-		if jsonAdapter == nil {
-			return fmt.Errorf("%s adapter not found", adapterName)
-		}
-		adapted, _, aErr := jsonAdapter.Adapt(userRaw, nil)
-		if aErr != nil {
-			return fmt.Errorf("adapting user config: %w", aErr)
-		}
-		userConfig = adapted
-	}
-
-	if err = api.loadConfig(userConfig, "application/json"); err != nil {
-		return fmt.Errorf("loading user config via admin API: %w", err)
-	}
-
-	if err = api.ensureServer(); err != nil {
-		return fmt.Errorf("ensuring server: %w", err)
-	}
-
-	devlocalCaddyfile := indexBlock + "\n" + gen.GenerateCaddyfile()
-
-	adapter := caddyconfig.GetAdapter("caddyfile")
-	if adapter == nil {
-		return fmt.Errorf("caddyfile adapter not found")
-	}
-	configJSON, _, err := adapter.Adapt([]byte(devlocalCaddyfile), nil)
-	if err != nil {
-		return fmt.Errorf("adapting devlocal config: %w", err)
-	}
-
-	modifiedJSON, _, _, err := injectDevlocalIDs(configJSON, cfg.TLD)
-	if err != nil {
-		return fmt.Errorf("injecting devlocal IDs: %w", err)
-	}
-
-	return api.syncDevlocal(modifiedJSON)
+	return api.reconcileDevlocal(devlocal.routes, devlocal.policies)
 }
 
 func reloadCaddyConfig(gen *generator.Generator, cfg *config.Config, indexDir string, api *adminAPI) error {
@@ -200,129 +180,10 @@ func reloadCaddyConfig(gen *generator.Generator, cfg *config.Config, indexDir st
 		return fmt.Errorf("writing index page: %w", err)
 	}
 
-	devlocalCaddyfile := gen.GenerateCaddyfile()
-	if devlocalCaddyfile == "" {
-		api.clearDevlocal()
-		return nil
-	}
-
-	adapter := caddyconfig.GetAdapter("caddyfile")
-	if adapter == nil {
-		return fmt.Errorf("caddyfile adapter not found")
-	}
-	configJSON, _, err := adapter.Adapt([]byte(devlocalCaddyfile), nil)
+	devlocal, err := buildDevlocalConfig(cfg.TLD, indexDir, gen.DomainTargets())
 	if err != nil {
-		return fmt.Errorf("adapting devlocal config: %w", err)
+		return fmt.Errorf("building devlocal config: %w", err)
 	}
 
-	modifiedJSON, _, _, err := injectDevlocalIDs(configJSON, cfg.TLD)
-	if err != nil {
-		return fmt.Errorf("injecting devlocal IDs: %w", err)
-	}
-
-	if err := api.ensureServer(); err != nil {
-		return fmt.Errorf("ensuring server: %w", err)
-	}
-
-	return api.syncDevlocal(modifiedJSON)
-}
-
-func injectDevlocalIDs(rawJSON []byte, tld string) ([]byte, []string, []string, error) {
-	var config map[string]interface{}
-	if err := json.Unmarshal(rawJSON, &config); err != nil {
-		return nil, nil, nil, err
-	}
-
-	var routeIDs []string
-	var policyIDs []string
-
-	apps, _ := config["apps"].(map[string]interface{})
-
-	if http, ok := apps["http"].(map[string]interface{}); ok {
-		if servers, ok := http["servers"].(map[string]interface{}); ok {
-			for _, srv := range servers {
-				srvMap, _ := srv.(map[string]interface{})
-				if routes, ok := srvMap["routes"].([]interface{}); ok {
-					for _, r := range routes {
-						route, _ := r.(map[string]interface{})
-						if route != nil {
-							if host, ok := extractDevlocalHost(route, tld); ok {
-								id := "devlocal-route-" + strings.ReplaceAll(host, ".", "-")
-								route["@id"] = id
-								routeIDs = append(routeIDs, id)
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-
-	if tls, ok := apps["tls"].(map[string]interface{}); ok {
-		if automation, ok := tls["automation"].(map[string]interface{}); ok {
-			if policies, ok := automation["policies"].([]interface{}); ok {
-				for _, p := range policies {
-					policy, _ := p.(map[string]interface{})
-					if policy != nil {
-						if subject, ok := extractDevlocalSubject(policy, tld); ok {
-							id := "devlocal-tls-" + strings.ReplaceAll(subject, ".", "-")
-							policy["@id"] = id
-							policyIDs = append(policyIDs, id)
-						}
-					}
-				}
-			}
-		}
-	}
-
-	result, err := json.Marshal(config)
-	return result, routeIDs, policyIDs, err
-}
-
-func extractDevlocalHost(route map[string]interface{}, tld string) (string, bool) {
-	match, _ := route["match"].([]interface{})
-	if len(match) == 0 {
-		return "", false
-	}
-	firstMatch, _ := match[0].(map[string]interface{})
-	if firstMatch == nil {
-		return "", false
-	}
-	hosts, _ := firstMatch["host"].([]interface{})
-	if len(hosts) == 0 {
-		return "", false
-	}
-	host, _ := hosts[0].(string)
-	if host == "" {
-		return "", false
-	}
-	if isDevlocalDomain(host, tld) {
-		return host, true
-	}
-	return "", false
-}
-
-func extractDevlocalSubject(policy map[string]interface{}, tld string) (string, bool) {
-	subjects, _ := policy["subjects"].([]interface{})
-	if len(subjects) == 0 {
-		return "", false
-	}
-	subject, _ := subjects[0].(string)
-	if subject == "" {
-		return "", false
-	}
-	if isDevlocalDomain(subject, tld) {
-		return subject, true
-	}
-	return "", false
-}
-
-func isDevlocalDomain(host, tld string) bool {
-	if strings.HasSuffix(host, "."+tld) {
-		return true
-	}
-	if strings.HasSuffix(host, ".localhost") {
-		return true
-	}
-	return false
+	return api.reconcileDevlocal(devlocal.routes, devlocal.policies)
 }

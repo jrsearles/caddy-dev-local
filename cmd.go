@@ -310,15 +310,20 @@ func detectUserConfig() string {
 	return ""
 }
 
+const (
+	adapterJSON      = "json"
+	adapterCaddyfile = "caddyfile"
+)
+
 func adapterFor(configPath string) string {
 	switch strings.ToLower(filepath.Ext(configPath)) {
 	case ".json":
-		return "json"
+		return adapterJSON
 	case ".json5":
 		return "json5"
 	case ".yaml", ".yml":
 		return "yaml"
 	default:
-		return "caddyfile"
+		return adapterCaddyfile
 	}
 }

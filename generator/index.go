@@ -85,10 +85,14 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo)
 
 		if len(info.CustomDomains) > 0 {
 			for _, cd := range info.CustomDomains {
+				url := ""
+				if info.IsRunning {
+					url = "https://" + cd.Domain
+				}
 				domains = append(domains, domainEntry{
 					Domain:  cd.Domain,
 					PortStr: strconv.FormatUint(uint64(cd.Port), 10),
-					URL:     "https://" + cd.Domain,
+					URL:     url,
 				})
 			}
 		} else {
@@ -115,7 +119,7 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo)
 			}
 
 			url := ""
-			if info.SelectedPort > 0 {
+			if info.IsRunning && info.SelectedPort > 0 {
 				url = "https://" + domain
 			}
 
@@ -133,7 +137,7 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo)
 					localhostDomain = info.ContainerName + ".localhost"
 				}
 				localhostURL := ""
-				if info.SelectedPort > 0 {
+				if info.IsRunning && info.SelectedPort > 0 {
 					localhostURL = "https://" + localhostDomain
 				}
 				domains = append(domains, domainEntry{

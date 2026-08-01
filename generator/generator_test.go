@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -478,6 +479,70 @@ func TestStaleCleanup(t *testing.T) {
 	}
 	if _, ok := gen.containers["c2"]; !ok {
 		t.Error("fresh stopped container should still exist")
+	}
+}
+
+func TestStoppedContainerRetainedUntilStaleTTL(t *testing.T) {
+	cfg := &config.Config{
+		IngressNetwork: "devlocal",
+		TLD:            "dev.local",
+		StaleTTL:       time.Hour,
+	}
+
+	mock := &mockDocker{}
+	gen := NewGenerator(cfg, mock)
+	gen.probeFn = func(host string, ports []uint16, timeout time.Duration) (uint16, error) {
+		return ports[0], nil
+	}
+	ctx := context.Background()
+
+	mock.containers = []container.Summary{
+		makeContainer("c1", "web", "", "",
+			[]container.PortSummary{{PrivatePort: 80, PublicPort: 0}},
+			nil, "running"),
+	}
+	gen.RefreshAndSelect(ctx) //nolint:errcheck // test helper
+
+	infos := gen.Containers()
+	if len(infos) != 1 || !infos[0].IsRunning {
+		t.Fatalf("expected 1 running container, got %+v", infos)
+	}
+	if infos[0].SelectedPort != 80 {
+		t.Fatalf("expected selected port 80, got %d", infos[0].SelectedPort)
+	}
+
+	mock.containers = []container.Summary{
+		makeContainer("c1", "web", "", "",
+			nil, nil, "exited"),
+	}
+	gen.Refresh(ctx) //nolint:errcheck // test helper
+
+	infos = gen.Containers()
+	if len(infos) != 1 {
+		t.Fatalf("expected stopped container to be retained, got %d", len(infos))
+	}
+	info := infos[0]
+	if info.IsRunning {
+		t.Error("container should not be running")
+	}
+	if info.LastStopped.IsZero() {
+		t.Error("LastStopped should be set when a container stops")
+	}
+	if len(info.Ports) != 1 || info.Ports[0] != 80 {
+		t.Errorf("expected ports to be preserved, got %v", info.Ports)
+	}
+	if info.SelectedPort != 80 {
+		t.Errorf("expected SelectedPort to be preserved, got %d", info.SelectedPort)
+	}
+
+	page := GenerateIndexPage("dev.local", false, gen.Containers())
+	if !contains(page, "web.dev.local") {
+		t.Error("expected stopped container on index page")
+	}
+
+	gen.StaleCleanup()
+	if len(gen.Containers()) != 1 {
+		t.Error("stopped container should survive before stale TTL elapses")
 	}
 }
 
@@ -1277,5 +1342,117 @@ func TestGenerateCaddyfileMergesDuplicateDomains(t *testing.T) {
 
 	if strings.Count(caddyfile, "myapp.web.dev.local") != 1 {
 		t.Errorf("expected domain to appear exactly once (deduped), got multiple occurrences")
+	}
+}
+
+func TestDomainTargetsMergesDuplicateDomains(t *testing.T) {
+	containers := []container.Summary{
+		makeContainer("c1", "web", "myapp", "web",
+			[]container.PortSummary{{PrivatePort: 3000, PublicPort: 0}},
+			nil, "running"),
+		makeContainer("c2", "web", "myapp", "web",
+			[]container.PortSummary{{PrivatePort: 3001, PublicPort: 0}},
+			nil, "running"),
+	}
+
+	mock := &mockDocker{containers: containers}
+	cfg := &config.Config{
+		IngressNetwork: "devlocal",
+		TLD:            "dev.local",
+		StaleTTL:       time.Hour,
+	}
+
+	gen := NewGenerator(cfg, mock)
+	gen.probeFn = func(host string, ports []uint16, timeout time.Duration) (uint16, error) {
+		return ports[0], nil
+	}
+	ctx := context.Background()
+
+	gen.Refresh(ctx)     //nolint:errcheck // test helper
+	gen.SelectPorts(ctx) //nolint:errcheck // test helper
+
+	targets := gen.DomainTargets()
+	if len(targets) != 1 {
+		t.Fatalf("expected 1 merged domain, got %d: %v", len(targets), targets)
+	}
+	got := targets["myapp.web.dev.local"]
+	want := []string{"web:3000", "web:3001"}
+	if !slices.Equal(got, want) {
+		t.Errorf("DomainTargets() = %v, want %v", got, want)
+	}
+}
+
+func TestDomainTargetsStandalone(t *testing.T) {
+	containers := []container.Summary{
+		makeContainer("c1", "nginx", "", "",
+			[]container.PortSummary{{PrivatePort: 80, PublicPort: 8080}},
+			nil, "running"),
+	}
+
+	mock := &mockDocker{containers: containers}
+	cfg := &config.Config{
+		IngressNetwork: "devlocal",
+		TLD:            "dev.local",
+		StaleTTL:       time.Hour,
+		Standalone:     true,
+	}
+
+	gen := NewGenerator(cfg, mock)
+	gen.probeFn = func(host string, ports []uint16, timeout time.Duration) (uint16, error) {
+		return ports[0], nil
+	}
+	ctx := context.Background()
+
+	gen.Refresh(ctx)     //nolint:errcheck // test helper
+	gen.SelectPorts(ctx) //nolint:errcheck // test helper
+
+	targets := gen.DomainTargets()
+	if len(targets) != 2 {
+		t.Fatalf("expected 2 targets (tld + localhost), got %d: %v", len(targets), targets)
+	}
+	if !slices.Equal(targets["nginx.dev.local"], []string{"localhost:8080"}) {
+		t.Errorf("unexpected tld target: %v", targets["nginx.dev.local"])
+	}
+	if !slices.Equal(targets["nginx.localhost"], []string{"localhost:8080"}) {
+		t.Errorf("unexpected localhost target: %v", targets["nginx.localhost"])
+	}
+}
+
+func TestDomainTargetsCustomDomains(t *testing.T) {
+	containers := []container.Summary{
+		makeContainer("c1", "web", "myapp", "web",
+			[]container.PortSummary{{PrivatePort: 3000, PublicPort: 0}},
+			map[string]string{"dev.local.domains": "3000:api.custom.local;8080:admin.custom.local"},
+			"running"),
+	}
+
+	mock := &mockDocker{containers: containers}
+	cfg := &config.Config{
+		IngressNetwork: "devlocal",
+		TLD:            "dev.local",
+		StaleTTL:       time.Hour,
+	}
+
+	gen := NewGenerator(cfg, mock)
+	gen.probeFn = func(host string, ports []uint16, timeout time.Duration) (uint16, error) {
+		return ports[0], nil
+	}
+	ctx := context.Background()
+
+	gen.Refresh(ctx)     //nolint:errcheck // test helper
+	gen.SelectPorts(ctx) //nolint:errcheck // test helper
+
+	targets := gen.DomainTargets()
+	if len(targets) != 2 {
+		t.Fatalf("expected 2 targets, got %d: %v", len(targets), targets)
+	}
+	if _, ok := targets["api.custom.local"]; !ok {
+		t.Error("expected custom domain api.custom.local in targets")
+	}
+	if _, ok := targets["admin.custom.local"]; !ok {
+		t.Error("expected custom domain admin.custom.local in targets")
+	}
+	if _, ok := targets["myapp.web.dev.local"]; ok {
+		t.Error("auto-generated domain should not appear when custom domains are set")
 	}
 }

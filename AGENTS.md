@@ -8,12 +8,13 @@ caddy-dev-local is a Caddy plugin that auto-registers `.dev.local` domains for D
 
 ```
 cmd.go              Caddy subcommand "devlocal", event loop, hosts management
-caddy.go            Caddy config loading, adaptation, global options extraction, reload logic
-module.go           Registers CaddyDevLocal as a Caddy module
+caddy.go            Caddy config loading, user config adapt/load, devlocal apply, reload logic
+admin.go            Admin API client: diff-based reconcile of routes/policies, server ensure
+builder.go          Direct JSON config construction (routes, merged TLS policy, index route)
 config/config.go    Config struct, defaults, env vars, standalone detection
 docker/client.go    Docker client wrapper, label extraction helpers
 generator/
-  generator.go      Core logic: refresh, port selection, Caddyfile generation
+  generator.go      Core logic: refresh, port selection, domain->target computation
   caddyfile.tmpl    Go template for Caddyfile output
   index.go          Generates HTML index page listing containers
   index.html.tmpl   Go template for index page
@@ -49,10 +50,16 @@ just --list                # List all recipes
 - Test file mirrors source: `generator.go` -> `generator_test.go`
 - Tests use `contains()` helper for substring checks in generated output
 - Config values come from flags, env vars, or defaults (in that priority)
-- Static Caddyfile (user config) is restricted to global options only; site blocks are stripped with a warning
-- `loadUserGlobalOptions()` adapts user Caddyfile and loads global options via `caddy.Load()`
-- `loadDevlocalViaAPI()` posts devlocal routes (index + containers) via Caddy admin API
-- `reloadCaddyConfig()` updates container routes incrementally via admin API on Docker events
+- Listen ports come from the Caddyfile `http_port`/`https_port` globals when set, otherwise default to 80/443; effective ports feed `ensureServer` (via `effectivePorts()` reading the running config) and are injected as `apps.http.http_port`/`https_port` into the loaded config only when the user config has no HTTP servers, so Caddy's auto-redirect logic targets the srv0 listener instead of creating a spurious server on port 80
+- Static Caddyfile (user config) is loaded as-is via the Caddyfile adapter — site blocks, TLS policies, and other apps are preserved untouched; devlocal owns no part of the user config
+- `parseCaddyfileListenPorts()` mirrors Caddy's own global-options-block parsing (`caddyfile.Parse`, first block with zero keys) because `http_port`/`https_port` globals vanish from adapted JSON when there are no site blocks; only `http_port`/`https_port` are read, other globals flow through the normal adapter
+- `adaptUserConfig()` is the pure adapt helper (no `caddy.Load`): adapts the user Caddyfile to JSON as-is, injecting `http_port`/`https_port` from the parsed globals only when the adapted config has no `apps.http.servers` (a globals-only Caddyfile adapts to `{}`); unit-tested directly
+- `initCaddyConfig()` adapts + `caddy.Load()`s the user config once at startup (no user config uses `{}`), so the admin endpoint always starts even with empty/comment-only configs, then applies the devlocal config via `postDevlocalViaAPI()` (admin API); the merged-startup path and `mergeConfigs()`/`loadStartupConfig()` no longer exist
+- `buildDevlocalConfig()` constructs the devlocal config directly as JSON (no Caddyfile/adapter on the hot path), returning only `routes` (keyed by `@id`), `policies` (a single `devlocal-tls` policy), and an `indexRoute`
+- `postDevlocalViaAPI()` applies the devlocal config via the Caddy admin API: `ensureServer`, POST the index route, then `reconcileDevlocal` for container routes/policies
+- `reloadCaddyConfig()` diffs desired vs applied routes/policies and patches only changes via the admin API on Docker events
+- Admin API semantics: `POST /config/.../routes/-` appends (new routes/policies), `PATCH /id/<id>` replaces in place (route/policy updates; 404 means re-add via POST), `DELETE /id/<id>` removes; `PUT` creates a key that doesn't exist and is used to autovivify the server/routes/policies skeleton, returning 409 if the key already exists; `PATCH /config/apps/tls/automation/policies` replaces the whole policies array (devlocal's policy is prepended ahead of user policies — Caddy picks the first matching policy in `getAutomationPolicyForName` and allows only one catch-all in `TLS.Validate`)
+- Admin client uses a fresh connection per request plus bounded retry on transient network errors (idempotent methods only) because every config reload restarts the admin endpoint
 - Always update README.md when making user-facing changes
 
 ## Dependencies

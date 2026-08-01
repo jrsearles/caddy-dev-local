@@ -13,7 +13,7 @@ A Caddy plugin that automatically registers `{project}.{service}.dev.local` doma
 - **Custom domains** — Override auto-registration with `dev.local.domains` label
 - **Hosts file integration** — Automatically adds entries to `/etc/hosts` for local DNS resolution
 - **Index page** — Visit `dev.local` to see all registered containers
-- **Stale cleanup** — Automatically removes config for containers stopped > 1 hour
+- **Stale cleanup** — Stopped containers stay listed on the index page (marked stopped) until the stale TTL expires, then their config is removed
 
 ## Quick Start
 
@@ -105,23 +105,13 @@ services:
 | `--stale-ttl` | `DEVLOCAL_STALE_TTL` | `1h` | Keep config for stopped containers |
 | `--probe-timeout` | `DEVLOCAL_PROBE_TIMEOUT` | `2s` | HTTP probe timeout |
 | `--hosts-file` | `DEVLOCAL_HOSTS_FILE` | `true` | Manage `/etc/hosts` entries for domains |
-| `--config` | `DEVLOCAL_CONFIG` | (auto-detect) | Path to a static Caddyfile for global options only |
+| `--config` | `DEVLOCAL_CONFIG` | (auto-detect) | Path to a static Caddyfile loaded as-is |
 
 ## Custom Caddyfile
 
 caddy-dev-local auto-detects `Caddyfile`, `Caddyfile.json`, `Caddyfile.json5`, or `Caddyfile.yaml` in the working directory. Use `--config` or `DEVLOCAL_CONFIG` to specify a different path.
 
-**The static Caddyfile is for global options only.** Site blocks (e.g., `example.com { ... }`) are ignored with a warning. Use the [admin API](https://caddyserver.com/docs/api) for site configuration — caddy-dev-local manages container routes via the API automatically.
-
-Example global options:
-
-```
-{
-    email admin@example.com
-    debug
-    grace_period 10s
-}
-```
+**Your Caddyfile is loaded as-is.** Site blocks, TLS automation policies, logging, etc. are honored exactly as written. caddy-dev-local applies its own dynamic container routes, TLS policy, and index page through Caddy's [admin API](https://caddyserver.com/docs/api) — it never rewrites or merges your config. The two live side by side on the same HTTP server.
 
 ## Building from Source
 
@@ -202,8 +192,8 @@ Then visit:
 3. Computes domains from container labels (Compose project/service or container name)
 4. For multi-port containers, probes ports to find the HTTP server (common ports 80, 8080, 443, 8443 are checked first)
 5. In Docker mode, probes via the container name; in standalone mode, probes via `localhost`
-6. Generates a Caddyfile with `tls internal` for self-signed HTTPS
-7. Loads the config into Caddy with zero downtime
+6. Builds the devlocal config directly as JSON — one `reverse_proxy` route per domain, a single merged `tls internal` policy, and an index page route for the TLD
+7. Loads the user Caddyfile as-is with `caddy.Load`, then applies the devlocal routes and TLS policy through Caddy's [admin API](https://caddyserver.com/docs/api) using diff-based patching — only added, removed, or changed routes/policies are touched, so reloads are incremental with zero downtime
 
 ## Hosts File
 
