@@ -12,7 +12,7 @@ A Caddy plugin that automatically registers `{project}.{service}.dev.local` doma
 - **Self-signed TLS** — Zero-config HTTPS using Caddy's internal CA
 - **Custom domains** — Override auto-registration with `dev.local.domains` label
 - **Hosts file integration** — Automatically adds entries to `/etc/hosts` for local DNS resolution
-- **Index page** — Visit `dev.local` to see all registered containers
+- **Index page** — Visit `dev.local` to see all registered containers; multi-port containers are listed as one row per port (HTTP port first, then ordered by port and domain), and each domain has a copy-to-clipboard button that copies the full URL for HTTP(S) services and `domain:port` for non-HTTP services
 - **Stale cleanup** — Stopped containers stay listed on the index page (marked stopped) until the stale TTL expires, then their config is removed
 - **Standalone hosts binary** — `devlocal-hosts` watches Docker and maintains hosts entries without running a proxy
 

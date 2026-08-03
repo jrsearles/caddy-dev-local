@@ -54,7 +54,7 @@ just --list                # List all recipes
 - Go templates (embed via `//go:embed`) for generated output (Caddyfile, HTML index)
 - Mutex-protected access to shared container state
 - Test file mirrors source: `generator.go` -> `generator_test.go`
-- Tests use `contains()` helper for substring checks in generated output
+- Unit tests cover generator/host logic only; the HTML index page UI is not unit-tested
 - Config values come from flags, env vars, or defaults (in that priority)
 - Listen ports come from the Caddyfile `http_port`/`https_port` globals when set, otherwise default to 80/443; effective ports feed `ensureServer` (via `effectivePorts()` reading the running config) and are injected as `apps.http.http_port`/`https_port` into the loaded config only when the user config has no HTTP servers, so Caddy's auto-redirect logic targets the srv0 listener instead of creating a spurious server on port 80
 - Static Caddyfile (user config) is loaded as-is via the Caddyfile adapter — site blocks, TLS policies, and other apps are preserved untouched; devlocal owns no part of the user config
@@ -78,5 +78,6 @@ just --list                # List all recipes
 
 - Mock Docker client implements `docker.Client` interface
 - `makeContainer()` helper builds test container summaries
-- Tests verify both presence and absence of strings in generated Caddyfile/HTML
+- Tests verify both presence and absence of strings in generated Caddyfile output
 - Standalone vs Docker mode tested via `config.Standalone` flag on config
+- UI testing is not necessary: the generated HTML index page (`index.go`/`index.html.tmpl`) is not unit-tested

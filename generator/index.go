@@ -1,8 +1,10 @@
 package generator
 
 import (
+	"cmp"
 	_ "embed"
 	"html/template"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -12,9 +14,10 @@ var indexTemplateHTML string
 var indexTemplate = template.Must(template.New("index").Parse(indexTemplateHTML))
 
 type domainEntry struct {
-	Domain  string
-	PortStr string
-	URL     string
+	Domain   string
+	PortStr  string
+	URL      string
+	CopyText string
 }
 
 type indexRow struct {
@@ -33,6 +36,7 @@ type displayRow struct {
 	Domain         string
 	PortStr        string
 	URL            string
+	CopyText       string
 	ContainerName  string
 	Image          string
 	IPAddress      string
@@ -48,6 +52,64 @@ type displayRow struct {
 type indexData struct {
 	TLD         string
 	DisplayRows []displayRow
+}
+
+func buildDomainEntries(domain string, portStrs []string, url string) []domainEntry {
+	if len(portStrs) == 0 {
+		return []domainEntry{{Domain: domain, PortStr: "-", URL: url, CopyText: url}}
+	}
+
+	if len(portStrs) > 1 {
+		entries := make([]domainEntry, 0, len(portStrs))
+		for _, p := range portStrs {
+			copyText := domain + ":" + p
+			if url != "" {
+				copyText = url
+			}
+			entries = append(entries, domainEntry{
+				Domain:   domain,
+				PortStr:  p,
+				URL:      url,
+				CopyText: copyText,
+			})
+		}
+		return entries
+	}
+
+	copyText := domain + ":" + portStrs[0]
+	if url != "" {
+		copyText = url
+	}
+	return []domainEntry{{
+		Domain:   domain,
+		PortStr:  portStrs[0],
+		URL:      url,
+		CopyText: copyText,
+	}}
+}
+
+func sortDomainEntries(entries []domainEntry, httpPortStr string) {
+	portNum := func(s string) int {
+		n, err := strconv.Atoi(s)
+		if err != nil {
+			return 1 << 30
+		}
+		return n
+	}
+	slices.SortStableFunc(entries, func(a, b domainEntry) int {
+		aHTTP := httpPortStr != "" && a.PortStr == httpPortStr
+		bHTTP := httpPortStr != "" && b.PortStr == httpPortStr
+		if aHTTP != bHTTP {
+			if aHTTP {
+				return -1
+			}
+			return 1
+		}
+		if c := cmp.Compare(portNum(a.PortStr), portNum(b.PortStr)); c != 0 {
+			return c
+		}
+		return strings.Compare(a.Domain, b.Domain)
+	})
 }
 
 func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo) string {
@@ -81,6 +143,11 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo)
 			ipAddress = info.IPAddress
 		}
 
+		httpPortStr := ""
+		if info.SelectedPort > 0 {
+			httpPortStr = strconv.FormatUint(uint64(info.SelectedPort), 10)
+		}
+
 		var domains []domainEntry
 
 		if len(info.CustomDomains) > 0 {
@@ -89,10 +156,15 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo)
 				if info.IsRunning {
 					url = "https://" + cd.Domain
 				}
+				copyText := cd.Domain + ":" + strconv.FormatUint(uint64(cd.Port), 10)
+				if url != "" {
+					copyText = url
+				}
 				domains = append(domains, domainEntry{
-					Domain:  cd.Domain,
-					PortStr: strconv.FormatUint(uint64(cd.Port), 10),
-					URL:     url,
+					Domain:   cd.Domain,
+					PortStr:  strconv.FormatUint(uint64(cd.Port), 10),
+					URL:      url,
+					CopyText: copyText,
 				})
 			}
 		} else {
@@ -113,21 +185,13 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo)
 				}
 				portStrs = append(portStrs, strconv.FormatUint(uint64(port), 10))
 			}
-			portStr := "-"
-			if len(portStrs) > 0 {
-				portStr = strings.Join(portStrs, ", ")
-			}
 
 			url := ""
 			if info.IsRunning && info.SelectedPort > 0 {
 				url = "https://" + domain
 			}
 
-			domains = append(domains, domainEntry{
-				Domain:  domain,
-				PortStr: portStr,
-				URL:     url,
-			})
+			domains = append(domains, buildDomainEntries(domain, portStrs, url)...)
 
 			if standalone {
 				var localhostDomain string
@@ -140,13 +204,11 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo)
 				if info.IsRunning && info.SelectedPort > 0 {
 					localhostURL = "https://" + localhostDomain
 				}
-				domains = append(domains, domainEntry{
-					Domain:  localhostDomain,
-					PortStr: portStr,
-					URL:     localhostURL,
-				})
+				domains = append(domains, buildDomainEntries(localhostDomain, portStrs, localhostURL)...)
 			}
 		}
+
+		sortDomainEntries(domains, httpPortStr)
 
 		groups = append(groups, indexRow{
 			Domains:        domains,
@@ -168,6 +230,7 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo)
 				Domain:         d.Domain,
 				PortStr:        d.PortStr,
 				URL:            d.URL,
+				CopyText:       d.CopyText,
 				ContainerName:  groups[gi].ContainerName,
 				Image:          groups[gi].Image,
 				IPAddress:      groups[gi].IPAddress,
