@@ -57,18 +57,6 @@ func (c *DockerClient) NetworkInspect(ctx context.Context, networkID string) (ne
 	return result.Network, nil
 }
 
-func HasNetwork(c *container.Summary, networkName string) bool {
-	if c.NetworkSettings == nil {
-		return false
-	}
-	for name := range c.NetworkSettings.Networks {
-		if name == networkName {
-			return true
-		}
-	}
-	return false
-}
-
 func LabelValue(c *container.Summary, key string) string {
 	if c.Labels == nil {
 		return ""

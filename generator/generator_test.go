@@ -43,7 +43,15 @@ func (m *mockDocker) NetworkInspect(ctx context.Context, networkID string) (netw
 	return network.Inspect{}, nil
 }
 
+const testSelfHostname = "devlocal-self"
+
 func makeContainer(id, name, project, service string, ports []container.PortSummary, labels map[string]string, state container.ContainerState) container.Summary {
+	return makeContainerOnNetworks(id, name, project, service, ports, labels, state, map[string]*network.EndpointSettings{
+		"devlocal": {IPAddress: netip.MustParseAddr("172.18.0.2")},
+	})
+}
+
+func makeContainerOnNetworks(id, name, project, service string, ports []container.PortSummary, labels map[string]string, state container.ContainerState, networks map[string]*network.EndpointSettings) container.Summary {
 	if labels == nil {
 		labels = make(map[string]string)
 	}
@@ -60,17 +68,41 @@ func makeContainer(id, name, project, service string, ports []container.PortSumm
 		Labels: labels,
 		State:  state,
 		NetworkSettings: &container.NetworkSettingsSummary{
+			Networks: networks,
+		},
+	}
+}
+
+func makeSelfContainer() container.Summary {
+	return container.Summary{
+		ID:    "self-id",
+		Names: []string{"/" + testSelfHostname},
+		State: "running",
+		NetworkSettings: &container.NetworkSettingsSummary{
 			Networks: map[string]*network.EndpointSettings{
-				"devlocal": {IPAddress: netip.MustParseAddr("172.18.0.2")},
+				"devlocal": {
+					IPAddress: netip.MustParseAddr("172.18.0.1"),
+					Gateway:   netip.MustParseAddr("172.18.0.1"),
+				},
 			},
 		},
 	}
 }
 
+func withSelf(containers ...container.Summary) []container.Summary {
+	return append([]container.Summary{makeSelfContainer()}, containers...)
+}
+
+func testGenerator(t *testing.T, cfg *config.Config, mock *mockDocker) *Generator {
+	t.Helper()
+	g := NewGenerator(cfg, mock)
+	g.selfHostname = testSelfHostname
+	return g
+}
+
 func TestDomainComputation(t *testing.T) {
 	cfg := &config.Config{
-		IngressNetwork: "devlocal",
-		TLD:            "dev.local",
+		TLD: "dev.local",
 	}
 
 	tests := []struct {
@@ -104,8 +136,7 @@ func TestDomainComputation(t *testing.T) {
 
 func TestDomainComputationLocalhost(t *testing.T) {
 	cfg := &config.Config{
-		IngressNetwork: "devlocal",
-		TLD:            "dev.local",
+		TLD: "dev.local",
 	}
 
 	tests := []struct {
@@ -348,14 +379,13 @@ func TestGeneratorRefresh(t *testing.T) {
 			map[string]string{"dev.local": "false"}, "running"),
 	}
 
-	mock := &mockDocker{containers: containers}
+	mock := &mockDocker{containers: withSelf(containers...)}
 	cfg := &config.Config{
-		IngressNetwork: "devlocal",
-		TLD:            "dev.local",
-		StaleTTL:       time.Hour,
+		TLD:      "dev.local",
+		StaleTTL: time.Hour,
 	}
 
-	gen := NewGenerator(cfg, mock)
+	gen := testGenerator(t, cfg, mock)
 	ctx := context.Background()
 
 	if err := gen.Refresh(ctx); err != nil {
@@ -382,14 +412,13 @@ func TestGeneratorCustomDomainsOverride(t *testing.T) {
 			"running"),
 	}
 
-	mock := &mockDocker{containers: containers}
+	mock := &mockDocker{containers: withSelf(containers...)}
 	cfg := &config.Config{
-		IngressNetwork: "devlocal",
-		TLD:            "dev.local",
-		StaleTTL:       time.Hour,
+		TLD:      "dev.local",
+		StaleTTL: time.Hour,
 	}
 
-	gen := NewGenerator(cfg, mock)
+	gen := testGenerator(t, cfg, mock)
 	ctx := context.Background()
 
 	if err := gen.Refresh(ctx); err != nil {
@@ -417,14 +446,13 @@ func TestGeneratorSinglePort(t *testing.T) {
 			nil, "running"),
 	}
 
-	mock := &mockDocker{containers: containers}
+	mock := &mockDocker{containers: withSelf(containers...)}
 	cfg := &config.Config{
-		IngressNetwork: "devlocal",
-		TLD:            "dev.local",
-		StaleTTL:       time.Hour,
+		TLD:      "dev.local",
+		StaleTTL: time.Hour,
 	}
 
-	gen := NewGenerator(cfg, mock)
+	gen := testGenerator(t, cfg, mock)
 	gen.probeFn = func(host string, ports []uint16, timeout time.Duration) (uint16, error) {
 		return ports[0], nil
 	}
@@ -444,9 +472,8 @@ func TestGeneratorSinglePort(t *testing.T) {
 
 func TestStaleCleanup(t *testing.T) {
 	cfg := &config.Config{
-		IngressNetwork: "devlocal",
-		TLD:            "dev.local",
-		StaleTTL:       time.Minute,
+		TLD:      "dev.local",
+		StaleTTL: time.Minute,
 	}
 
 	gen := &Generator{
@@ -480,23 +507,22 @@ func TestStaleCleanup(t *testing.T) {
 
 func TestStoppedContainerRetainedUntilStaleTTL(t *testing.T) {
 	cfg := &config.Config{
-		IngressNetwork: "devlocal",
-		TLD:            "dev.local",
-		StaleTTL:       time.Hour,
+		TLD:      "dev.local",
+		StaleTTL: time.Hour,
 	}
 
 	mock := &mockDocker{}
-	gen := NewGenerator(cfg, mock)
+	gen := testGenerator(t, cfg, mock)
 	gen.probeFn = func(host string, ports []uint16, timeout time.Duration) (uint16, error) {
 		return ports[0], nil
 	}
 	ctx := context.Background()
 
-	mock.containers = []container.Summary{
+	mock.containers = withSelf(
 		makeContainer("c1", "web", "", "",
 			[]container.PortSummary{{PrivatePort: 80, PublicPort: 0}},
 			nil, "running"),
-	}
+	)
 	gen.RefreshAndSelect(ctx) //nolint:errcheck // test helper
 
 	infos := gen.Containers()
@@ -507,10 +533,10 @@ func TestStoppedContainerRetainedUntilStaleTTL(t *testing.T) {
 		t.Fatalf("expected selected port 80, got %d", infos[0].SelectedPort)
 	}
 
-	mock.containers = []container.Summary{
+	mock.containers = withSelf(
 		makeContainer("c1", "web", "", "",
 			nil, nil, "exited"),
-	}
+	)
 	gen.Refresh(ctx) //nolint:errcheck // test helper
 
 	infos = gen.Containers()
@@ -559,24 +585,6 @@ func TestGetLabel(t *testing.T) {
 	}
 }
 
-func TestHasNetwork(t *testing.T) {
-	c := container.Summary{
-		NetworkSettings: &container.NetworkSettingsSummary{
-			Networks: map[string]*network.EndpointSettings{
-				"devlocal": {IPAddress: netip.MustParseAddr("172.18.0.2")},
-				"other":    {IPAddress: netip.MustParseAddr("172.19.0.2")},
-			},
-		},
-	}
-
-	if !docker.HasNetwork(&c, "devlocal") {
-		t.Error("expected HasNetwork to return true for devlocal")
-	}
-	if docker.HasNetwork(&c, "missing") {
-		t.Error("expected HasNetwork to return false for missing")
-	}
-}
-
 func TestContainerName(t *testing.T) {
 	c := container.Summary{
 		Names: []string{"/my-container"},
@@ -603,15 +611,14 @@ func TestStandaloneCaddyfileGeneration(t *testing.T) {
 			nil, "running"),
 	}
 
-	mock := &mockDocker{containers: containers}
+	mock := &mockDocker{containers: withSelf(containers...)}
 	cfg := &config.Config{
-		IngressNetwork: "devlocal",
-		TLD:            "dev.local",
-		StaleTTL:       time.Hour,
-		Standalone:     true,
+		TLD:        "dev.local",
+		StaleTTL:   time.Hour,
+		Standalone: true,
 	}
 
-	gen := NewGenerator(cfg, mock)
+	gen := testGenerator(t, cfg, mock)
 	gen.probeFn = func(host string, ports []uint16, timeout time.Duration) (uint16, error) {
 		return ports[0], nil
 	}
@@ -643,15 +650,14 @@ func TestStandaloneSkipsUnpublishedContainers(t *testing.T) {
 			nil, "running"),
 	}
 
-	mock := &mockDocker{containers: containers}
+	mock := &mockDocker{containers: withSelf(containers...)}
 	cfg := &config.Config{
-		IngressNetwork: "devlocal",
-		TLD:            "dev.local",
-		StaleTTL:       time.Hour,
-		Standalone:     true,
+		TLD:        "dev.local",
+		StaleTTL:   time.Hour,
+		Standalone: true,
 	}
 
-	gen := NewGenerator(cfg, mock)
+	gen := testGenerator(t, cfg, mock)
 	ctx := context.Background()
 
 	gen.Refresh(ctx)     //nolint:errcheck // test helper
@@ -670,15 +676,14 @@ func TestStandaloneCustomDomains(t *testing.T) {
 			"running"),
 	}
 
-	mock := &mockDocker{containers: containers}
+	mock := &mockDocker{containers: withSelf(containers...)}
 	cfg := &config.Config{
-		IngressNetwork: "devlocal",
-		TLD:            "dev.local",
-		StaleTTL:       time.Hour,
-		Standalone:     true,
+		TLD:        "dev.local",
+		StaleTTL:   time.Hour,
+		Standalone: true,
 	}
 
-	gen := NewGenerator(cfg, mock)
+	gen := testGenerator(t, cfg, mock)
 	ctx := context.Background()
 
 	gen.Refresh(ctx)     //nolint:errcheck // test helper
@@ -710,16 +715,15 @@ func TestStandaloneSelectPorts(t *testing.T) {
 			nil, "running"),
 	}
 
-	mock := &mockDocker{containers: containers}
+	mock := &mockDocker{containers: withSelf(containers...)}
 	cfg := &config.Config{
-		IngressNetwork: "devlocal",
-		TLD:            "dev.local",
-		StaleTTL:       time.Hour,
-		Standalone:     true,
-		ProbeTimeout:   200 * time.Millisecond,
+		TLD:          "dev.local",
+		StaleTTL:     time.Hour,
+		Standalone:   true,
+		ProbeTimeout: 200 * time.Millisecond,
 	}
 
-	gen := NewGenerator(cfg, mock)
+	gen := testGenerator(t, cfg, mock)
 	gen.probeFn = func(host string, ports []uint16, timeout time.Duration) (uint16, error) {
 		return 0, fmt.Errorf("no HTTP port found")
 	}
@@ -748,14 +752,13 @@ func TestDomainsComposeAndStandalone(t *testing.T) {
 			nil, "running"),
 	}
 
-	mock := &mockDocker{containers: containers}
+	mock := &mockDocker{containers: withSelf(containers...)}
 	cfg := &config.Config{
-		IngressNetwork: "devlocal",
-		TLD:            "dev.local",
-		StaleTTL:       time.Hour,
+		TLD:      "dev.local",
+		StaleTTL: time.Hour,
 	}
 
-	gen := NewGenerator(cfg, mock)
+	gen := testGenerator(t, cfg, mock)
 	gen.probeFn = func(host string, ports []uint16, timeout time.Duration) (uint16, error) {
 		return ports[0], nil
 	}
@@ -783,15 +786,14 @@ func TestDomainsIncludesLocalhost(t *testing.T) {
 			nil, "running"),
 	}
 
-	mock := &mockDocker{containers: containers}
+	mock := &mockDocker{containers: withSelf(containers...)}
 	cfg := &config.Config{
-		IngressNetwork: "devlocal",
-		TLD:            "dev.local",
-		StaleTTL:       time.Hour,
-		Standalone:     true,
+		TLD:        "dev.local",
+		StaleTTL:   time.Hour,
+		Standalone: true,
 	}
 
-	gen := NewGenerator(cfg, mock)
+	gen := testGenerator(t, cfg, mock)
 	gen.probeFn = func(host string, ports []uint16, timeout time.Duration) (uint16, error) {
 		return ports[0], nil
 	}
@@ -820,14 +822,13 @@ func TestDomainsCustomDomains(t *testing.T) {
 			"running"),
 	}
 
-	mock := &mockDocker{containers: containers}
+	mock := &mockDocker{containers: withSelf(containers...)}
 	cfg := &config.Config{
-		IngressNetwork: "devlocal",
-		TLD:            "dev.local",
-		StaleTTL:       time.Hour,
+		TLD:      "dev.local",
+		StaleTTL: time.Hour,
 	}
 
-	gen := NewGenerator(cfg, mock)
+	gen := testGenerator(t, cfg, mock)
 	ctx := context.Background()
 
 	gen.Refresh(ctx)     //nolint:errcheck // test helper
@@ -855,14 +856,13 @@ func TestDomainsExcludesStopped(t *testing.T) {
 			nil, "exited"),
 	}
 
-	mock := &mockDocker{containers: containers}
+	mock := &mockDocker{containers: withSelf(containers...)}
 	cfg := &config.Config{
-		IngressNetwork: "devlocal",
-		TLD:            "dev.local",
-		StaleTTL:       time.Hour,
+		TLD:      "dev.local",
+		StaleTTL: time.Hour,
 	}
 
-	gen := NewGenerator(cfg, mock)
+	gen := testGenerator(t, cfg, mock)
 	gen.probeFn = func(host string, ports []uint16, timeout time.Duration) (uint16, error) {
 		return ports[0], nil
 	}
@@ -893,14 +893,13 @@ func TestDomainsSorted(t *testing.T) {
 			nil, "running"),
 	}
 
-	mock := &mockDocker{containers: containers}
+	mock := &mockDocker{containers: withSelf(containers...)}
 	cfg := &config.Config{
-		IngressNetwork: "devlocal",
-		TLD:            "dev.local",
-		StaleTTL:       time.Hour,
+		TLD:      "dev.local",
+		StaleTTL: time.Hour,
 	}
 
-	gen := NewGenerator(cfg, mock)
+	gen := testGenerator(t, cfg, mock)
 	gen.probeFn = func(host string, ports []uint16, timeout time.Duration) (uint16, error) {
 		return ports[0], nil
 	}
@@ -928,15 +927,14 @@ func TestDomainsIncludesPortsWithoutHTTP_DockerMode(t *testing.T) {
 			nil, "running"),
 	}
 
-	mock := &mockDocker{containers: containers}
+	mock := &mockDocker{containers: withSelf(containers...)}
 	cfg := &config.Config{
-		IngressNetwork: "devlocal",
-		TLD:            "dev.local",
-		StaleTTL:       time.Hour,
-		Standalone:     false,
+		TLD:        "dev.local",
+		StaleTTL:   time.Hour,
+		Standalone: false,
 	}
 
-	gen := NewGenerator(cfg, mock)
+	gen := testGenerator(t, cfg, mock)
 	gen.probeFn = func(host string, ports []uint16, timeout time.Duration) (uint16, error) {
 		return 0, fmt.Errorf("no HTTP port found")
 	}
@@ -961,15 +959,14 @@ func TestDomainsIncludesPortsWithoutHTTP_Standalone(t *testing.T) {
 			nil, "running"),
 	}
 
-	mock := &mockDocker{containers: containers}
+	mock := &mockDocker{containers: withSelf(containers...)}
 	cfg := &config.Config{
-		IngressNetwork: "devlocal",
-		TLD:            "dev.local",
-		StaleTTL:       time.Hour,
-		Standalone:     true,
+		TLD:        "dev.local",
+		StaleTTL:   time.Hour,
+		Standalone: true,
 	}
 
-	gen := NewGenerator(cfg, mock)
+	gen := testGenerator(t, cfg, mock)
 	gen.probeFn = func(host string, ports []uint16, timeout time.Duration) (uint16, error) {
 		return 0, fmt.Errorf("no HTTP port found")
 	}
@@ -997,15 +994,14 @@ func TestDomainsExcludesUnpublishedInStandalone(t *testing.T) {
 			nil, "running"),
 	}
 
-	mock := &mockDocker{containers: containers}
+	mock := &mockDocker{containers: withSelf(containers...)}
 	cfg := &config.Config{
-		IngressNetwork: "devlocal",
-		TLD:            "dev.local",
-		StaleTTL:       time.Hour,
-		Standalone:     true,
+		TLD:        "dev.local",
+		StaleTTL:   time.Hour,
+		Standalone: true,
 	}
 
-	gen := NewGenerator(cfg, mock)
+	gen := testGenerator(t, cfg, mock)
 	ctx := context.Background()
 
 	gen.Refresh(ctx)     //nolint:errcheck // test helper
@@ -1024,14 +1020,13 @@ func TestDomainsExcludesPortless(t *testing.T) {
 			nil, "running"),
 	}
 
-	mock := &mockDocker{containers: containers}
+	mock := &mockDocker{containers: withSelf(containers...)}
 	cfg := &config.Config{
-		IngressNetwork: "devlocal",
-		TLD:            "dev.local",
-		StaleTTL:       time.Hour,
+		TLD:      "dev.local",
+		StaleTTL: time.Hour,
 	}
 
-	gen := NewGenerator(cfg, mock)
+	gen := testGenerator(t, cfg, mock)
 	ctx := context.Background()
 
 	gen.Refresh(ctx)     //nolint:errcheck // test helper
@@ -1053,14 +1048,13 @@ func TestDomainTargetsMergesDuplicateDomains(t *testing.T) {
 			nil, "running"),
 	}
 
-	mock := &mockDocker{containers: containers}
+	mock := &mockDocker{containers: withSelf(containers...)}
 	cfg := &config.Config{
-		IngressNetwork: "devlocal",
-		TLD:            "dev.local",
-		StaleTTL:       time.Hour,
+		TLD:      "dev.local",
+		StaleTTL: time.Hour,
 	}
 
-	gen := NewGenerator(cfg, mock)
+	gen := testGenerator(t, cfg, mock)
 	gen.probeFn = func(host string, ports []uint16, timeout time.Duration) (uint16, error) {
 		return ports[0], nil
 	}
@@ -1087,15 +1081,14 @@ func TestDomainTargetsStandalone(t *testing.T) {
 			nil, "running"),
 	}
 
-	mock := &mockDocker{containers: containers}
+	mock := &mockDocker{containers: withSelf(containers...)}
 	cfg := &config.Config{
-		IngressNetwork: "devlocal",
-		TLD:            "dev.local",
-		StaleTTL:       time.Hour,
-		Standalone:     true,
+		TLD:        "dev.local",
+		StaleTTL:   time.Hour,
+		Standalone: true,
 	}
 
-	gen := NewGenerator(cfg, mock)
+	gen := testGenerator(t, cfg, mock)
 	gen.probeFn = func(host string, ports []uint16, timeout time.Duration) (uint16, error) {
 		return ports[0], nil
 	}
@@ -1124,14 +1117,13 @@ func TestDomainTargetsCustomDomains(t *testing.T) {
 			"running"),
 	}
 
-	mock := &mockDocker{containers: containers}
+	mock := &mockDocker{containers: withSelf(containers...)}
 	cfg := &config.Config{
-		IngressNetwork: "devlocal",
-		TLD:            "dev.local",
-		StaleTTL:       time.Hour,
+		TLD:      "dev.local",
+		StaleTTL: time.Hour,
 	}
 
-	gen := NewGenerator(cfg, mock)
+	gen := testGenerator(t, cfg, mock)
 	gen.probeFn = func(host string, ports []uint16, timeout time.Duration) (uint16, error) {
 		return ports[0], nil
 	}
@@ -1152,5 +1144,115 @@ func TestDomainTargetsCustomDomains(t *testing.T) {
 	}
 	if _, ok := targets["myapp.web.dev.local"]; ok {
 		t.Error("auto-generated domain should not appear when custom domains are set")
+	}
+}
+
+func TestGeneratorGatewayFallback(t *testing.T) {
+	containers := []container.Summary{
+		makeContainerOnNetworks("c1", "web", "", "",
+			[]container.PortSummary{{PrivatePort: 80, PublicPort: 8080}},
+			nil, "running",
+			map[string]*network.EndpointSettings{
+				"other": {IPAddress: netip.MustParseAddr("172.20.0.2")},
+			}),
+	}
+
+	mock := &mockDocker{containers: withSelf(containers...)}
+	cfg := &config.Config{
+		TLD:      "dev.local",
+		StaleTTL: time.Hour,
+	}
+
+	gen := testGenerator(t, cfg, mock)
+	gen.probeFn = func(host string, ports []uint16, timeout time.Duration) (uint16, error) {
+		return ports[0], nil
+	}
+	ctx := context.Background()
+
+	gen.Refresh(ctx)     //nolint:errcheck // test helper
+	gen.SelectPorts(ctx) //nolint:errcheck // test helper
+
+	targets := gen.DomainTargets()
+	if !slices.Equal(targets["web.dev.local"], []string{"172.18.0.1:8080"}) {
+		t.Errorf("expected gateway target 172.18.0.1:8080 (published port via host gateway), got %v", targets["web.dev.local"])
+	}
+}
+
+func TestGeneratorGatewayCustomDomains(t *testing.T) {
+	containers := []container.Summary{
+		makeContainerOnNetworks("c1", "web", "myapp", "web",
+			[]container.PortSummary{{PrivatePort: 80, PublicPort: 8080}},
+			map[string]string{"dev.local.domains": "80:api.custom.local"},
+			"running",
+			map[string]*network.EndpointSettings{
+				"other": {IPAddress: netip.MustParseAddr("172.20.0.2")},
+			}),
+	}
+
+	mock := &mockDocker{containers: withSelf(containers...)}
+	cfg := &config.Config{
+		TLD:      "dev.local",
+		StaleTTL: time.Hour,
+	}
+
+	gen := testGenerator(t, cfg, mock)
+	ctx := context.Background()
+
+	gen.Refresh(ctx)     //nolint:errcheck // test helper
+	gen.SelectPorts(ctx) //nolint:errcheck // test helper
+
+	targets := gen.DomainTargets()
+	if !slices.Equal(targets["api.custom.local"], []string{"172.18.0.1:8080"}) {
+		t.Errorf("expected custom domain gateway target 172.18.0.1:8080, got %v", targets["api.custom.local"])
+	}
+	if _, ok := targets["myapp.web.dev.local"]; ok {
+		t.Error("auto-generated domain should not appear when custom domains are set")
+	}
+}
+
+func TestGeneratorSkipsUnreachable(t *testing.T) {
+	containers := []container.Summary{
+		makeContainerOnNetworks("c1", "web", "", "",
+			[]container.PortSummary{{PrivatePort: 80, PublicPort: 0}},
+			nil, "running",
+			map[string]*network.EndpointSettings{
+				"other": {IPAddress: netip.MustParseAddr("172.20.0.2")},
+			}),
+	}
+
+	mock := &mockDocker{containers: withSelf(containers...)}
+	cfg := &config.Config{
+		TLD:      "dev.local",
+		StaleTTL: time.Hour,
+	}
+
+	gen := testGenerator(t, cfg, mock)
+	ctx := context.Background()
+
+	gen.Refresh(ctx)     //nolint:errcheck // test helper
+	gen.SelectPorts(ctx) //nolint:errcheck // test helper
+
+	if infos := gen.Containers(); len(infos) != 0 {
+		t.Errorf("expected unreachable container (no shared network, no published ports) to be skipped, got %+v", infos)
+	}
+	if targets := gen.DomainTargets(); len(targets) != 0 {
+		t.Errorf("expected no targets for unreachable container, got %v", targets)
+	}
+}
+
+func TestGeneratorSkipsSelf(t *testing.T) {
+	mock := &mockDocker{containers: withSelf()}
+	cfg := &config.Config{
+		TLD:      "dev.local",
+		StaleTTL: time.Hour,
+	}
+
+	gen := testGenerator(t, cfg, mock)
+	ctx := context.Background()
+
+	gen.Refresh(ctx) //nolint:errcheck // test helper
+
+	if infos := gen.Containers(); len(infos) != 0 {
+		t.Errorf("expected the plugin's own container to be excluded, got %+v", infos)
 	}
 }

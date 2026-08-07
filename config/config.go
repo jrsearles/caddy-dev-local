@@ -6,13 +6,12 @@ import (
 )
 
 type Config struct {
-	IngressNetwork string
-	TLD            string
-	StaleTTL       time.Duration
-	ProbeTimeout   time.Duration
-	Standalone     bool
-	HostsFile      bool
-	PollInterval   time.Duration
+	TLD          string
+	StaleTTL     time.Duration
+	ProbeTimeout time.Duration
+	Standalone   bool
+	HostsFile    bool
+	PollInterval time.Duration
 }
 
 func DetectStandalone() bool {
@@ -22,28 +21,23 @@ func DetectStandalone() bool {
 
 func DefaultConfig() *Config {
 	return &Config{
-		IngressNetwork: getEnvOrDefault("DEVLOCAL_INGRESS_NETWORK", "devlocal"),
-		TLD:            getEnvOrDefault("DEVLOCAL_TLD", "dev.local"),
-		StaleTTL:       getDurationOrDefault("DEVLOCAL_STALE_TTL", time.Hour),
-		ProbeTimeout:   getDurationOrDefault("DEVLOCAL_PROBE_TIMEOUT", 2*time.Second),
-		HostsFile:      getBoolOrDefault("DEVLOCAL_HOSTS_FILE", true),
-		PollInterval:   getDurationOrDefault("DEVLOCAL_POLL_INTERVAL", 30*time.Second),
+		TLD:          getEnvOrDefault("DEVLOCAL_TLD", "dev.local"),
+		StaleTTL:     getDurationOrDefault("DEVLOCAL_STALE_TTL", time.Hour),
+		ProbeTimeout: getDurationOrDefault("DEVLOCAL_PROBE_TIMEOUT", 2*time.Second),
+		HostsFile:    getBoolOrDefault("DEVLOCAL_HOSTS_FILE", true),
+		PollInterval: getDurationOrDefault("DEVLOCAL_POLL_INTERVAL", 30*time.Second),
 	}
 }
 
 type FlagOverrides struct {
-	IngressNetwork *string
-	TLD            *string
-	StaleTTL       *time.Duration
-	ProbeTimeout   *time.Duration
-	HostsFile      *bool
-	PollInterval   *time.Duration
+	TLD          *string
+	StaleTTL     *time.Duration
+	ProbeTimeout *time.Duration
+	HostsFile    *bool
+	PollInterval *time.Duration
 }
 
 func (c *Config) ApplyFlags(o FlagOverrides) {
-	if o.IngressNetwork != nil {
-		c.IngressNetwork = *o.IngressNetwork
-	}
 	if o.TLD != nil {
 		c.TLD = *o.TLD
 	}

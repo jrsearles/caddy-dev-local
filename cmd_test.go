@@ -13,7 +13,6 @@ import (
 func newDevlocalFlags(t *testing.T, args ...string) caddycmd.Flags {
 	t.Helper()
 	fs := pflag.NewFlagSet("devlocal", pflag.ContinueOnError)
-	fs.String("ingress-network", "", "")
 	fs.String("tld", "", "")
 	fs.Duration("stale-ttl", 0, "")
 	fs.Duration("probe-timeout", 0, "")
@@ -27,12 +26,11 @@ func newDevlocalFlags(t *testing.T, args ...string) caddycmd.Flags {
 
 func TestApplyCommandFlagsDefaultsPreserved(t *testing.T) {
 	cfg := &config.Config{
-		IngressNetwork: "devlocal",
-		TLD:            "dev.local",
-		StaleTTL:       time.Hour,
-		ProbeTimeout:   2 * time.Second,
-		HostsFile:      false,
-		PollInterval:   45 * time.Second,
+		TLD:          "dev.local",
+		StaleTTL:     time.Hour,
+		ProbeTimeout: 2 * time.Second,
+		HostsFile:    false,
+		PollInterval: 45 * time.Second,
 	}
 
 	applyCommandFlags(cfg, newDevlocalFlags(t))
@@ -43,7 +41,7 @@ func TestApplyCommandFlagsDefaultsPreserved(t *testing.T) {
 	if cfg.PollInterval != 45*time.Second {
 		t.Errorf("PollInterval = %v, want 45s (env-configured value preserved)", cfg.PollInterval)
 	}
-	if cfg.IngressNetwork != "devlocal" || cfg.TLD != "dev.local" {
+	if cfg.TLD != "dev.local" {
 		t.Errorf("defaults were clobbered: %+v", cfg)
 	}
 }
@@ -52,7 +50,6 @@ func TestApplyCommandFlagsExplicitOverrides(t *testing.T) {
 	cfg := config.DefaultConfig()
 
 	applyCommandFlags(cfg, newDevlocalFlags(t,
-		"--ingress-network=lan",
 		"--tld=test.local",
 		"--stale-ttl=5m",
 		"--probe-timeout=500ms",
@@ -60,9 +57,6 @@ func TestApplyCommandFlagsExplicitOverrides(t *testing.T) {
 		"--poll-interval=15s",
 	))
 
-	if cfg.IngressNetwork != "lan" {
-		t.Errorf("IngressNetwork = %q, want lan", cfg.IngressNetwork)
-	}
 	if cfg.TLD != "test.local" {
 		t.Errorf("TLD = %q, want test.local", cfg.TLD)
 	}

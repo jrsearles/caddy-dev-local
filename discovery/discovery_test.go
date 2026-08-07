@@ -38,8 +38,6 @@ func (m *mockEventsClient) NetworkInspect(ctx context.Context, networkID string)
 }
 
 func TestShouldRefresh(t *testing.T) {
-	cfg := &config.Config{IngressNetwork: "devlocal"}
-
 	cases := []struct {
 		name  string
 		event events.Message
@@ -51,15 +49,14 @@ func TestShouldRefresh(t *testing.T) {
 		{"container destroy", events.Message{Type: events.ContainerEventType, Action: events.ActionDestroy}, true},
 		{"container create", events.Message{Type: events.ContainerEventType, Action: events.ActionCreate}, true},
 		{"container pause", events.Message{Type: events.ContainerEventType, Action: "pause"}, false},
-		{"network connect matching", events.Message{Type: events.NetworkEventType, Action: events.ActionConnect, Actor: events.Actor{Attributes: map[string]string{"name": "devlocal"}}}, true},
-		{"network disconnect matching", events.Message{Type: events.NetworkEventType, Action: events.ActionDisconnect, Actor: events.Actor{Attributes: map[string]string{"name": "devlocal"}}}, true},
-		{"network connect other", events.Message{Type: events.NetworkEventType, Action: events.ActionConnect, Actor: events.Actor{Attributes: map[string]string{"name": "other"}}}, false},
+		{"network connect", events.Message{Type: events.NetworkEventType, Action: events.ActionConnect, Actor: events.Actor{Attributes: map[string]string{"name": "other"}}}, true},
+		{"network disconnect", events.Message{Type: events.NetworkEventType, Action: events.ActionDisconnect, Actor: events.Actor{Attributes: map[string]string{"name": "other"}}}, true},
 		{"unrelated", events.Message{Type: "image", Action: "pull"}, false},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := shouldRefresh(&tc.event, cfg); got != tc.want {
+			if got := shouldRefresh(&tc.event); got != tc.want {
 				t.Errorf("shouldRefresh(%v) = %v, want %v", tc.event, got, tc.want)
 			}
 		})
@@ -67,7 +64,7 @@ func TestShouldRefresh(t *testing.T) {
 }
 
 func TestWatchEventsRefreshAndApply(t *testing.T) {
-	cfg := &config.Config{IngressNetwork: "devlocal", TLD: "dev.local", Standalone: true}
+	cfg := &config.Config{TLD: "dev.local", Standalone: true}
 	mock := &mockEventsClient{
 		msgCh: make(chan events.Message, 4),
 		errCh: make(chan error),
@@ -104,7 +101,7 @@ func TestWatchEventsRefreshAndApply(t *testing.T) {
 }
 
 func TestWatchEventsSkipsIrrelevantEvents(t *testing.T) {
-	cfg := &config.Config{IngressNetwork: "devlocal", TLD: "dev.local", Standalone: true}
+	cfg := &config.Config{TLD: "dev.local", Standalone: true}
 	mock := &mockEventsClient{
 		msgCh: make(chan events.Message, 4),
 		errCh: make(chan error),
@@ -131,7 +128,7 @@ func TestWatchEventsSkipsIrrelevantEvents(t *testing.T) {
 }
 
 func TestPollLoopRefreshesAndApplies(t *testing.T) {
-	cfg := &config.Config{IngressNetwork: "devlocal", TLD: "dev.local", Standalone: true, PollInterval: 10 * time.Millisecond}
+	cfg := &config.Config{TLD: "dev.local", Standalone: true, PollInterval: 10 * time.Millisecond}
 	mock := &mockEventsClient{
 		msgCh: make(chan events.Message, 4),
 		errCh: make(chan error),

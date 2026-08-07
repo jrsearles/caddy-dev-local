@@ -3,18 +3,16 @@ package config
 import (
 	"flag"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/spf13/pflag"
 )
 
 const (
-	flagIngressNetwork = "ingress-network"
-	flagTLD            = "tld"
-	flagStaleTTL       = "stale-ttl"
-	flagProbeTimeout   = "probe-timeout"
-	flagPollInterval   = "poll-interval"
+	flagTLD          = "tld"
+	flagStaleTTL     = "stale-ttl"
+	flagProbeTimeout = "probe-timeout"
+	flagPollInterval = "poll-interval"
 )
 
 type sharedFlagSpec struct {
@@ -24,7 +22,6 @@ type sharedFlagSpec struct {
 }
 
 var sharedFlagSpecs = []sharedFlagSpec{
-	{flagIngressNetwork, "", "Docker network name (env: DEVLOCAL_INGRESS_NETWORK)"},
 	{flagTLD, "", "Top-level domain (env: DEVLOCAL_TLD)"},
 	{flagStaleTTL, "0", "Keep config for stopped containers (env: DEVLOCAL_STALE_TTL)"},
 	{flagProbeTimeout, "0", "HTTP probe timeout (env: DEVLOCAL_PROBE_TIMEOUT)"},
@@ -73,10 +70,6 @@ func RegisterSharedGoFlags(fs *flag.FlagSet) {
 // SharedOverrides translates explicitly-set shared flags into overrides.
 func SharedOverrides(fs *pflag.FlagSet) FlagOverrides {
 	var o FlagOverrides
-	if fs.Changed(flagIngressNetwork) {
-		v, _ := fs.GetString(flagIngressNetwork)
-		o.IngressNetwork = &v
-	}
 	if fs.Changed(flagTLD) {
 		v, _ := fs.GetString(flagTLD)
 		o.TLD = &v
@@ -101,12 +94,9 @@ func ApplySharedFlags(cfg *Config, fs *pflag.FlagSet) {
 	cfg.ApplyFlags(SharedOverrides(fs))
 }
 
-// ResolveStandalone detects standalone mode unless the ingress network was
-// explicitly configured via flag or environment variable.
-func ResolveStandalone(cfg *Config, fs *pflag.FlagSet) {
-	if !fs.Changed(flagIngressNetwork) && os.Getenv("DEVLOCAL_INGRESS_NETWORK") == "" {
-		cfg.Standalone = DetectStandalone()
-	}
+// ResolveStandalone detects standalone mode based on the environment.
+func ResolveStandalone(cfg *Config) {
+	cfg.Standalone = DetectStandalone()
 }
 
 // Resolve builds a Config from defaults, explicitly-set shared flags, and
@@ -114,6 +104,6 @@ func ResolveStandalone(cfg *Config, fs *pflag.FlagSet) {
 func Resolve(fs *pflag.FlagSet) *Config {
 	cfg := DefaultConfig()
 	ApplySharedFlags(cfg, fs)
-	ResolveStandalone(cfg, fs)
+	ResolveStandalone(cfg)
 	return cfg
 }

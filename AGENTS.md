@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-caddy-dev-local is a Caddy plugin that auto-registers `.dev.local` domains for Docker containers. It watches Docker events, discovers containers on a shared network, and dynamically generates Caddyfile configurations for reverse proxying. See [README.md](README.md) for full documentation.
+caddy-dev-local is a Caddy plugin that auto-registers `.dev.local` domains for Docker containers. It watches Docker events, discovers all containers reachable from the proxy (across any Docker network), and dynamically generates Caddyfile configurations for reverse proxying. See [README.md](README.md) for full documentation.
 
 ## Architecture
 

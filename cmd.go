@@ -62,7 +62,7 @@ func cmdFunc(fs caddycmd.Flags) (int, error) {
 		configPath = detectUserConfig()
 	}
 
-	config.ResolveStandalone(cfg, fs.FlagSet)
+	config.ResolveStandalone(cfg)
 
 	logger := caddy.Log().Named(appName)
 
@@ -73,7 +73,6 @@ func cmdFunc(fs caddycmd.Flags) (int, error) {
 	logger.Info("starting devlocal",
 		zap.String("mode", mode),
 		zap.String("tld", cfg.TLD),
-		zap.String("ingress_network", cfg.IngressNetwork),
 		zap.String("user_config", configPath),
 	)
 

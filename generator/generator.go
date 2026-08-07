@@ -3,6 +3,7 @@ package generator
 import (
 	"context"
 	"fmt"
+	"os"
 	"slices"
 	"sort"
 	"strings"
@@ -26,6 +27,8 @@ type ContainerInfo struct {
 	Ports          []uint16
 	PublishedPorts map[uint16]uint16
 	SelectedPort   uint16
+	TargetKind     targetKind
+	GatewayHost    string
 	IsCompose      bool
 	IsRunning      bool
 	LastStopped    time.Time
@@ -39,22 +42,38 @@ type CustomDomain struct {
 	Domain string
 }
 
+type targetKind int
+
+const (
+	targetUnreachable targetKind = iota
+	targetDNS
+	targetGateway
+)
+
+type selfInfo struct {
+	id       string
+	networks map[string]bool
+	gateway  string
+}
+
 type probeFunc func(host string, ports []uint16, timeout time.Duration) (uint16, error)
 
 type Generator struct {
-	cfg        *config.Config
-	docker     docker.Client
-	mu         sync.RWMutex
-	containers map[string]*ContainerInfo
-	probeFn    probeFunc
+	cfg          *config.Config
+	docker       docker.Client
+	mu           sync.RWMutex
+	containers   map[string]*ContainerInfo
+	probeFn      probeFunc
+	selfHostname string
 }
 
 func NewGenerator(cfg *config.Config, dockerClient docker.Client) *Generator {
 	return &Generator{
-		cfg:        cfg,
-		docker:     dockerClient,
-		containers: make(map[string]*ContainerInfo),
-		probeFn:    ProbeHTTPPort,
+		cfg:          cfg,
+		docker:       dockerClient,
+		containers:   make(map[string]*ContainerInfo),
+		probeFn:      ProbeHTTPPort,
+		selfHostname: os.Getenv("HOSTNAME"),
 	}
 }
 
@@ -88,14 +107,21 @@ func (g *Generator) RefreshAndSelect(ctx context.Context) error {
 func (g *Generator) refreshLocked(containers []container.Summary) {
 	seen := make(map[string]bool)
 	now := time.Now()
+	self := g.discoverSelf(containers)
 
 	for i := range containers {
 		c := &containers[i]
-		if !g.cfg.Standalone && !docker.HasNetwork(c, g.cfg.IngressNetwork) {
+		if self.id != "" && c.ID == self.id {
+			continue
+		}
+		if shouldSkip(c) {
+			continue
+		}
+		if !g.cfg.Standalone && g.reachability(c, self) == targetUnreachable {
 			continue
 		}
 
-		info := g.buildContainerInfo(c)
+		info := g.buildContainerInfo(c, self)
 		if info == nil {
 			continue
 		}
@@ -128,15 +154,84 @@ func (g *Generator) refreshLocked(containers []container.Summary) {
 	}
 
 	for id, info := range g.containers {
-		if !seen[id] && !info.IsRunning {
-			if !info.LastStopped.IsZero() && now.Sub(info.LastStopped) > g.cfg.StaleTTL {
-				delete(g.containers, id)
-			}
+		if seen[id] {
+			continue
+		}
+		if info.IsRunning {
+			delete(g.containers, id)
+		} else if !info.LastStopped.IsZero() && now.Sub(info.LastStopped) > g.cfg.StaleTTL {
+			delete(g.containers, id)
 		}
 	}
 }
 
-func (g *Generator) buildContainerInfo(c *container.Summary) *ContainerInfo {
+func (g *Generator) discoverSelf(containers []container.Summary) selfInfo {
+	info := selfInfo{networks: make(map[string]bool), gateway: "host.docker.internal"}
+	if g.selfHostname == "" {
+		return info
+	}
+	for i := range containers {
+		c := &containers[i]
+		if !isSelfContainer(c, g.selfHostname) {
+			continue
+		}
+		info.id = c.ID
+		if c.NetworkSettings == nil {
+			break
+		}
+		for name, ep := range c.NetworkSettings.Networks {
+			info.networks[name] = true
+			if info.gateway == "host.docker.internal" && ep.Gateway.IsValid() {
+				info.gateway = ep.Gateway.String()
+			}
+		}
+		break
+	}
+	return info
+}
+
+func isSelfContainer(c *container.Summary, hostname string) bool {
+	if hostname == "" {
+		return false
+	}
+	if c.ID == hostname || docker.ContainerName(c) == hostname {
+		return true
+	}
+	return strings.HasPrefix(c.ID, hostname) || strings.HasPrefix(hostname, c.ID)
+}
+
+func (g *Generator) reachability(c *container.Summary, self selfInfo) targetKind {
+	if g.cfg.Standalone {
+		return targetGateway
+	}
+	if c.NetworkSettings != nil {
+		for name := range c.NetworkSettings.Networks {
+			if self.networks[name] {
+				return targetDNS
+			}
+		}
+	}
+	for _, p := range c.Ports {
+		if p.PublicPort != 0 {
+			return targetGateway
+		}
+	}
+	return targetUnreachable
+}
+
+func firstNetworkIP(c *container.Summary) string {
+	if c.NetworkSettings == nil {
+		return ""
+	}
+	for _, ep := range c.NetworkSettings.Networks {
+		if ep.IPAddress.IsValid() {
+			return ep.IPAddress.String()
+		}
+	}
+	return ""
+}
+
+func (g *Generator) buildContainerInfo(c *container.Summary, self selfInfo) *ContainerInfo {
 	if shouldSkip(c) {
 		return nil
 	}
@@ -155,11 +250,21 @@ func (g *Generator) buildContainerInfo(c *container.Summary) *ContainerInfo {
 		}
 	}
 
+	kind := g.reachability(c, self)
 	ipAddress := ""
-	if c.NetworkSettings != nil {
-		if ep, ok := c.NetworkSettings.Networks[g.cfg.IngressNetwork]; ok {
-			ipAddress = ep.IPAddress.String()
+	switch kind {
+	case targetDNS:
+		if c.NetworkSettings != nil {
+			for name, ep := range c.NetworkSettings.Networks {
+				if self.networks[name] {
+					ipAddress = ep.IPAddress.String()
+					break
+				}
+			}
 		}
+	case targetGateway:
+		ipAddress = firstNetworkIP(c)
+	case targetUnreachable:
 	}
 
 	info := &ContainerInfo{
@@ -171,6 +276,8 @@ func (g *Generator) buildContainerInfo(c *container.Summary) *ContainerInfo {
 		IPAddress:      ipAddress,
 		Ports:          ports,
 		PublishedPorts: publishedPorts,
+		TargetKind:     kind,
+		GatewayHost:    self.gateway,
 		IsCompose:      isCompose,
 		Created:        time.Unix(c.Created, 0),
 		Labels:         c.Labels,
@@ -198,29 +305,43 @@ func (g *Generator) selectPortsLocked() {
 			continue
 		}
 
-		if g.cfg.Standalone {
-			var pubPorts []uint16
-			for _, p := range info.Ports {
-				if pub, ok := info.PublishedPorts[p]; ok {
-					pubPorts = append(pubPorts, pub)
-				}
-			}
-
-			switch {
-			case len(pubPorts) == 0:
-				continue
-			default:
-				port, err := g.probeFn("localhost", pubPorts, g.cfg.ProbeTimeout)
-				if err == nil {
-					info.SelectedPort = port
-				}
-			}
-		} else if len(info.Ports) > 0 {
-			port, err := g.probeFn(info.ContainerName, info.Ports, g.cfg.ProbeTimeout)
-			if err == nil {
-				info.SelectedPort = port
-			}
+		host, ports := g.probeTarget(info)
+		if len(ports) == 0 {
+			continue
 		}
+		port, err := g.probeFn(host, ports, g.cfg.ProbeTimeout)
+		if err == nil {
+			info.SelectedPort = port
+		}
+	}
+}
+
+func (g *Generator) probeTarget(info *ContainerInfo) (string, []uint16) {
+	var pubPorts []uint16
+	for _, p := range info.Ports {
+		if pub, ok := info.PublishedPorts[p]; ok {
+			pubPorts = append(pubPorts, pub)
+		}
+	}
+
+	switch {
+	case g.cfg.Standalone:
+		return "localhost", pubPorts
+	case info.TargetKind == targetGateway:
+		return info.GatewayHost, pubPorts
+	default:
+		return info.ContainerName, info.Ports
+	}
+}
+
+func (g *Generator) hostFor(info *ContainerInfo) string {
+	switch {
+	case g.cfg.Standalone:
+		return "localhost"
+	case info.TargetKind == targetGateway:
+		return info.GatewayHost
+	default:
+		return info.ContainerName
 	}
 }
 
@@ -241,17 +362,13 @@ func (g *Generator) DomainTargets() map[string][]string {
 
 		if customDomains := g.customDomains(info); len(customDomains) > 0 {
 			for _, cd := range customDomains {
-				var target string
-				if g.cfg.Standalone {
+				port := cd.Port
+				if g.cfg.Standalone || info.TargetKind == targetGateway {
 					if pub, ok := info.PublishedPorts[cd.Port]; ok {
-						target = fmt.Sprintf("localhost:%d", pub)
-					} else {
-						target = fmt.Sprintf("localhost:%d", cd.Port)
+						port = pub
 					}
-				} else {
-					target = fmt.Sprintf("%s:%d", info.ContainerName, cd.Port)
 				}
-				addTarget(cd.Domain, target)
+				addTarget(cd.Domain, fmt.Sprintf("%s:%d", g.hostFor(info), port))
 			}
 			continue
 		}
@@ -261,12 +378,7 @@ func (g *Generator) DomainTargets() map[string][]string {
 		}
 
 		domain := g.domainForContainer(info)
-		var target string
-		if g.cfg.Standalone {
-			target = fmt.Sprintf("localhost:%d", info.SelectedPort)
-		} else {
-			target = fmt.Sprintf("%s:%d", info.ContainerName, info.SelectedPort)
-		}
+		target := fmt.Sprintf("%s:%d", g.hostFor(info), info.SelectedPort)
 		addTarget(domain, target)
 
 		if g.cfg.Standalone {

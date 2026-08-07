@@ -6,7 +6,7 @@ A Caddy plugin that automatically registers `{project}.{service}.dev.local` doma
 
 ## Features
 
-- **Automatic domain registration** — Containers on a shared Docker network get `*.dev.local` domains
+- **Automatic domain registration** — Any container the proxy can reach gets `*.dev.local` domains. Containers on a network shared with the proxy are reached by container name via Docker DNS; containers on other networks are discovered too and proxied via their published ports through the host gateway
 - **Compose-aware** — Uses `{project}.{service}.dev.local` for Compose services, `{container-name}.dev.local` for standalone containers
 - **HTTP port probing** — For containers with multiple ports, automatically detects the HTTP port, preferring common ports (80, 8080, 443, 8443)
 - **Self-signed TLS** — Zero-config HTTPS using Caddy's internal CA
@@ -39,10 +39,23 @@ docker run -d \
 
 ### 3. Start your containers
 
+Containers are discovered across **all** Docker networks. Two routing modes:
+
+- **Shared network (preferred)** — attach the container to the `devlocal` network so the proxy reaches it by name over Docker DNS:
+
 ```bash
 docker run -d \
   --name my-app \
   --network devlocal \
+  nginx:alpine
+```
+
+- **Other networks** — containers on *any* other network are still discovered and registered. If the container publishes a port, the proxy routes to it via the host gateway (`{gateway}:{published_port}`):
+
+```bash
+docker run -d \
+  --name my-app \
+  -p 8080:80 \
   nginx:alpine
 ```
 
@@ -103,7 +116,6 @@ services:
 
 | Flag | Env Var | Default | Description |
 |---|---|---|---|
-| `--ingress-network` | `DEVLOCAL_INGRESS_NETWORK` | `devlocal` | Docker network name |
 | `--tld` | `DEVLOCAL_TLD` | `dev.local` | Top-level domain |
 | `--stale-ttl` | `DEVLOCAL_STALE_TTL` | `1h` | Keep config for stopped containers |
 | `--probe-timeout` | `DEVLOCAL_PROBE_TIMEOUT` | `2s` | HTTP probe timeout |
@@ -155,18 +167,18 @@ docker run -d --name my-app -p 8080:80 nginx:alpine
 
 ### How Detection Works
 
-- **No ingress network configured** — standalone mode is auto-detected by checking for `/.dockerenv`. If absent, the binary is running on the host.
-- **`--ingress-network` flag or `DEVLOCAL_INGRESS_NETWORK` env var set** — assumes inside Docker, uses container DNS names and private ports.
+- **Inside Docker** (`/.dockerenv` present) — Docker mode: containers on a shared network are reached by Docker DNS name, others via published ports through the host gateway. The proxy identifies its own container via the `HOSTNAME` environment variable to compute shared networks.
+- **On the host** (`/.dockerenv` absent) — standalone mode: proxies to containers via `localhost` using their published ports.
 
 ### Standalone vs Docker Mode
 
 | | Docker Mode | Standalone Mode |
 |---|---|---|
-| Proxy target | `{container}:{private_port}` | `localhost:{published_port}` |
-| Port selection | Private (internal) ports | Published (host-mapped) ports |
-| Unpublished containers | Included | Skipped |
+| Proxy target | `{container}:{private_port}` (shared network) or `{gateway}:{published_port}` (other networks) | `localhost:{published_port}` |
+| Port selection | Private ports (shared network) or published ports (other networks) | Published (host-mapped) ports |
+| Unpublished containers | Included only when reachable by Docker DNS | Skipped |
 | Domain suffixes | `{tld}` | `{tld}` + `.localhost` |
-| Detection | `--ingress-network` set or `/.dockerenv` present | `/.dockerenv` absent, no ingress network set |
+| Detection | `/.dockerenv` present | `/.dockerenv` absent |
 
 ### `.localhost` Domains
 
@@ -194,11 +206,11 @@ Then visit:
 
 ## How It Works
 
-1. Watches Docker events for container lifecycle and network changes on the ingress network
-2. Lists all containers on the configured ingress network
+1. Watches Docker events for container lifecycle and network connect/disconnect changes across all networks
+2. Lists all containers via the Docker API; identifies the proxy's own container (via `HOSTNAME`) and its network memberships, then excludes itself
 3. Computes domains from container labels (Compose project/service or container name)
-4. For multi-port containers, probes ports to find the HTTP server (common ports 80, 8080, 443, 8443 are checked first)
-5. In Docker mode, probes via the container name; in standalone mode, probes via `localhost`
+4. Classifies each container by reachability: shared network → Docker DNS; no shared network but published ports → host gateway; otherwise skipped
+5. For multi-port containers, probes ports to find the HTTP server (common ports 80, 8080, 443, 8443 are checked first) — via the container name on shared networks, via the host gateway over published ports otherwise
 6. Builds the devlocal config directly as JSON — one `reverse_proxy` route per domain, a single merged `tls internal` policy, and an index page route for the TLD
 7. Loads the user Caddyfile as-is with `caddy.Load`, then applies the devlocal routes and TLS policy through Caddy's [admin API](https://caddyserver.com/docs/api) using diff-based patching — only added, removed, or changed routes/policies are touched, so reloads are incremental with zero downtime
 8. Polls Docker every `--poll-interval` (default 30s) as a safety net for missed events; if nothing changed, the reload is skipped entirely via a fingerprint of the current domains
@@ -277,7 +289,6 @@ Flags mirror the Caddy plugin's shared options (same env vars, defaults, and pre
 
 | Flag | Env Var | Default | Description |
 |---|---|---|---|
-| `--ingress-network` | `DEVLOCAL_INGRESS_NETWORK` | `devlocal` | Docker network name |
 | `--tld` | `DEVLOCAL_TLD` | `dev.local` | Top-level domain |
 | `--stale-ttl` | `DEVLOCAL_STALE_TTL` | `1h` | Keep entries for stopped containers |
 | `--poll-interval` | `DEVLOCAL_POLL_INTERVAL` | `30s` | Periodic full refresh as a safety net for missed events; `0` disables |
@@ -286,7 +297,7 @@ Flags mirror the Caddy plugin's shared options (same env vars, defaults, and pre
 Notes:
 
 - **No port probing** — the domain set is identical to the proxy's, but no HTTP requests are made; port probing only exists to pick a proxy target port.
-- **Standalone detection** — auto-detected exactly like the plugin (no `/.dockerenv` and no explicit ingress network → standalone mode, which also registers `.localhost` variants).
+- **Standalone detection** — auto-detected exactly like the plugin (`/.dockerenv` absent → standalone mode, which also registers `.localhost` variants).
 - **Permissions** — requires root to write `/etc/hosts`; exits with an error if the hosts file isn't writable (unlike the plugin, which warns and continues).
 - **Index page** — not generated; this binary only maintains the hosts file.
 

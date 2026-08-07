@@ -20,7 +20,7 @@ func newSharedFlags(t *testing.T, args ...string) *pflag.FlagSet {
 func TestRegisterSharedFlags(t *testing.T) {
 	fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
 	RegisterSharedFlags(fs)
-	for _, name := range []string{"ingress-network", "tld", "stale-ttl", "probe-timeout", "poll-interval"} {
+	for _, name := range []string{"tld", "stale-ttl", "probe-timeout", "poll-interval"} {
 		if fs.Lookup(name) == nil {
 			t.Errorf("expected shared flag %q to be registered", name)
 		}
@@ -30,7 +30,6 @@ func TestRegisterSharedFlags(t *testing.T) {
 func TestApplySharedFlagsExplicit(t *testing.T) {
 	cfg := DefaultConfig()
 	fs := newSharedFlags(t,
-		"--ingress-network=lan",
 		"--tld=test.local",
 		"--stale-ttl=5m",
 		"--probe-timeout=500ms",
@@ -38,9 +37,6 @@ func TestApplySharedFlagsExplicit(t *testing.T) {
 	)
 	ApplySharedFlags(cfg, fs)
 
-	if cfg.IngressNetwork != "lan" {
-		t.Errorf("IngressNetwork = %q, want lan", cfg.IngressNetwork)
-	}
 	if cfg.TLD != "test.local" {
 		t.Errorf("TLD = %q, want test.local", cfg.TLD)
 	}
@@ -57,17 +53,13 @@ func TestApplySharedFlagsExplicit(t *testing.T) {
 
 func TestApplySharedFlagsDefaultsPreserved(t *testing.T) {
 	cfg := &Config{
-		IngressNetwork: "lan",
-		TLD:            "test.local",
-		StaleTTL:       5 * time.Minute,
-		ProbeTimeout:   500 * time.Millisecond,
-		PollInterval:   15 * time.Second,
+		TLD:          "test.local",
+		StaleTTL:     5 * time.Minute,
+		ProbeTimeout: 500 * time.Millisecond,
+		PollInterval: 15 * time.Second,
 	}
 	ApplySharedFlags(cfg, newSharedFlags(t))
 
-	if cfg.IngressNetwork != "lan" {
-		t.Error("unset flags must not override env-configured values")
-	}
 	if cfg.TLD != "test.local" {
 		t.Error("unset flags must not override env-configured values")
 	}
@@ -89,9 +81,6 @@ func TestApplySharedFlagsPollIntervalZeroExplicit(t *testing.T) {
 
 func TestResolveDefaults(t *testing.T) {
 	cfg := Resolve(newSharedFlags(t))
-	if cfg.IngressNetwork != "devlocal" {
-		t.Errorf("IngressNetwork = %q, want devlocal", cfg.IngressNetwork)
-	}
 	if cfg.TLD != "dev.local" {
 		t.Errorf("TLD = %q, want dev.local", cfg.TLD)
 	}
@@ -106,31 +95,9 @@ func TestResolveDefaults(t *testing.T) {
 	}
 }
 
-func TestResolveStandaloneExplicitFlag(t *testing.T) {
-	t.Setenv("DEVLOCAL_INGRESS_NETWORK", "")
-	fs := newSharedFlags(t, "--ingress-network=lan")
-	cfg := &Config{}
-	ResolveStandalone(cfg, fs)
-	if cfg.Standalone {
-		t.Error("explicit --ingress-network must disable standalone detection")
-	}
-}
-
-func TestResolveStandaloneExplicitEnv(t *testing.T) {
-	t.Setenv("DEVLOCAL_INGRESS_NETWORK", "lan")
-	fs := newSharedFlags(t)
-	cfg := &Config{}
-	ResolveStandalone(cfg, fs)
-	if cfg.Standalone {
-		t.Error("DEVLOCAL_INGRESS_NETWORK env must disable standalone detection")
-	}
-}
-
 func TestResolveStandaloneAutoDetect(t *testing.T) {
-	t.Setenv("DEVLOCAL_INGRESS_NETWORK", "")
-	fs := newSharedFlags(t)
 	cfg := &Config{}
-	ResolveStandalone(cfg, fs)
+	ResolveStandalone(cfg)
 	if want := DetectStandalone(); cfg.Standalone != want {
 		t.Errorf("Standalone = %v, want %v", cfg.Standalone, want)
 	}

@@ -53,9 +53,6 @@ func (c *Controller) watchEvents(ctx context.Context) {
 		f := client.Filters{}
 		f.Add("type", "container")
 		f.Add("type", "network")
-		if !c.cfg.Standalone {
-			f.Add("network", c.cfg.IngressNetwork)
-		}
 
 		msgCh, errCh := c.docker.Events(ctx, client.EventsListOptions{
 			Filters: f,
@@ -75,7 +72,7 @@ func (c *Controller) watchEvents(ctx context.Context) {
 					c.logger.Warn("event stream closed, reconnecting in 30s")
 					throttle.Stop()
 					streaming = false
-				} else if shouldRefresh(&event, c.cfg) {
+				} else if shouldRefresh(&event) {
 					if !pending {
 						pending = true
 						throttle.Reset(100 * time.Millisecond)
@@ -105,7 +102,7 @@ func (c *Controller) watchEvents(ctx context.Context) {
 	}
 }
 
-func shouldRefresh(event *events.Message, cfg *config.Config) bool {
+func shouldRefresh(event *events.Message) bool {
 	switch event.Type {
 	case events.ContainerEventType:
 		switch event.Action {
@@ -117,7 +114,7 @@ func shouldRefresh(event *events.Message, cfg *config.Config) bool {
 	case events.NetworkEventType:
 		switch event.Action {
 		case events.ActionConnect, events.ActionDisconnect:
-			return event.Actor.Attributes["name"] == cfg.IngressNetwork
+			return true
 		default:
 			return false
 		}
