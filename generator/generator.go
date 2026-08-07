@@ -380,10 +380,7 @@ func (g *Generator) DomainTargets() map[string][]string {
 		domain := g.domainForContainer(info)
 		target := fmt.Sprintf("%s:%d", g.hostFor(info), info.SelectedPort)
 		addTarget(domain, target)
-
-		if g.cfg.Standalone {
-			addTarget(g.domainForContainerLocalhost(info), target)
-		}
+		addTarget(g.domainForContainerLocalhost(info), target)
 	}
 
 	for d := range merged {
@@ -484,11 +481,16 @@ func (g *Generator) Domains() []string {
 		}
 
 		if info.SelectedPort == 0 {
-			if g.cfg.Standalone {
+			switch info.TargetKind {
+			case targetDNS:
+				if len(info.Ports) == 0 {
+					continue
+				}
+			case targetGateway:
 				if len(info.PublishedPorts) == 0 {
 					continue
 				}
-			} else if len(info.Ports) == 0 {
+			default:
 				continue
 			}
 		}
@@ -498,12 +500,10 @@ func (g *Generator) Domains() []string {
 			seen[d] = true
 			domains = append(domains, d)
 		}
-		if g.cfg.Standalone {
-			ld := g.domainForContainerLocalhost(info)
-			if !seen[ld] {
-				seen[ld] = true
-				domains = append(domains, ld)
-			}
+		ld := g.domainForContainerLocalhost(info)
+		if !seen[ld] {
+			seen[ld] = true
+			domains = append(domains, ld)
 		}
 	}
 

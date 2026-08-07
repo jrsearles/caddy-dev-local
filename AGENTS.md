@@ -34,7 +34,7 @@ generator/
 - **Domain patterns**:
   - Compose: `{project}.{service}.{tld}` (e.g., `myapp.web.dev.local`)
   - Standalone container: `{container-name}.{tld}` (e.g., `my-nginx.dev.local`)
-  - Standalone also registers `.localhost` variants (e.g., `myapp.web.localhost`, `my-nginx.localhost`)
+  - All modes register `.localhost` variants (e.g., `myapp.web.localhost`, `my-nginx.localhost`)
 - **Custom domains**: Containers can override auto-registration via `dev.local.domains` label (format: `port:domain;port:domain`). When set, auto-generated domain is skipped.
 - **Two entry points share one discovery driver**: `cmd.go` (Caddy plugin, refresh = `gen.RefreshAndSelect`, apply = caddy reload + hosts sync) and `cmd/devlocal-hosts` (standalone hosts-only binary, refresh = `gen.Refresh` with no port probing, apply = hosts sync) both drive `discovery.Controller`; the driver is Caddy-free so the standalone binary has zero caddy dependencies
 

@@ -126,11 +126,16 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo)
 
 	for _, info := range containers {
 		if info.SelectedPort == 0 && len(info.CustomDomains) == 0 {
-			if standalone {
+			switch info.TargetKind {
+			case targetDNS:
+				if len(info.Ports) == 0 {
+					continue
+				}
+			case targetGateway:
 				if len(info.PublishedPorts) == 0 {
 					continue
 				}
-			} else if len(info.Ports) == 0 {
+			default:
 				continue
 			}
 		}
@@ -187,7 +192,7 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo)
 			portStrs := make([]string, 0, len(info.Ports))
 			for _, p := range info.Ports {
 				port := p
-				if standalone {
+				if info.TargetKind == targetGateway {
 					if pub, ok := info.PublishedPorts[p]; ok {
 						port = pub
 					}
@@ -202,19 +207,17 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo)
 
 			domains = append(domains, buildDomainEntries(domain, portStrs, url)...)
 
-			if standalone {
-				var localhostDomain string
-				if info.IsCompose {
-					localhostDomain = info.Project + "." + info.Service + ".localhost"
-				} else {
-					localhostDomain = info.ContainerName + ".localhost"
-				}
-				localhostURL := ""
-				if info.IsRunning && info.SelectedPort > 0 {
-					localhostURL = "https://" + localhostDomain
-				}
-				domains = append(domains, buildDomainEntries(localhostDomain, portStrs, localhostURL)...)
+			var localhostDomain string
+			if info.IsCompose {
+				localhostDomain = info.Project + "." + info.Service + ".localhost"
+			} else {
+				localhostDomain = info.ContainerName + ".localhost"
 			}
+			localhostURL := ""
+			if info.IsRunning && info.SelectedPort > 0 {
+				localhostURL = "https://" + localhostDomain
+			}
+			domains = append(domains, buildDomainEntries(localhostDomain, portStrs, localhostURL)...)
 		}
 
 		sortDomainEntries(domains, httpPortStr)

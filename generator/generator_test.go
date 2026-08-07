@@ -465,8 +465,8 @@ func TestGeneratorSinglePort(t *testing.T) {
 	if !slices.Equal(targets["nginx.dev.local"], []string{"nginx:80"}) {
 		t.Errorf("expected reverse proxy target nginx:80, got %v", targets["nginx.dev.local"])
 	}
-	if _, ok := targets["nginx.localhost"]; ok {
-		t.Error("localhost domain should not appear in non-standalone mode")
+	if !slices.Equal(targets["nginx.localhost"], []string{"nginx:80"}) {
+		t.Errorf("expected reverse proxy target nginx:80, got %v", targets["nginx.localhost"])
 	}
 }
 
@@ -768,14 +768,9 @@ func TestDomainsComposeAndStandalone(t *testing.T) {
 	gen.SelectPorts(ctx) //nolint:errcheck // test helper
 
 	domains := gen.Domains()
-	if len(domains) != 2 {
-		t.Fatalf("expected 2 domains, got %d: %v", len(domains), domains)
-	}
-	if domains[0] != "myapp.web.dev.local" {
-		t.Errorf("expected myapp.web.dev.local, got %s", domains[0])
-	}
-	if domains[1] != "nginx.dev.local" {
-		t.Errorf("expected nginx.dev.local, got %s", domains[1])
+	expected := []string{"myapp.web.dev.local", "myapp.web.localhost", "nginx.dev.local", "nginx.localhost"}
+	if !slices.Equal(domains, expected) {
+		t.Fatalf("expected domains %v, got %v", expected, domains)
 	}
 }
 
@@ -872,11 +867,9 @@ func TestDomainsExcludesStopped(t *testing.T) {
 	gen.SelectPorts(ctx) //nolint:errcheck // test helper
 
 	domains := gen.Domains()
-	if len(domains) != 1 {
-		t.Fatalf("expected 1 domain, got %d: %v", len(domains), domains)
-	}
-	if domains[0] != "myapp.web.dev.local" {
-		t.Errorf("expected myapp.web.dev.local, got %s", domains[0])
+	expected := []string{"myapp.web.dev.local", "myapp.web.localhost"}
+	if !slices.Equal(domains, expected) {
+		t.Fatalf("expected domains %v, got %v", expected, domains)
 	}
 }
 
@@ -909,14 +902,9 @@ func TestDomainsSorted(t *testing.T) {
 	gen.SelectPorts(ctx) //nolint:errcheck // test helper
 
 	domains := gen.Domains()
-	expected := []string{"alpha.dev.local", "middle.dev.local", "zebra.dev.local"}
-	if len(domains) != len(expected) {
+	expected := []string{"alpha.dev.local", "alpha.localhost", "middle.dev.local", "middle.localhost", "zebra.dev.local", "zebra.localhost"}
+	if !slices.Equal(domains, expected) {
 		t.Fatalf("expected %d domains, got %d: %v", len(expected), len(domains), domains)
-	}
-	for i, d := range domains {
-		if d != expected[i] {
-			t.Errorf("domains[%d] = %s, want %s", i, d, expected[i])
-		}
 	}
 }
 
@@ -944,11 +932,9 @@ func TestDomainsIncludesPortsWithoutHTTP_DockerMode(t *testing.T) {
 	gen.SelectPorts(ctx) //nolint:errcheck // test helper
 
 	domains := gen.Domains()
-	if len(domains) != 1 {
-		t.Fatalf("expected 1 domain, got %d: %v", len(domains), domains)
-	}
-	if domains[0] != "myapp.web.dev.local" {
-		t.Errorf("expected myapp.web.dev.local, got %s", domains[0])
+	expected := []string{"myapp.web.dev.local", "myapp.web.localhost"}
+	if !slices.Equal(domains, expected) {
+		t.Fatalf("expected domains %v, got %v", expected, domains)
 	}
 }
 
@@ -1064,13 +1050,15 @@ func TestDomainTargetsMergesDuplicateDomains(t *testing.T) {
 	gen.SelectPorts(ctx) //nolint:errcheck // test helper
 
 	targets := gen.DomainTargets()
-	if len(targets) != 1 {
-		t.Fatalf("expected 1 merged domain, got %d: %v", len(targets), targets)
+	if len(targets) != 2 {
+		t.Fatalf("expected 2 merged domains, got %d: %v", len(targets), targets)
 	}
-	got := targets["myapp.web.dev.local"]
 	want := []string{"web:3000", "web:3001"}
-	if !slices.Equal(got, want) {
-		t.Errorf("DomainTargets() = %v, want %v", got, want)
+	if !slices.Equal(targets["myapp.web.dev.local"], want) {
+		t.Errorf("DomainTargets() = %v, want %v", targets["myapp.web.dev.local"], want)
+	}
+	if !slices.Equal(targets["myapp.web.localhost"], want) {
+		t.Errorf("DomainTargets() = %v, want %v", targets["myapp.web.localhost"], want)
 	}
 }
 
@@ -1173,8 +1161,12 @@ func TestGeneratorGatewayFallback(t *testing.T) {
 	gen.SelectPorts(ctx) //nolint:errcheck // test helper
 
 	targets := gen.DomainTargets()
-	if !slices.Equal(targets["web.dev.local"], []string{"172.18.0.1:8080"}) {
+	want := []string{"172.18.0.1:8080"}
+	if !slices.Equal(targets["web.dev.local"], want) {
 		t.Errorf("expected gateway target 172.18.0.1:8080 (published port via host gateway), got %v", targets["web.dev.local"])
+	}
+	if !slices.Equal(targets["web.localhost"], want) {
+		t.Errorf("expected web.localhost gateway target, got %v", targets["web.localhost"])
 	}
 }
 

@@ -177,15 +177,18 @@ docker run -d --name my-app -p 8080:80 nginx:alpine
 | Proxy target | `{container}:{private_port}` (shared network) or `{gateway}:{published_port}` (other networks) | `localhost:{published_port}` |
 | Port selection | Private ports (shared network) or published ports (other networks) | Published (host-mapped) ports |
 | Unpublished containers | Included only when reachable by Docker DNS | Skipped |
-| Domain suffixes | `{tld}` | `{tld}` + `.localhost` |
 | Detection | `/.dockerenv` present | `/.dockerenv` absent |
+
+Both modes register `.localhost` domain variants (see below).
 
 ### `.localhost` Domains
 
-In standalone mode, each container also gets a `.localhost` domain in addition to the configured TLD. Browsers treat `.localhost` as a secure context without needing a certificate, so these URLs work without any TLS warnings.
+Each container also gets a `.localhost` domain in addition to the configured TLD. Browsers treat `.localhost` as a secure context without needing a certificate, so these URLs work without any TLS warnings.
 
 - Compose services: `{project}.{service}.localhost`
-- Standalone containers: `{container-name}.localhost`
+- Other containers: `{container-name}.localhost`
+
+In standalone mode the proxy runs on the host, so `.localhost` reaches the published ports directly. In Docker mode `.localhost` resolves to the client machine's own loopback, so browsing from the host reaches the proxy's published ports just like the `{tld}` domains — without needing a hosts entry.
 
 These domains are not generated when custom `dev.local.domains` labels are set.
 
@@ -297,7 +300,7 @@ Flags mirror the Caddy plugin's shared options (same env vars, defaults, and pre
 Notes:
 
 - **No port probing** — the domain set is identical to the proxy's, but no HTTP requests are made; port probing only exists to pick a proxy target port.
-- **Standalone detection** — auto-detected exactly like the plugin (`/.dockerenv` absent → standalone mode, which also registers `.localhost` variants).
+- **Standalone detection** — auto-detected exactly like the plugin (`/.dockerenv` absent → standalone mode, routing via `localhost` instead of Docker DNS).
 - **Permissions** — requires root to write `/etc/hosts`; exits with an error if the hosts file isn't writable (unlike the plugin, which warns and continues).
 - **Index page** — not generated; this binary only maintains the hosts file.
 
