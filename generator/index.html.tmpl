@@ -65,10 +65,6 @@
             background: #1f3a5f;
             color: #58a6ff;
         }
-        .badge-standalone {
-            background: #2d1f3a;
-            color: #bc8cff;
-        }
         .empty {
             color: #8b949e;
             padding: 2rem;
@@ -82,6 +78,13 @@
             color: #8b949e;
             font-size: 0.8rem;
             margin-top: 0.25rem;
+        }
+        .container-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 3px;
+            vertical-align: middle;
+            margin-right: 0.4rem;
         }
         tr.stopped {
             opacity: 0.5;
@@ -143,34 +146,81 @@
         .copy-btn.copied::after {
             opacity: 1;
         }
+        tr.project-header td {
+            background: #161b22;
+            padding: 0.5rem 1rem;
+            border-top: 2px solid #30363d;
+            border-bottom: 1px solid #30363d;
+        }
+        .project-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font: inherit;
+            font-weight: 600;
+            color: #c9d1d9;
+        }
+        .project-toggle:hover {
+            color: #58a6ff;
+        }
+        .project-toggle .chevron {
+            display: inline-block;
+            color: #8b949e;
+            font-size: 0.8rem;
+            transition: transform 0.15s ease;
+        }
+        tr.project-header.expanded .project-toggle .chevron {
+            transform: rotate(90deg);
+        }
+        tr.project-member.hidden {
+            display: none;
+        }
     </style>
 </head>
 <body>
     <h1>devlocal</h1>
     <p class="subtitle">Local Docker container index</p>
-{{if .DisplayRows}}
+{{define "indexRow"}}
+            <tr{{if .Grouped}} class="project-member hidden{{if not .IsRunning}} stopped{{end}}"{{else if not .IsRunning}} class="stopped"{{end}}>
+                <td>{{if .URL}}<a href="{{.URL}}">{{.Domain}}</a>{{else}}{{.Domain}}{{end}} <span class="port">:{{.PortStr}}</span>{{if .CopyText}}<button class="copy-btn" type="button" data-copy="{{.CopyText}}" onclick="copyDomain(this)" aria-label="Copy {{.CopyText}}" title="Copy {{.CopyText}}">
+                    <svg class="icon-copy" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M22.6,4H21.55a3.89,3.89,0,0,0-7.31,0H13.4A2.41,2.41,0,0,0,11,6.4V10H25V6.4A2.41,2.41,0,0,0,22.6,4ZM23,8H13V6.25A.25.25,0,0,1,13.25,6h2.69l.12-1.11A1.24,1.24,0,0,1,16.61,4a2,2,0,0,1,3.15,1.18l.09.84h2.9a.25.25,0,0,1,.25.25Z"></path><path d="M33.25,18.06H21.33l2.84-2.83a1,1,0,1,0-1.42-1.42L17.5,19.06l5.25,5.25a1,1,0,0,0,.71.29,1,1,0,0,0,.71-1.7l-2.84-2.84H33.25a1,1,0,0,0,0-2Z"></path><path d="M29,16h2V6.68A1.66,1.66,0,0,0,29.35,5H27.08V7H29Z"></path><path d="M29,31H7V7H9V5H6.64A1.66,1.66,0,0,0,5,6.67V31.32A1.66,1.66,0,0,0,6.65,33H29.36A1.66,1.66,0,0,0,31,31.33V22.06H29Z"></path></svg>
+                    <svg class="icon-check" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"></path></svg>
+                </button>{{end}}</td>
+                {{if .IsFirst}}<td{{if gt .RowSpan 1}} rowspan="{{.RowSpan}}"{{end}}>{{.ContainerName}}{{if .IPAddress}}<div class="ip-address">{{.IPAddress}}</div>{{end}}</td>
+                <td{{if gt .RowSpan 1}} rowspan="{{.RowSpan}}"{{end}}>{{if .Icon}}<img class="container-icon" src="{{.Icon}}" alt="" title="{{.Image}}" onerror="this.style.display='none'">{{end}}{{.Image}}</td>
+                <td{{if gt .RowSpan 1}} rowspan="{{.RowSpan}}"{{end}}>{{if .ComposeProject}}<span class="badge badge-compose">{{.ComposeService}}</span>{{end}}</td>
+                <td{{if gt .RowSpan 1}} rowspan="{{.RowSpan}}"{{end}}>{{if .IsRunning}}<span class="status-running">running</span><br>{{.StartedAt}}{{else}}<span class="status-stopped">stopped</span><br>{{.StoppedAt}}{{end}}</td>{{end}}
+            </tr>
+{{end}}
+{{if or .DisplayRows .Groups}}
     <table>
         <thead>
             <tr>
                 <th>Domain</th>
                 <th>Container</th>
                 <th>Image</th>
-                <th>Compose</th>
+                <th>Service</th>
                 <th>Status</th>
             </tr>
         </thead>
         <tbody>
-{{range .DisplayRows}}
-            <tr{{if not .IsRunning}} class="stopped"{{end}}>
-                <td>{{if .URL}}<a href="{{.URL}}">{{.Domain}}</a>{{else}}{{.Domain}}{{end}} <span class="port">:{{.PortStr}}</span>{{if .CopyText}}<button class="copy-btn" type="button" data-copy="{{.CopyText}}" onclick="copyDomain(this)" aria-label="Copy {{.CopyText}}" title="Copy {{.CopyText}}">
-                    <svg class="icon-copy" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M22.6,4H21.55a3.89,3.89,0,0,0-7.31,0H13.4A2.41,2.41,0,0,0,11,6.4V10H25V6.4A2.41,2.41,0,0,0,22.6,4ZM23,8H13V6.25A.25.25,0,0,1,13.25,6h2.69l.12-1.11A1.24,1.24,0,0,1,16.61,4a2,2,0,0,1,3.15,1.18l.09.84h2.9a.25.25,0,0,1,.25.25Z"></path><path d="M33.25,18.06H21.33l2.84-2.83a1,1,0,1,0-1.42-1.42L17.5,19.06l5.25,5.25a1,1,0,0,0,.71.29,1,1,0,0,0,.71-1.7l-2.84-2.84H33.25a1,1,0,0,0,0-2Z"></path><path d="M29,16h2V6.68A1.66,1.66,0,0,0,29.35,5H27.08V7H29Z"></path><path d="M29,31H7V7H9V5H6.64A1.66,1.66,0,0,0,5,6.67V31.32A1.66,1.66,0,0,0,6.65,33H29.36A1.66,1.66,0,0,0,31,31.33V22.06H29Z"></path></svg>
-                    <svg class="icon-check" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"></path></svg>
-                </button>{{end}}</td>
-                {{if .IsFirst}}<td{{if gt .RowSpan 1}} rowspan="{{.RowSpan}}"{{end}}>{{.ContainerName}}{{if .IPAddress}}<div class="ip-address">{{.IPAddress}}</div>{{end}}</td>
-                <td{{if gt .RowSpan 1}} rowspan="{{.RowSpan}}"{{end}}>{{.Image}}</td>
-                <td{{if gt .RowSpan 1}} rowspan="{{.RowSpan}}"{{end}}>{{if .ComposeProject}}<span class="badge badge-compose">{{.ComposeProject}}/{{.ComposeService}}</span>{{else}}<span class="badge badge-standalone">standalone</span>{{end}}</td>
-                <td{{if gt .RowSpan 1}} rowspan="{{.RowSpan}}"{{end}}>{{if .IsRunning}}<span class="status-running">running</span><br>{{.StartedAt}}{{else}}<span class="status-stopped">stopped</span><br>{{.StoppedAt}}{{end}}</td>{{end}}
+{{range .DisplayRows}}{{template "indexRow" .}}{{end}}
+{{range .Groups}}
+            <tr class="project-header">
+                <td colspan="5">
+                    <button class="project-toggle" type="button" aria-expanded="false" onclick="toggleProject(this)">
+                        <span class="chevron">▸</span>
+                        <span class="project-name">{{.Project}}</span>
+                    </button>
+                </td>
             </tr>
+{{range .Rows}}
+            {{template "indexRow" .}}
+{{end}}
 {{end}}
         </tbody>
     </table>
@@ -200,6 +250,16 @@
         try { document.execCommand('copy'); } catch (e) {}
         document.body.removeChild(ta);
         done();
+    }
+    function toggleProject(btn) {
+        var headerRow = btn.closest('tr');
+        var expand = headerRow.classList.toggle('expanded');
+        btn.setAttribute('aria-expanded', expand ? 'true' : 'false');
+        var row = headerRow.nextElementSibling;
+        while (row && row.classList.contains('project-member')) {
+            row.classList.toggle('hidden', !expand);
+            row = row.nextElementSibling;
+        }
     }
     </script>
 </body>

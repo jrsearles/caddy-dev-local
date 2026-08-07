@@ -24,6 +24,7 @@ type indexRow struct {
 	Domains        []domainEntry
 	ContainerName  string
 	Image          string
+	Icon           string
 	IPAddress      string
 	ComposeProject string
 	ComposeService string
@@ -39,6 +40,7 @@ type displayRow struct {
 	CopyText       string
 	ContainerName  string
 	Image          string
+	Icon           string
 	IPAddress      string
 	ComposeProject string
 	ComposeService string
@@ -47,11 +49,18 @@ type displayRow struct {
 	StoppedAt      string
 	RowSpan        int
 	IsFirst        bool
+	Grouped        bool
+}
+
+type displayGroup struct {
+	Project string
+	Rows    []displayRow
 }
 
 type indexData struct {
 	TLD         string
 	DisplayRows []displayRow
+	Groups      []displayGroup
 }
 
 func buildDomainEntries(domain string, portStrs []string, url string) []domainEntry {
@@ -214,6 +223,7 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo)
 			Domains:        domains,
 			ContainerName:  info.ContainerName,
 			Image:          info.Image,
+			Icon:           iconForContainer(info.Image, info.Labels),
 			IPAddress:      ipAddress,
 			ComposeProject: composeProject,
 			ComposeService: composeService,
@@ -223,6 +233,49 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo)
 		})
 	}
 
+	var top []indexRow
+	var projectRows []indexRow
+	for gi := range groups {
+		if groups[gi].ComposeProject == "" {
+			top = append(top, groups[gi])
+		} else {
+			projectRows = append(projectRows, groups[gi])
+		}
+	}
+
+	projectGroups := make(map[string][]indexRow)
+	var projectNames []string
+	for gi := range projectRows {
+		g := &projectRows[gi]
+		if _, ok := projectGroups[g.ComposeProject]; !ok {
+			projectNames = append(projectNames, g.ComposeProject)
+		}
+		projectGroups[g.ComposeProject] = append(projectGroups[g.ComposeProject], *g)
+	}
+	slices.Sort(projectNames)
+
+	grouped := make([]displayGroup, 0, len(projectNames))
+	for _, name := range projectNames {
+		grouped = append(grouped, displayGroup{
+			Project: name,
+			Rows:    flattenRows(projectGroups[name], true),
+		})
+	}
+
+	data := indexData{
+		TLD:         tld,
+		DisplayRows: flattenRows(top, false),
+		Groups:      grouped,
+	}
+
+	var sb strings.Builder
+	if err := indexTemplate.Execute(&sb, data); err != nil {
+		return "template error: " + err.Error()
+	}
+	return sb.String()
+}
+
+func flattenRows(groups []indexRow, grouped bool) []displayRow {
 	var rows []displayRow
 	for gi := range groups {
 		for i, d := range groups[gi].Domains {
@@ -233,6 +286,7 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo)
 				CopyText:       d.CopyText,
 				ContainerName:  groups[gi].ContainerName,
 				Image:          groups[gi].Image,
+				Icon:           groups[gi].Icon,
 				IPAddress:      groups[gi].IPAddress,
 				ComposeProject: groups[gi].ComposeProject,
 				ComposeService: groups[gi].ComposeService,
@@ -241,18 +295,9 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo)
 				StoppedAt:      groups[gi].StoppedAt,
 				RowSpan:        len(groups[gi].Domains),
 				IsFirst:        i == 0,
+				Grouped:        grouped,
 			})
 		}
 	}
-
-	data := indexData{
-		TLD:         tld,
-		DisplayRows: rows,
-	}
-
-	var sb strings.Builder
-	if err := indexTemplate.Execute(&sb, data); err != nil {
-		return "template error: " + err.Error()
-	}
-	return sb.String()
+	return rows
 }
