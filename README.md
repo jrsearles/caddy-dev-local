@@ -26,16 +26,62 @@ docker network create devlocal
 
 ### 2. Run the proxy
 
+Beyond the basics, the container needs a few extra mounts to work well from your host:
+
+- **Docker socket** (`/var/run/docker.sock`, read-only) — so it can watch and discover containers.
+- **Your Caddyfile** (`/etc/caddy/Caddyfile`, read-only) — loaded as-is on top of the auto-generated container routes. Point the proxy at it with `DEVLOCAL_CONFIG=/etc/caddy/Caddyfile`. Omit the mount if you have no Caddyfile.
+- **Your host's hosts file** (`/etc/hosts`, writable) — the proxy maintains the `*.dev.local` entries here so the domains resolve on your machine. Omit this (or pass `--hosts-file=false`) if you don't want the proxy touching it.
+- **Host network access** — containers on other networks are reached via the host gateway. On Linux add `--add-host host.docker.internal:host-gateway`; Docker Desktop for Windows/macOS provides `host.docker.internal` automatically.
+
+#### Linux
+
 ```bash
 docker run -d \
   --name devlocal \
   -p 80:80 \
   -p 443:443 \
+  -p 2019:2019 \
+  -e DEVLOCAL_CONFIG=/etc/caddy/Caddyfile \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
   -v caddy_data:/data \
+  -v "$PWD/Caddyfile":/etc/caddy/Caddyfile:ro \
+  -v /etc/hosts:/etc/hosts \
+  --add-host host.docker.internal:host-gateway \
   --network devlocal \
   ghcr.io/jsearles/caddy-devlocal:latest
 ```
+
+#### Windows (Docker Desktop, PowerShell)
+
+```powershell
+docker run -d `
+  --name devlocal `
+  -p 80:80 `
+  -p 443:443 `
+  -p 2019:2019 `
+  -e DEVLOCAL_CONFIG=/etc/caddy/Caddyfile `
+  -v "//var/run/docker.sock:/var/run/docker.sock:ro" `
+  -v caddy_data:/data `
+  -v "${PWD}\Caddyfile:/etc/caddy/Caddyfile:ro" `
+  -v "C:\Windows\System32\drivers\etc\hosts:/etc/hosts" `
+  --network devlocal `
+  ghcr.io/jsearles/caddy-devlocal:latest
+```
+
+Notes:
+
+- The `2019:2019` mapping publishes Caddy's [admin API](https://caddyserver.com/docs/api) so you can inspect the live config from your machine (e.g., `curl http://localhost:2019/config/`). Caddy's admin endpoint binds to `localhost:2019` inside the container by default, so the published port only works when your Caddyfile points it at a reachable address in its global options:
+
+```caddyfile
+{
+	admin 0.0.0.0:2019
+}
+```
+
+  The admin API is unauthenticated, so keep that in mind on shared networks; omit the mapping if you don't need it.
+- Mounting over the container's `/etc/hosts` replaces Docker's auto-generated entries (container hostname, etc.), which the proxy doesn't need. Inside a container `/etc/hosts` is always a bind mount, so the proxy writes it in place (it falls back from its usual atomic-rename strategy); on Windows this happens through Docker Desktop's file sharing. If hosts management fails for any reason, disable it with `--hosts-file=false` and run the [standalone hosts binary](#standalone-mode) on your host instead.
+- In **Git Bash** for Windows, keep the `//` prefix on the socket path and use forward slashes (MSYS would otherwise rewrite `/var/run/docker.sock`).
+- Running from **WSL2**? Use the Linux command from your WSL distro — the proxy writes to the distro's `/etc/hosts`, which WSL keeps in sync with the Windows hosts file.
 
 ### 3. Start your containers
 
@@ -70,9 +116,16 @@ services:
     ports:
       - "80:80"
       - "443:443"
+      - "2019:2019"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - caddy_data:/data
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${HOSTS_FILE:-/etc/hosts}:/etc/hosts
+    environment:
+      - DEVLOCAL_CONFIG=/etc/caddy/Caddyfile
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - devlocal
     restart: unless-stopped
@@ -90,6 +143,14 @@ networks:
 volumes:
   caddy_data:
 ```
+
+`HOSTS_FILE` lets the same compose file work on any platform — on Windows create a `.env` with:
+
+```ini
+HOSTS_FILE=C:\Windows\System32\drivers\etc\hosts
+```
+
+The `extra_hosts` entry is a no-op on Docker Desktop (which already resolves `host.docker.internal`) but required on Linux for host-network reachability.
 
 ## Labels
 
@@ -145,6 +206,16 @@ just check                  # Run linter + tests
 ```
 
 See `just --list` for all available recipes.
+
+## Building the Docker Image
+
+The root [`Dockerfile`](Dockerfile) builds caddy with the devlocal plugin via the official [`caddy:builder`](https://hub.docker.com/_/caddy#adding-custom-caddy-modules) image (using `xcaddy`), then overlays the built binary onto the regular `caddy` image. The base tags are pinned to the Caddy version in `go.mod` — bump them together when upgrading.
+
+```bash
+docker build -t caddy-dev-local .
+```
+
+The image runs `caddy devlocal`, so it expects the same mounts as the prebuilt image in the [Quick Start](#quick-start).
 
 ## Standalone Mode
 

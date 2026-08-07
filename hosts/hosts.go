@@ -2,6 +2,7 @@ package hosts
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"runtime"
 	"sort"
@@ -185,9 +186,30 @@ func writeHostsFile(path, content string) error {
 	if err := os.WriteFile(tmp, []byte(content), 0644); err != nil { //nolint:gosec // 0644 matches standard /etc/hosts permissions
 		return fmt.Errorf("writing temp hosts file: %w", err)
 	}
-	if err := os.Rename(tmp, path); err != nil {
-		os.Remove(tmp)
-		return fmt.Errorf("renaming hosts file: %w", err)
+	defer os.Remove(tmp)
+
+	if err := os.Rename(tmp, path); err == nil {
+		return nil
+	}
+
+	return writeInPlace(path, tmp)
+}
+
+func writeInPlace(path, tmp string) error {
+	src, err := os.Open(tmp)
+	if err != nil {
+		return fmt.Errorf("opening temp hosts file: %w", err)
+	}
+	defer src.Close()
+
+	dst, err := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		return fmt.Errorf("opening hosts file: %w", err)
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, src); err != nil {
+		return fmt.Errorf("writing hosts file: %w", err)
 	}
 	return nil
 }

@@ -180,3 +180,33 @@ func tempHosts(t *testing.T, content string) string {
 	}
 	return path
 }
+
+func TestWriteInPlace(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "hosts")
+	if err := os.WriteFile(path, []byte("original\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	tmp := filepath.Join(dir, "hosts.devlocal.tmp")
+	if err := os.WriteFile(tmp, []byte("replacement\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := writeInPlace(path, tmp); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "replacement\n" {
+		t.Errorf("in-place write mismatch\ngot:\n%s\nwant:\nreplacement\n", content)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0644 {
+		t.Errorf("mode should be preserved, got %v", info.Mode().Perm())
+	}
+}
