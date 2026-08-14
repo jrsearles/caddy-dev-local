@@ -8,6 +8,15 @@ import (
 	"testing"
 )
 
+func TestPath(t *testing.T) {
+	if got := Path(""); got != FilePath() {
+		t.Errorf("Path(\"\") = %q, want system default %q", got, FilePath())
+	}
+	if got := Path("/custom/hosts"); got != "/custom/hosts" {
+		t.Errorf("Path(\"/custom/hosts\") = %q, want /custom/hosts", got)
+	}
+}
+
 func TestBuildBlock(t *testing.T) {
 	block := buildBlock("dev.local", []string{"b.dev.local", "a.dev.local"})
 	expected := "# dev-local:BEGIN\n# Managed by caddy-dev-local — do not edit.\n127.0.0.1    dev.local\n127.0.0.1    a.dev.local\n127.0.0.1    b.dev.local\n# dev-local:END\n"
@@ -69,11 +78,12 @@ func TestSyncReplacesExistingBlock(t *testing.T) {
 }
 
 func TestSyncNoOpWhenUnchanged(t *testing.T) {
-	initial := "# dev-local:BEGIN\n# Managed by caddy-dev-local — do not edit.\n127.0.0.1    foo.dev.local\n# dev-local:END\n"
+	initial := "# dev-local:BEGIN\n# Managed by caddy-dev-local — do not edit.\n127.0.0.1    dev.local\n127.0.0.1    foo.dev.local\n# dev-local:END\n"
 	path := tempHosts(t, initial)
 
 	info1, _ := os.Stat(path)
 	modTime1 := info1.ModTime()
+	before, _ := os.ReadFile(path)
 
 	if err := syncToFile(path, "dev.local", []string{"foo.dev.local"}); err != nil {
 		t.Fatal(err)
@@ -81,8 +91,12 @@ func TestSyncNoOpWhenUnchanged(t *testing.T) {
 
 	info2, _ := os.Stat(path)
 	modTime2 := info2.ModTime()
+	after, _ := os.ReadFile(path)
 	if !modTime1.Equal(modTime2) {
 		t.Error("file should not have been modified when content unchanged")
+	}
+	if !bytes.Equal(before, after) {
+		t.Error("content should be unchanged")
 	}
 }
 

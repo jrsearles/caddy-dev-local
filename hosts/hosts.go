@@ -21,8 +21,15 @@ func FilePath() string {
 	return "/etc/hosts"
 }
 
-func CanWrite() bool {
-	f, err := os.OpenFile(FilePath(), os.O_WRONLY, 0)
+func Path(override string) string {
+	if override != "" {
+		return override
+	}
+	return FilePath()
+}
+
+func CanWrite(path string) bool {
+	f, err := os.OpenFile(path, os.O_WRONLY, 0)
 	if err != nil {
 		return false
 	}
@@ -30,12 +37,12 @@ func CanWrite() bool {
 	return true
 }
 
-func Sync(tld string, domains []string) error {
-	return syncToFile(FilePath(), tld, domains)
+func Sync(path, tld string, domains []string) error {
+	return syncToFile(path, tld, domains)
 }
 
-func Remove() error {
-	return removeFromFile(FilePath())
+func Remove(path string) error {
+	return removeFromFile(path)
 }
 
 func syncToFile(path string, tld string, domains []string) error {

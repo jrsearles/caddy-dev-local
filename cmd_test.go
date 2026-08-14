@@ -17,6 +17,7 @@ func newDevlocalFlags(t *testing.T, args ...string) caddycmd.Flags {
 	fs.Duration("stale-ttl", 0, "")
 	fs.Duration("probe-timeout", 0, "")
 	fs.Bool("hosts-file", true, "")
+	fs.String("hosts-path", "", "")
 	fs.Duration("poll-interval", 0, "")
 	if err := fs.Parse(args); err != nil {
 		t.Fatalf("parsing flags %v: %v", args, err)
@@ -30,6 +31,7 @@ func TestApplyCommandFlagsDefaultsPreserved(t *testing.T) {
 		StaleTTL:     time.Hour,
 		ProbeTimeout: 2 * time.Second,
 		HostsFile:    false,
+		HostsPath:    "/env/hosts",
 		PollInterval: 45 * time.Second,
 	}
 
@@ -37,6 +39,9 @@ func TestApplyCommandFlagsDefaultsPreserved(t *testing.T) {
 
 	if cfg.HostsFile {
 		t.Error("unset --hosts-file flag must not override an env-configured HostsFile value")
+	}
+	if cfg.HostsPath != "/env/hosts" {
+		t.Errorf("HostsPath = %q, want /env/hosts (env-configured value preserved)", cfg.HostsPath)
 	}
 	if cfg.PollInterval != 45*time.Second {
 		t.Errorf("PollInterval = %v, want 45s (env-configured value preserved)", cfg.PollInterval)
@@ -83,6 +88,16 @@ func TestApplyCommandFlagsHostsFileTrueExplicit(t *testing.T) {
 
 	if !cfg.HostsFile {
 		t.Error("explicit --hosts-file=true must override cfg.HostsFile")
+	}
+}
+
+func TestApplyCommandFlagsHostsPathExplicit(t *testing.T) {
+	cfg := config.DefaultConfig()
+
+	applyCommandFlags(cfg, newDevlocalFlags(t, "--hosts-path=/custom/hosts"))
+
+	if cfg.HostsPath != "/custom/hosts" {
+		t.Errorf("HostsPath = %q, want /custom/hosts", cfg.HostsPath)
 	}
 }
 

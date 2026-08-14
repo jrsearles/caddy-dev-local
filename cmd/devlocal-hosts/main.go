@@ -23,7 +23,8 @@ const name = "devlocal-hosts"
 
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "clean" {
-		if err := hosts.Remove(); err != nil {
+		cfg := config.DefaultConfig()
+		if err := hosts.Remove(hosts.Path(cfg.HostsPath)); err != nil {
 			fmt.Fprintf(os.Stderr, "%s: removing hosts entries: %v\n", name, err)
 			os.Exit(1)
 		}
@@ -52,7 +53,7 @@ func run() {
 
 	logger := zap.NewExample()
 
-	if !hosts.CanWrite() {
+	if !hosts.CanWrite(hosts.Path(cfg.HostsPath)) {
 		fmt.Fprintln(os.Stderr, "hosts file not writable, exiting (run as root)")
 		os.Exit(1)
 	}
@@ -76,7 +77,7 @@ func run() {
 	apply := func() {
 		applyMu.Lock()
 		defer applyMu.Unlock()
-		if err := hosts.Sync(cfg.TLD, gen.Domains()); err != nil {
+		if err := hosts.Sync(hosts.Path(cfg.HostsPath), cfg.TLD, gen.Domains()); err != nil {
 			logger.Error("failed to update hosts file", zap.Error(err))
 		}
 	}

@@ -30,7 +30,7 @@ Beyond the basics, the container needs a few extra mounts to work well from your
 
 - **Docker socket** (`/var/run/docker.sock`, read-only) — so it can watch and discover containers.
 - **Your Caddyfile** (`/etc/caddy/Caddyfile`, read-only) — loaded as-is on top of the auto-generated container routes. Point the proxy at it with `DEVLOCAL_CONFIG=/etc/caddy/Caddyfile`. Omit the mount if you have no Caddyfile.
-- **Your host's hosts file** (`/etc/hosts`, writable) — the proxy maintains the `*.dev.local` entries here so the domains resolve on your machine. Omit this (or pass `--hosts-file=false`) if you don't want the proxy touching it.
+- **Your host's hosts file** (writable) — the proxy maintains the `*.dev.local` entries here so the domains resolve on your machine. Mount it at a **dedicated path** (never over the container's own `/etc/hosts`) and point the proxy at it with `DEVLOCAL_HOSTS_PATH`. Omit this (or pass `--hosts-file=false`) if you don't want the proxy touching it.
 - **Host network access** — containers on other networks are reached via the host gateway. On Linux add `--add-host host.docker.internal:host-gateway`; Docker Desktop for Windows/macOS provides `host.docker.internal` automatically.
 
 #### Linux
@@ -42,13 +42,14 @@ docker run -d \
   -p 443:443 \
   -p 2019:2019 \
   -e DEVLOCAL_CONFIG=/etc/caddy/Caddyfile \
+  -e DEVLOCAL_HOSTS_PATH=/etc/caddy-dev-local/hosts \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
   -v caddy_data:/data \
   -v "$PWD/Caddyfile":/etc/caddy/Caddyfile:ro \
-  -v /etc/hosts:/etc/hosts \
+  -v /etc/hosts:/etc/caddy-dev-local/hosts \
   --add-host host.docker.internal:host-gateway \
   --network devlocal \
-  ghcr.io/jsearles/caddy-devlocal:latest
+  ghcr.io/jsearles/caddy-dev-local:latest
 ```
 
 #### Windows (Docker Desktop, PowerShell)
@@ -60,12 +61,13 @@ docker run -d `
   -p 443:443 `
   -p 2019:2019 `
   -e DEVLOCAL_CONFIG=/etc/caddy/Caddyfile `
+  -e DEVLOCAL_HOSTS_PATH=/etc/caddy-dev-local/hosts `
   -v "//var/run/docker.sock:/var/run/docker.sock:ro" `
   -v caddy_data:/data `
   -v "${PWD}\Caddyfile:/etc/caddy/Caddyfile:ro" `
-  -v "C:\Windows\System32\drivers\etc\hosts:/etc/hosts" `
+  -v "C:\Windows\System32\drivers\etc\hosts:/etc/caddy-dev-local/hosts" `
   --network devlocal `
-  ghcr.io/jsearles/caddy-devlocal:latest
+  ghcr.io/jsearles/caddy-dev-local:latest
 ```
 
 Notes:
@@ -79,7 +81,7 @@ Notes:
 ```
 
   The admin API is unauthenticated, so keep that in mind on shared networks; omit the mapping if you don't need it.
-- Mounting over the container's `/etc/hosts` replaces Docker's auto-generated entries (container hostname, etc.), which the proxy doesn't need. Inside a container `/etc/hosts` is always a bind mount, so the proxy writes it in place (it falls back from its usual atomic-rename strategy); on Windows this happens through Docker Desktop's file sharing. If hosts management fails for any reason, disable it with `--hosts-file=false` and run the [standalone hosts binary](#standalone-mode) on your host instead.
+- The hosts file is mounted at a **dedicated path** (`/etc/caddy-dev-local/hosts`), never over the container's own `/etc/hosts`, so Docker's auto-generated entries (container hostname, etc.) are left untouched. The mount is a bind mount, so the proxy writes it in place (it falls back from its usual atomic-rename strategy); on Windows this happens through Docker Desktop's file sharing. If hosts management fails for any reason, disable it with `--hosts-file=false` and run the [standalone hosts binary](#standalone-hosts-binary) on your host instead.
 - In **Git Bash** for Windows, keep the `//` prefix on the socket path and use forward slashes (MSYS would otherwise rewrite `/var/run/docker.sock`).
 - Running from **WSL2**? Use the Linux command from your WSL distro — the proxy writes to the distro's `/etc/hosts`, which WSL keeps in sync with the Windows hosts file.
 
@@ -121,9 +123,10 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - caddy_data:/data
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - ${HOSTS_FILE:-/etc/hosts}:/etc/hosts
+      - ${HOSTS_FILE:-/etc/hosts}:/etc/caddy-dev-local/hosts
     environment:
       - DEVLOCAL_CONFIG=/etc/caddy/Caddyfile
+      - DEVLOCAL_HOSTS_PATH=/etc/caddy-dev-local/hosts
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
@@ -180,7 +183,8 @@ services:
 | `--tld` | `DEVLOCAL_TLD` | `dev.local` | Top-level domain |
 | `--stale-ttl` | `DEVLOCAL_STALE_TTL` | `1h` | Keep config for stopped containers |
 | `--probe-timeout` | `DEVLOCAL_PROBE_TIMEOUT` | `2s` | HTTP probe timeout |
-| `--hosts-file` | `DEVLOCAL_HOSTS_FILE` | `true` | Manage `/etc/hosts` entries for domains |
+| `--hosts-file` | `DEVLOCAL_HOSTS_FILE` | `true` | Manage hosts file entries for domains |
+| `--hosts-path` | `DEVLOCAL_HOSTS_PATH` | (system hosts file) | Path to the hosts file to manage; in Docker mode set this to the dedicated mount (e.g. `/etc/caddy-dev-local/hosts`) |
 | `--poll-interval` | `DEVLOCAL_POLL_INTERVAL` | `30s` | Periodic full refresh as a safety net for missed Docker events; `0` disables |
 | `--config` | `DEVLOCAL_CONFIG` | (auto-detect) | Path to a static Caddyfile loaded as-is |
 
@@ -300,7 +304,7 @@ caddy-dev-local writes two files to the user cache directory (`os.UserCacheDir()
 
 ## Hosts File
 
-caddy-dev-local automatically manages entries in your system hosts file (`/etc/hosts` on Linux, `C:\Windows\System32\drivers\etc\hosts` on Windows) so domains resolve locally without configuring DNS.
+caddy-dev-local automatically manages entries in your system hosts file (`/etc/hosts` on Linux, `C:\Windows\System32\drivers\etc\hosts` on Windows) so domains resolve locally without configuring DNS. Override the target with `--hosts-path` / `DEVLOCAL_HOSTS_PATH` — in Docker mode, mount the host file at a dedicated path (e.g. `-v /etc/hosts:/etc/caddy-dev-local/hosts`) and set `DEVLOCAL_HOSTS_PATH=/etc/caddy-dev-local/hosts`, so the container's own `/etc/hosts` is left untouched.
 
 Entries are written inside a managed block with searchable markers:
 
@@ -336,6 +340,8 @@ caddy devlocal-clean
 devlocal-hosts clean
 ```
 
+Both `clean` commands honor `DEVLOCAL_HOSTS_PATH`.
+
 ### Permissions
 
 On Linux, writing to `/etc/hosts` requires root. If the process doesn't have write permission, caddy-dev-local logs a warning and skips hosts file updates (Caddy still works normally).
@@ -367,6 +373,7 @@ Flags mirror the Caddy plugin's shared options (same env vars, defaults, and pre
 | `--stale-ttl` | `DEVLOCAL_STALE_TTL` | `1h` | Keep entries for stopped containers |
 | `--poll-interval` | `DEVLOCAL_POLL_INTERVAL` | `30s` | Periodic full refresh as a safety net for missed events; `0` disables |
 | `--probe-timeout` | `DEVLOCAL_PROBE_TIMEOUT` | `2s` | Accepted for flag parity; probing is skipped (see below) |
+| `--hosts-path` | `DEVLOCAL_HOSTS_PATH` | (system hosts file) | Path to the hosts file to manage |
 
 Notes:
 

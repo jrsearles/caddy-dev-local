@@ -13,6 +13,7 @@ const (
 	flagStaleTTL     = "stale-ttl"
 	flagProbeTimeout = "probe-timeout"
 	flagPollInterval = "poll-interval"
+	flagHostsPath    = "hosts-path"
 )
 
 type sharedFlagSpec struct {
@@ -26,6 +27,7 @@ var sharedFlagSpecs = []sharedFlagSpec{
 	{flagStaleTTL, "0", "Keep config for stopped containers (env: DEVLOCAL_STALE_TTL)"},
 	{flagProbeTimeout, "0", "HTTP probe timeout (env: DEVLOCAL_PROBE_TIMEOUT)"},
 	{flagPollInterval, "0", "Periodic full refresh as a safety net for missed events (env: DEVLOCAL_POLL_INTERVAL, default 30s, 0 disables)"},
+	{flagHostsPath, "", "Path to the hosts file to manage (env: DEVLOCAL_HOSTS_PATH)"},
 }
 
 func isSharedDurationFlag(name string) bool {
@@ -85,6 +87,10 @@ func SharedOverrides(fs *pflag.FlagSet) FlagOverrides {
 	if fs.Changed(flagPollInterval) {
 		v, _ := fs.GetDuration(flagPollInterval)
 		o.PollInterval = &v
+	}
+	if fs.Changed(flagHostsPath) {
+		v, _ := fs.GetString(flagHostsPath)
+		o.HostsPath = &v
 	}
 	return o
 }
