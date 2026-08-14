@@ -125,19 +125,8 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo)
 	groups := make([]indexRow, 0, len(containers))
 
 	for _, info := range containers {
-		if info.SelectedPort == 0 && len(info.CustomDomains) == 0 {
-			switch info.TargetKind {
-			case targetDNS:
-				if len(info.Ports) == 0 {
-					continue
-				}
-			case targetGateway:
-				if len(info.PublishedPorts) == 0 {
-					continue
-				}
-			default:
-				continue
-			}
+		if !info.hasReachablePort() {
+			continue
 		}
 
 		composeProject := ""
@@ -166,12 +155,7 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo)
 
 		if len(info.CustomDomains) > 0 {
 			for _, cd := range info.CustomDomains {
-				port := cd.Port
-				if standalone || info.TargetKind == targetGateway {
-					if pub, ok := info.PublishedPorts[cd.Port]; ok {
-						port = pub
-					}
-				}
+				port := effectivePort(info, cd.Port)
 				url := ""
 				if info.IsRunning {
 					url = "https://" + cd.Domain
@@ -197,13 +181,7 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo)
 
 			portStrs := make([]string, 0, len(info.Ports))
 			for _, p := range info.Ports {
-				port := p
-				if info.TargetKind == targetGateway {
-					if pub, ok := info.PublishedPorts[p]; ok {
-						port = pub
-					}
-				}
-				portStrs = append(portStrs, strconv.FormatUint(uint64(port), 10))
+				portStrs = append(portStrs, strconv.FormatUint(uint64(effectivePort(info, p)), 10))
 			}
 
 			url := ""

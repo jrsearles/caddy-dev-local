@@ -309,20 +309,33 @@ func (g *Generator) selectPortsLocked() {
 }
 
 func (g *Generator) probeTarget(info *ContainerInfo) (string, []uint16) {
-	var pubPorts []uint16
+	ports := make([]uint16, 0, len(info.Ports))
 	for _, p := range info.Ports {
-		if pub, ok := info.PublishedPorts[p]; ok {
-			pubPorts = append(pubPorts, pub)
+		ports = append(ports, effectivePort(info, p))
+	}
+	return g.hostFor(info), ports
+}
+
+func effectivePort(info *ContainerInfo, private uint16) uint16 {
+	if info.TargetKind == targetGateway {
+		if pub, ok := info.PublishedPorts[private]; ok {
+			return pub
 		}
 	}
+	return private
+}
 
-	switch {
-	case g.cfg.Standalone:
-		return "localhost", pubPorts
-	case info.TargetKind == targetGateway:
-		return info.GatewayHost, pubPorts
+func (info *ContainerInfo) hasReachablePort() bool {
+	if info.SelectedPort > 0 || len(info.CustomDomains) > 0 {
+		return true
+	}
+	switch info.TargetKind {
+	case targetDNS:
+		return len(info.Ports) > 0
+	case targetGateway:
+		return len(info.PublishedPorts) > 0
 	default:
-		return info.ContainerName, info.Ports
+		return false
 	}
 }
 
@@ -354,13 +367,7 @@ func (g *Generator) DomainTargets() map[string][]string {
 
 		if customDomains := g.customDomains(info); len(customDomains) > 0 {
 			for _, cd := range customDomains {
-				port := cd.Port
-				if g.cfg.Standalone || info.TargetKind == targetGateway {
-					if pub, ok := info.PublishedPorts[cd.Port]; ok {
-						port = pub
-					}
-				}
-				addTarget(cd.Domain, fmt.Sprintf("%s:%d", g.hostFor(info), port))
+				addTarget(cd.Domain, fmt.Sprintf("%s:%d", g.hostFor(info), effectivePort(info, cd.Port)))
 			}
 			continue
 		}
@@ -472,19 +479,8 @@ func (g *Generator) Domains() []string {
 			continue
 		}
 
-		if info.SelectedPort == 0 {
-			switch info.TargetKind {
-			case targetDNS:
-				if len(info.Ports) == 0 {
-					continue
-				}
-			case targetGateway:
-				if len(info.PublishedPorts) == 0 {
-					continue
-				}
-			default:
-				continue
-			}
+		if !info.hasReachablePort() {
+			continue
 		}
 
 		d := g.domainForContainer(info)

@@ -17,24 +17,15 @@ func preferPorts(ports []uint16) []uint16 {
 		return ports
 	}
 
-	portSet := make(map[uint16]bool, len(ports))
-	for _, p := range ports {
-		portSet[p] = true
-	}
-
 	var preferred, rest []uint16
 	for _, p := range commonHTTPPorts {
-		if portSet[p] {
+		if slices.Contains(ports, p) {
 			preferred = append(preferred, p)
 		}
 	}
 
 	for _, p := range ports {
-		if !portSet[p] {
-			continue
-		}
-		isCommon := slices.Contains(commonHTTPPorts, p)
-		if !isCommon {
+		if !slices.Contains(commonHTTPPorts, p) {
 			rest = append(rest, p)
 		}
 	}
