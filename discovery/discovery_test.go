@@ -7,7 +7,6 @@ import (
 
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/events"
-	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
 	"go.uber.org/zap"
 
@@ -25,16 +24,8 @@ func (m *mockEventsClient) ContainerList(ctx context.Context, options client.Con
 	return m.containers, nil
 }
 
-func (m *mockEventsClient) ContainerInspect(ctx context.Context, containerID string) (container.InspectResponse, error) {
-	return container.InspectResponse{}, nil
-}
-
 func (m *mockEventsClient) Events(ctx context.Context, options client.EventsListOptions) (<-chan events.Message, <-chan error) {
 	return m.msgCh, m.errCh
-}
-
-func (m *mockEventsClient) NetworkInspect(ctx context.Context, networkID string) (network.Inspect, error) {
-	return network.Inspect{}, nil
 }
 
 func TestShouldRefresh(t *testing.T) {

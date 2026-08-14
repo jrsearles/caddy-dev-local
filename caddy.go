@@ -2,15 +2,18 @@ package caddydevlocal
 
 import (
 	"bytes"
+	"cmp"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
+	"time"
 
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig"
@@ -73,7 +76,7 @@ func initCaddyConfig(gen *generator.Generator, cfg *config.Config, indexDir stri
 		return fmt.Errorf("applying devlocal config: %w", err)
 	}
 
-	api.setFingerprint(fingerprintDomains(gen.DomainTargets()))
+	api.setFingerprint(fingerprintState(gen.DomainTargets(), gen.Containers()))
 	writeDevlocalAutosave(indexDir, devlocal)
 
 	logger.Info("loaded initial config", zap.Int("domains", len(gen.Domains())))
@@ -185,7 +188,7 @@ func reloadCaddyConfig(gen *generator.Generator, cfg *config.Config, indexDir st
 	logger := caddy.Log().Named(appName)
 
 	domains := gen.DomainTargets()
-	fp := fingerprintDomains(domains)
+	fp := fingerprintState(domains, gen.Containers())
 	if fp == api.fingerprint() {
 		logger.Debug("no changes to apply")
 		return false, nil
@@ -208,6 +211,36 @@ func reloadCaddyConfig(gen *generator.Generator, cfg *config.Config, indexDir st
 	api.setFingerprint(fp)
 	writeDevlocalAutosave(indexDir, devlocal)
 	return true, nil
+}
+
+func fingerprintState(domains map[string][]string, containers []*generator.ContainerInfo) string {
+	h := sha256.New()
+	io.WriteString(h, fingerprintDomains(domains)) //nolint:errcheck // sha256 writer never errors
+	h.Write([]byte{0})
+
+	sorted := slices.Clone(containers)
+	slices.SortFunc(sorted, func(a, b *generator.ContainerInfo) int {
+		return cmp.Compare(a.ContainerID, b.ContainerID)
+	})
+
+	for _, info := range sorted {
+		fmt.Fprintf(h, "%s\x00%v\x00%d\x00", info.ContainerID, info.IsRunning, info.SelectedPort)
+		for _, p := range info.Ports {
+			fmt.Fprintf(h, "%d,", p)
+		}
+		h.Write([]byte{0})
+		for _, k := range slices.Sorted(maps.Keys(info.PublishedPorts)) {
+			fmt.Fprintf(h, "%d=%d,", k, info.PublishedPorts[k])
+		}
+		h.Write([]byte{0})
+		for _, cd := range info.CustomDomains {
+			fmt.Fprintf(h, "%d:%s,", cd.Port, cd.Domain)
+		}
+		fmt.Fprintf(h, "\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\n",
+			info.ContainerName, info.Image, info.IPAddress, info.Project, info.Service,
+			info.LastStopped.Format(time.RFC3339Nano))
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 func fingerprintDomains(targets map[string][]string) string {

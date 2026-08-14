@@ -166,17 +166,23 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo)
 
 		if len(info.CustomDomains) > 0 {
 			for _, cd := range info.CustomDomains {
+				port := cd.Port
+				if standalone || info.TargetKind == targetGateway {
+					if pub, ok := info.PublishedPorts[cd.Port]; ok {
+						port = pub
+					}
+				}
 				url := ""
 				if info.IsRunning {
 					url = "https://" + cd.Domain
 				}
-				copyText := cd.Domain + ":" + strconv.FormatUint(uint64(cd.Port), 10)
+				copyText := cd.Domain + ":" + strconv.FormatUint(uint64(port), 10)
 				if url != "" {
 					copyText = url
 				}
 				domains = append(domains, domainEntry{
 					Domain:   cd.Domain,
-					PortStr:  strconv.FormatUint(uint64(cd.Port), 10),
+					PortStr:  strconv.FormatUint(uint64(port), 10),
 					URL:      url,
 					CopyText: copyText,
 				})

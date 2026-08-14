@@ -287,14 +287,6 @@ func (g *Generator) buildContainerInfo(c *container.Summary, self selfInfo) *Con
 	return info
 }
 
-func (g *Generator) SelectPorts(ctx context.Context) error {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-
-	g.selectPortsLocked()
-	return nil
-}
-
 func (g *Generator) selectPortsLocked() {
 	for _, info := range g.containers {
 		if !info.IsRunning {
@@ -537,20 +529,9 @@ func extractPorts(c *container.Summary) []uint16 {
 	var ports []uint16
 
 	for _, p := range c.Ports {
-		if p.PublicPort == 0 {
-			if !portSet[p.PrivatePort] {
-				portSet[p.PrivatePort] = true
-				ports = append(ports, p.PrivatePort)
-			}
-		}
-	}
-
-	if len(ports) == 0 {
-		for _, p := range c.Ports {
-			if !portSet[p.PrivatePort] {
-				portSet[p.PrivatePort] = true
-				ports = append(ports, p.PrivatePort)
-			}
+		if !portSet[p.PrivatePort] {
+			portSet[p.PrivatePort] = true
+			ports = append(ports, p.PrivatePort)
 		}
 	}
 

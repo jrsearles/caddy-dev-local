@@ -19,7 +19,6 @@ discovery/
 docker/client.go    Docker client wrapper, label extraction helpers
 generator/
   generator.go      Core logic: refresh, port selection, domain->target computation
-  caddyfile.tmpl    Go template for Caddyfile output
   index.go          Generates HTML index page listing containers
   index.html.tmpl   Go template for index page
   probe.go          HTTP port probing for multi-port containers
@@ -78,6 +77,6 @@ just --list                # List all recipes
 
 - Mock Docker client implements `docker.Client` interface
 - `makeContainer()` helper builds test container summaries
-- Tests verify both presence and absence of strings in generated Caddyfile output
+- Tests verify both presence and absence of entries in generated domain targets
 - Standalone vs Docker mode tested via `config.Standalone` flag on config
 - UI testing is not necessary: the generated HTML index page (`index.go`/`index.html.tmpl`) is not unit-tested
