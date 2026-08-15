@@ -78,7 +78,7 @@ func cmdFunc(fs caddycmd.Flags) (int, error) {
 
 	hostsOK := true
 	if cfg.HostsFile {
-		if !hosts.CanWrite(hosts.Path(cfg.HostsPath)) {
+		if !hosts.CanWrite() {
 			logger.Warn("hosts file not writable, skipping hosts file updates")
 			hostsOK = false
 		}
@@ -164,13 +164,12 @@ func syncHosts(gen *generator.Generator, cfg *config.Config, hostsOK bool) error
 	if !cfg.HostsFile || !hostsOK {
 		return nil
 	}
-	return hosts.Sync(hosts.Path(cfg.HostsPath), cfg.TLD, gen.Domains())
+	return hosts.Sync(cfg.TLD, gen.Domains())
 }
 
 func cleanFunc(fs caddycmd.Flags) (int, error) {
 	logger := caddy.Log().Named(appName)
-	cfg := config.DefaultConfig()
-	if err := hosts.Remove(hosts.Path(cfg.HostsPath)); err != nil {
+	if err := hosts.Remove(); err != nil {
 		return 1, err
 	}
 	logger.Info("hosts file entries removed")

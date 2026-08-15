@@ -8,15 +8,6 @@ import (
 	"testing"
 )
 
-func TestPath(t *testing.T) {
-	if got := Path(""); got != FilePath() {
-		t.Errorf("Path(\"\") = %q, want system default %q", got, FilePath())
-	}
-	if got := Path("/custom/hosts"); got != "/custom/hosts" {
-		t.Errorf("Path(\"/custom/hosts\") = %q, want /custom/hosts", got)
-	}
-}
-
 func TestBuildBlock(t *testing.T) {
 	block := buildBlock("dev.local", []string{"b.dev.local", "a.dev.local"})
 	expected := "# dev-local:BEGIN\n# Managed by caddy-dev-local — do not edit.\n127.0.0.1    dev.local\n127.0.0.1    a.dev.local\n127.0.0.1    b.dev.local\n# dev-local:END\n"
@@ -193,34 +184,4 @@ func tempHosts(t *testing.T, content string) string {
 		}
 	}
 	return path
-}
-
-func TestWriteInPlace(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "hosts")
-	if err := os.WriteFile(path, []byte("original\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	tmp := filepath.Join(dir, "hosts.devlocal.tmp")
-	if err := os.WriteFile(tmp, []byte("replacement\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := writeInPlace(path, tmp); err != nil {
-		t.Fatal(err)
-	}
-	content, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(content) != "replacement\n" {
-		t.Errorf("in-place write mismatch\ngot:\n%s\nwant:\nreplacement\n", content)
-	}
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if info.Mode().Perm() != 0644 {
-		t.Errorf("mode should be preserved, got %v", info.Mode().Perm())
-	}
 }

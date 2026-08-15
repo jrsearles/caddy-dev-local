@@ -2,7 +2,6 @@ package hosts
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"runtime"
 	"sort"
@@ -21,15 +20,8 @@ func FilePath() string {
 	return "/etc/hosts"
 }
 
-func Path(override string) string {
-	if override != "" {
-		return override
-	}
-	return FilePath()
-}
-
-func CanWrite(path string) bool {
-	f, err := os.OpenFile(path, os.O_WRONLY, 0)
+func CanWrite() bool {
+	f, err := os.OpenFile(FilePath(), os.O_WRONLY, 0)
 	if err != nil {
 		return false
 	}
@@ -37,12 +29,12 @@ func CanWrite(path string) bool {
 	return true
 }
 
-func Sync(path, tld string, domains []string) error {
-	return syncToFile(path, tld, domains)
+func Sync(tld string, domains []string) error {
+	return syncToFile(FilePath(), tld, domains)
 }
 
-func Remove(path string) error {
-	return removeFromFile(path)
+func Remove() error {
+	return removeFromFile(FilePath())
 }
 
 func syncToFile(path string, tld string, domains []string) error {
@@ -193,30 +185,9 @@ func writeHostsFile(path, content string) error {
 	if err := os.WriteFile(tmp, []byte(content), 0644); err != nil { //nolint:gosec // 0644 matches standard /etc/hosts permissions
 		return fmt.Errorf("writing temp hosts file: %w", err)
 	}
-	defer os.Remove(tmp)
-
-	if err := os.Rename(tmp, path); err == nil {
-		return nil
-	}
-
-	return writeInPlace(path, tmp)
-}
-
-func writeInPlace(path, tmp string) error {
-	src, err := os.Open(tmp)
-	if err != nil {
-		return fmt.Errorf("opening temp hosts file: %w", err)
-	}
-	defer src.Close()
-
-	dst, err := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC, 0644)
-	if err != nil {
-		return fmt.Errorf("opening hosts file: %w", err)
-	}
-	defer dst.Close()
-
-	if _, err := io.Copy(dst, src); err != nil {
-		return fmt.Errorf("writing hosts file: %w", err)
+	if err := os.Rename(tmp, path); err != nil {
+		os.Remove(tmp)
+		return fmt.Errorf("renaming hosts file: %w", err)
 	}
 	return nil
 }
