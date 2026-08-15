@@ -45,7 +45,7 @@ func TestRenderSanity(t *testing.T) {
 		},
 	}
 
-	page := GenerateIndexPage("dev.local", false, containers)
+	page := GenerateIndexPage("dev.local", false, containers, "")
 
 	checks := []string{
 		`<title>devlocal — Container Index</title>`,
@@ -76,6 +76,9 @@ func TestRenderSanity(t *testing.T) {
 			t.Errorf("page missing %q", c)
 		}
 	}
+	if strings.Contains(page, `class="config-panel"`) {
+		t.Error("config panel rendered with empty config")
+	}
 	if strings.Contains(page, `class="project-header"`) {
 		t.Error("old table layout still present")
 	}
@@ -84,5 +87,47 @@ func TestRenderSanity(t *testing.T) {
 	}
 	if strings.Contains(page, "displayRow") {
 		t.Error("displayRow still referenced")
+	}
+}
+
+func TestRenderConfigPanel(t *testing.T) {
+	configJSON := `{
+  "apps": {
+    "http": {
+      "servers": {
+        "srv0": {
+          "routes": [{"match": ["</pre><script>alert(1)</script>"]}]
+        }
+      }
+    }
+  }
+}`
+	page := GenerateIndexPage("dev.local", false, nil, configJSON)
+
+	checks := []string{
+		`class="config-panel"`,
+		`class="config-toggle"`,
+		`class="config-pre"`,
+		`onclick="toggleConfig(this)"`,
+		`aria-expanded="false"`,
+		`function toggleConfig(btn)`,
+		`&#34;srv0&#34;`,
+	}
+	for _, c := range checks {
+		if !strings.Contains(page, c) {
+			t.Errorf("config panel missing %q", c)
+		}
+	}
+	if strings.Contains(page, `class="config-copy-btn"`) {
+		t.Error("config panel still has a copy button")
+	}
+	if strings.Contains(page, `copyConfig`) {
+		t.Error("config copy function still present")
+	}
+	if strings.Contains(page, `</pre><script>alert(1)</script>`) {
+		t.Error("config JSON was not HTML-escaped")
+	}
+	if !strings.Contains(page, `&lt;/pre&gt;&lt;script&gt;alert(1)&lt;/script&gt;`) {
+		t.Error("config JSON not escaped properly in pre block")
 	}
 }

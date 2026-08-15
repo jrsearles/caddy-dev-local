@@ -385,6 +385,27 @@
             padding: 0.1rem;
         }
 
+        .chip-globe {
+            display: inline-flex;
+            align-items: center;
+            color: var(--accent);
+            text-decoration: none;
+            flex-shrink: 0;
+        }
+
+        .chip-globe svg {
+            width: 12px;
+            height: 12px;
+        }
+
+        .chip-globe:hover { color: #79c0ff; }
+
+        .chip-globe:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
+            border-radius: 3px;
+        }
+
         .chip-copy-btn .icon-copy,
         .chip-copy-btn .icon-check {
             width: 10px;
@@ -514,6 +535,71 @@
 
         .project-cards.open { display: flex; }
 
+        /* ── Caddy config panel ─────────────────────────────────────── */
+        .config-panel {
+            margin-top: 1.75rem;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--bg-card);
+            overflow: hidden;
+        }
+
+        .config-header {
+            display: flex;
+            align-items: center;
+            gap: 0.55rem;
+        }
+
+        .config-toggle {
+            display: flex;
+            align-items: center;
+            gap: 0.55rem;
+            flex: 1;
+            min-width: 0;
+            padding: 0.5rem 0.8rem;
+            background: var(--bg-card);
+            border: none;
+            cursor: pointer;
+            font: inherit;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            text-align: left;
+            transition: background 0.12s, color 0.12s;
+        }
+
+        .config-toggle:hover { background: var(--bg-card-hover); color: var(--accent); }
+
+        .config-toggle .chevron {
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            transition: transform 0.18s ease;
+            flex-shrink: 0;
+        }
+
+        .config-toggle[aria-expanded="true"] .chevron { transform: rotate(90deg); }
+
+        .config-label { flex: 1; }
+
+        .config-body {
+            display: none;
+            border-top: 1px solid var(--border-subtle);
+        }
+
+        .config-body.open { display: block; }
+
+        .config-pre {
+            margin: 0;
+            padding: 0.75rem 0.9rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.72rem;
+            line-height: 1.5;
+            color: var(--text-secondary);
+            white-space: pre;
+            overflow: auto;
+            max-height: 40vh;
+        }
+
         /* ── Empty state ─────────────────────────────────────────────── */
         .empty-state {
             text-align: center;
@@ -581,7 +667,7 @@
         {{if .Domains}}<div class="card-domains">
 {{range .Domains}}            <div class="domain-row">
                 {{if .URL}}<a class="domain-link" href="{{.URL}}">{{.Domain}}</a>{{else}}<span class="domain-plain">{{.Domain}}</span>{{end}}
-                <div class="port-chips">{{range .Chips}}<span class="port-chip">:{{.PortStr}}{{if .CopyText}}<button class="copy-btn chip-copy-btn" type="button" data-copy="{{.CopyText}}" onclick="copyDomain(this)" aria-label="Copy {{.CopyText}}" title="Copy {{.CopyText}}"><svg class="icon-copy" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M22.6,4H21.55a3.89,3.89,0,0,0-7.31,0H13.4A2.41,2.41,0,0,0,11,6.4V10H25V6.4A2.41,2.41,0,0,0,22.6,4ZM23,8H13V6.25A.25.25,0,0,1,13.25,6h2.69l.12-1.11A1.24,1.24,0,0,1,16.61,4a2,2,0,0,1,3.15,1.18l.09.84h2.9a.25.25,0,0,1,.25.25Z"/><path d="M33.25,18.06H21.33l2.84-2.83a1,1,0,1,0-1.42-1.42L17.5,19.06l5.25,5.25a1,1,0,0,0,.71.29,1,1,0,0,0,.71-1.7l-2.84-2.84H33.25a1,1,0,0,0,0-2Z"/><path d="M29,16h2V6.68A1.66,1.66,0,0,0,29.35,5H27.08V7H29Z"/><path d="M29,31H7V7H9V5H6.64A1.66,1.66,0,0,0,5,6.67V31.32A1.66,1.66,0,0,0,6.65,33H29.36A1.66,1.66,0,0,0,31,31.33V22.06H29Z"/></svg><svg class="icon-check" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></button>{{end}}</span>{{end}}</div>
+                {{$url := .URL}}<div class="port-chips">{{range .Chips}}<span class="port-chip">{{if .IsHTTP}}<a class="chip-globe" href="{{$url}}" aria-label="Open {{$url}}" title="Open {{$url}}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></a>{{end}}:{{.PortStr}}{{if .CopyText}}<button class="copy-btn chip-copy-btn" type="button" data-copy="{{.CopyText}}" onclick="copyDomain(this)" aria-label="Copy {{.CopyText}}" title="Copy {{.CopyText}}"><svg class="icon-copy" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M22.6,4H21.55a3.89,3.89,0,0,0-7.31,0H13.4A2.41,2.41,0,0,0,11,6.4V10H25V6.4A2.41,2.41,0,0,0,22.6,4ZM23,8H13V6.25A.25.25,0,0,1,13.25,6h2.69l.12-1.11A1.24,1.24,0,0,1,16.61,4a2,2,0,0,1,3.15,1.18l.09.84h2.9a.25.25,0,0,1,.25.25Z"/><path d="M33.25,18.06H21.33l2.84-2.83a1,1,0,1,0-1.42-1.42L17.5,19.06l5.25,5.25a1,1,0,0,0,.71.29,1,1,0,0,0,.71-1.7l-2.84-2.84H33.25a1,1,0,0,0,0-2Z"/><path d="M29,16h2V6.68A1.66,1.66,0,0,0,29.35,5H27.08V7H29Z"/><path d="M29,31H7V7H9V5H6.64A1.66,1.66,0,0,0,5,6.67V31.32A1.66,1.66,0,0,0,6.65,33H29.36A1.66,1.66,0,0,0,31,31.33V22.06H29Z"/></svg><svg class="icon-check" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></button>{{end}}</span>{{end}}</div>
             </div>
 {{end}}        </div>{{end}}
     </div>
@@ -620,16 +706,27 @@
             <p>No containers registered.</p>
         </div>
 {{end}}
+{{if .ConfigJSON}}
+        <div class="config-panel">
+            <div class="config-header">
+                <button class="config-toggle" type="button" aria-expanded="false" onclick="toggleConfig(this)">
+                    <span class="chevron">▸</span>
+                    <span class="config-label">Caddy Config</span>
+                </button>
+            </div>
+            <div class="config-body"><pre class="config-pre">{{.ConfigJSON}}</pre></div>
+        </div>
+{{end}}
     </main>
 
     <script>
     // ── Search ───────────────────────────────────────────────────────
-    var searchEl = document.getElementById('search');
-    var searching = false;
-    var savedExpansion = {};
+    const searchEl = document.getElementById('search');
+    let searching = false;
+    let savedExpansion = {};
 
-    searchEl.addEventListener('input', function() { filterCards(); saveUIState(); });
-    document.addEventListener('keydown', function(e) {
+    searchEl.addEventListener('input', () => { filterCards(); saveUIState(); });
+    document.addEventListener('keydown', (e) => {
         if (e.key === '/' && document.activeElement !== searchEl) {
             e.preventDefault();
             searchEl.focus();
@@ -643,38 +740,38 @@
     });
 
     function setProjectOpen(sec, open) {
-        var btn = sec.querySelector('.project-toggle');
+        const btn = sec.querySelector('.project-toggle');
         btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-        var list = btn.nextElementSibling;
+        const list = btn.nextElementSibling;
         if (list) list.classList.toggle('open', open);
     }
 
     function filterCards() {
-        var q = searchEl.value.toLowerCase().trim();
-        var nowSearching = q !== '';
+        const q = searchEl.value.toLowerCase().trim();
+        const nowSearching = q !== '';
         if (nowSearching && !searching) {
             savedExpansion = {};
-            document.querySelectorAll('.project-section').forEach(function(sec) {
+            document.querySelectorAll('.project-section').forEach((sec) => {
                 savedExpansion[sec.dataset.project] =
                     sec.querySelector('.project-toggle').getAttribute('aria-expanded') === 'true';
             });
         }
         searching = nowSearching;
 
-        document.querySelectorAll('.card').forEach(function(card) {
+        document.querySelectorAll('.card').forEach((card) => {
             if (!q) { card.classList.remove('hidden'); return; }
-            var haystack = [
+            const haystack = [
                 card.dataset.name,
                 card.dataset.image,
                 card.dataset.project,
                 card.dataset.service
             ].join(' ').toLowerCase();
-            card.querySelectorAll('.domain-link, .domain-plain').forEach(function(el) {
+            card.querySelectorAll('.domain-link, .domain-plain').forEach((el) => {
                 haystack += ' ' + el.textContent.toLowerCase();
             });
-            card.classList.toggle('hidden', haystack.indexOf(q) < 0);
+            card.classList.toggle('hidden', !haystack.includes(q));
         });
-        document.querySelectorAll('.project-section').forEach(function(sec) {
+        document.querySelectorAll('.project-section').forEach((sec) => {
             if (!q) {
                 sec.classList.remove('hidden');
                 if (sec.dataset.project in savedExpansion) {
@@ -682,7 +779,7 @@
                 }
                 return;
             }
-            var visible = sec.querySelectorAll('.card:not(.hidden)').length;
+            const visible = sec.querySelectorAll('.card:not(.hidden)').length;
             sec.classList.toggle('hidden', visible === 0);
             if (visible > 0) setProjectOpen(sec, true);
         });
@@ -690,30 +787,38 @@
 
     // ── Copy ─────────────────────────────────────────────────────────
     function copyDomain(btn) {
-        var text = btn.getAttribute('data-copy');
-        function done() {
+        const text = btn.getAttribute('data-copy');
+        const done = () => {
             btn.classList.add('copied');
-            setTimeout(function() { btn.classList.remove('copied'); }, 1200);
-        }
+            setTimeout(() => btn.classList.remove('copied'), 1200);
+        };
         if (navigator.clipboard && window.isSecureContext) {
-            navigator.clipboard.writeText(text).then(done, function() { fallbackCopy(text, done); });
+            navigator.clipboard.writeText(text).then(done, () => fallbackCopy(text, done));
         } else {
             fallbackCopy(text, done);
         }
     }
     function fallbackCopy(text, done) {
-        var ta = document.createElement('textarea');
+        const ta = document.createElement('textarea');
         ta.value = text; ta.style.cssText = 'position:fixed;opacity:0';
         document.body.appendChild(ta); ta.select();
-        try { document.execCommand('copy'); } catch(e) {}
+        try { document.execCommand('copy'); } catch (e) {}
         document.body.removeChild(ta); done();
+    }
+
+    // ── Config panel ────────────────────────────────────────────────
+    function toggleConfig(btn) {
+        const expanded = btn.getAttribute('aria-expanded') === 'true';
+        btn.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+        const body = btn.closest('.config-header').nextElementSibling;
+        if (body) body.classList.toggle('open', !expanded);
     }
 
     // ── Project toggle ────────────────────────────────────────────────
     function toggleProject(btn) {
-        var expanded = btn.getAttribute('aria-expanded') === 'true';
+        const expanded = btn.getAttribute('aria-expanded') === 'true';
         btn.setAttribute('aria-expanded', expanded ? 'false' : 'true');
-        var list = btn.nextElementSibling;
+        const list = btn.nextElementSibling;
         if (list) list.classList.toggle('open', !expanded);
         saveUIState();
     }
@@ -721,8 +826,8 @@
     // ── UI state across auto-reloads (sessionStorage) ────────────────
     function saveUIState() {
         try {
-            var open = [];
-            document.querySelectorAll('.project-toggle[aria-expanded="true"]').forEach(function(btn) {
+            const open = [];
+            document.querySelectorAll('.project-toggle[aria-expanded="true"]').forEach((btn) => {
                 open.push(btn.closest('.project-section').dataset.project);
             });
             sessionStorage.setItem('devlocal-open', JSON.stringify(open));
@@ -731,42 +836,42 @@
     }
     function restoreUIState() {
         try {
-            var q = sessionStorage.getItem('devlocal-search') || '';
+            const q = sessionStorage.getItem('devlocal-search') || '';
             if (q) { searchEl.value = q; }
-            var open = JSON.parse(sessionStorage.getItem('devlocal-open') || '[]');
-            document.querySelectorAll('.project-section').forEach(function(sec) {
-                if (open.indexOf(sec.dataset.project) >= 0) setProjectOpen(sec, true);
+            const open = JSON.parse(sessionStorage.getItem('devlocal-open') || '[]');
+            document.querySelectorAll('.project-section').forEach((sec) => {
+                if (open.includes(sec.dataset.project)) setProjectOpen(sec, true);
             });
             filterCards();
         } catch (e) {}
     }
 
     // ── Live refresh (content-hash poll) ──────────────────────────────
-    (function() {
-        var dot = document.getElementById('liveDot');
-        var prev = null;
+    (() => {
+        const dot = document.getElementById('liveDot');
+        let prev = null;
         function hash(str) {
-            var h = 5381;
-            for (var i = 0; i < str.length; i++) {
+            let h = 5381;
+            for (let i = 0; i < str.length; i++) {
                 h = ((h << 5) + h + str.charCodeAt(i)) | 0;
             }
             return h;
         }
         function check() {
             fetch(location.href, { cache: 'no-store' })
-                .then(function(r) { return r.text(); })
-                .then(function(html) {
-                    var h = hash(html);
+                .then((r) => r.text())
+                .then((html) => {
+                    const h = hash(html);
                     if (prev !== null && h !== prev) {
                         dot.classList.add('ping');
-                        setTimeout(function() { dot.classList.remove('ping'); }, 500);
+                        setTimeout(() => dot.classList.remove('ping'), 500);
                         saveUIState();
-                        setTimeout(function() { location.reload(); }, 400);
+                        setTimeout(() => location.reload(), 400);
                         return;
                     }
                     prev = h;
                 })
-                .catch(function() {});
+                .catch(() => {});
         }
         restoreUIState();
         check();

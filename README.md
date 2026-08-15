@@ -12,7 +12,7 @@ A Caddy plugin that automatically registers `{project}.{service}.dev.local` doma
 - **Self-signed TLS** — Zero-config HTTPS using Caddy's internal CA
 - **Custom domains** — Override auto-registration with `dev.local.domains` label
 - **Hosts file integration** — Automatically adds entries to `/etc/hosts` for local DNS resolution
-- **Index page** — Visit `dev.local` (or `dev.localhost`) to see all registered containers. Cards show each container's icon, image, IP, and running/stopped status; Compose services are grouped under collapsible project sections with up/down counts. Each domain is listed once with its ports as copyable chips (`domain:port`). A sticky header provides live search and container counts, and the page auto-refreshes when containers change.
+- **Index page** — Visit `dev.local` (or `dev.localhost`) to see all registered containers. Cards show each container's icon, image, IP, and running/stopped status; Compose services are grouped under collapsible project sections with up/down counts. Each domain is listed once with its ports as copyable chips (`domain:port`). A sticky header provides live search and container counts, and the page auto-refreshes when containers change. An expandable panel at the bottom shows the effective running Caddy config.
 - **Stale cleanup** — Stopped containers stay listed on the index page (marked stopped) until the stale TTL expires, then their config is removed
 - **Standalone hosts binary** — `devlocal-hosts` watches Docker and maintains hosts entries without running a proxy
 
@@ -288,7 +288,7 @@ caddy-dev-local writes two files to the user cache directory (`os.UserCacheDir()
 
 | File | Purpose |
 |---|---|
-| `index.html` | Served at the TLD and its `.localhost` alias (e.g. `http://dev.local` / `http://dev.localhost`) as a status page listing discovered containers |
+| `index.html` | Served at the TLD and its `.localhost` alias (e.g. `http://dev.local` / `http://dev.localhost`) as a status page listing discovered containers. Includes an expandable "Caddy Config" panel showing the effective running config (user config + devlocal routes/policies, fetched from the admin API after each reload) |
 | `devlocal.json` | The last successfully applied devlocal config (routes, TLS policy, index route) — useful for debugging; only rewritten when the config actually changes |
 
 ## Hosts File
@@ -368,7 +368,7 @@ Notes:
 - **No port probing** — the domain set is identical to the proxy's, but no HTTP requests are made; port probing only exists to pick a proxy target port.
 - **Standalone detection** — auto-detected exactly like the plugin (`/.dockerenv` absent → standalone mode, routing via `localhost` instead of Docker DNS).
 - **Permissions** — requires root to write `/etc/hosts`; exits with an error if the hosts file isn't writable (unlike the plugin, which warns and continues).
-- **Index page** — not generated; this binary only maintains the hosts file.
+- **Index page** — not generated; this binary only maintains the hosts file (the proxy's index page and its config panel require Caddy).
 
 ## Acknowledgements
 

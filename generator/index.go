@@ -16,6 +16,7 @@ var indexTemplate = template.Must(template.New("index").Parse(indexTemplateHTML)
 type portChip struct {
 	PortStr  string
 	CopyText string
+	IsHTTP   bool
 }
 
 type domainEntry struct {
@@ -50,6 +51,7 @@ type indexData struct {
 	Groups       []displayGroup
 	RunningCount int
 	StoppedCount int
+	ConfigJSON   string
 }
 
 func buildDomainEntry(domain string, portStrs []string, url string) domainEntry {
@@ -83,10 +85,15 @@ func sortDomainEntries(entries []domainEntry, httpPortStr string) {
 			}
 			return cmp.Compare(portNum(a.PortStr), portNum(b.PortStr))
 		})
+		for j := range entries[i].Chips {
+			if httpPortStr != "" && entries[i].URL != "" {
+				entries[i].Chips[j].IsHTTP = entries[i].Chips[j].PortStr == httpPortStr
+			}
+		}
 	}
 }
 
-func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo) string {
+func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo, configJSON string) string {
 	rows := make([]indexRow, 0, len(containers))
 
 	for _, info := range containers {
@@ -244,6 +251,7 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo)
 		Groups:       grouped,
 		RunningCount: running,
 		StoppedCount: stopped,
+		ConfigJSON:   configJSON,
 	}
 
 	var sb strings.Builder

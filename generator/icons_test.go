@@ -211,7 +211,7 @@ func TestGenerateIndexPageIcon(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			page := GenerateIndexPage("dev.local", false, []*ContainerInfo{tt.info})
+			page := GenerateIndexPage("dev.local", false, []*ContainerInfo{tt.info}, "")
 			for _, s := range tt.contains {
 				if !strings.Contains(page, s) {
 					t.Errorf("expected index page to contain %q", s)

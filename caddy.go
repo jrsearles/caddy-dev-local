@@ -8,10 +8,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
+	"sync/atomic"
 
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig"
@@ -24,10 +26,6 @@ import (
 
 func initCaddyConfig(gen *generator.Generator, cfg *config.Config, indexDir string, api *adminAPI, userConfigPath string) error {
 	logger := caddy.Log().Named(appName)
-	indexPage := generator.GenerateIndexPage(cfg.TLD, cfg.Standalone, gen.Containers())
-	if err := writeIndexPage(indexDir, indexPage); err != nil {
-		return fmt.Errorf("writing index page: %w", err)
-	}
 
 	httpPort, httpsPort := 80, 443
 
@@ -72,6 +70,11 @@ func initCaddyConfig(gen *generator.Generator, cfg *config.Config, indexDir stri
 
 	if err := postDevlocalViaAPI(api, devlocal); err != nil {
 		return fmt.Errorf("applying devlocal config: %w", err)
+	}
+
+	indexPage := generator.GenerateIndexPage(cfg.TLD, cfg.Standalone, gen.Containers(), fetchRunningConfig(api))
+	if err := writeIndexPage(indexDir, indexPage); err != nil {
+		return fmt.Errorf("writing index page: %w", err)
 	}
 
 	api.setFingerprint(fingerprintState(gen.DomainTargets(), gen.Containers()))
@@ -192,18 +195,22 @@ func reloadCaddyConfig(gen *generator.Generator, cfg *config.Config, indexDir st
 		return false, nil
 	}
 
-	indexPage := generator.GenerateIndexPage(cfg.TLD, cfg.Standalone, gen.Containers())
-	if err := writeIndexPage(indexDir, indexPage); err != nil {
-		return false, fmt.Errorf("writing index page: %w", err)
-	}
-
 	devlocal, err := buildDevlocalConfig(cfg.TLD, indexDir, domains)
 	if err != nil {
 		return false, fmt.Errorf("building devlocal config: %w", err)
 	}
 
 	if err := api.reconcileDevlocal(devlocal.routes, devlocal.policies); err != nil {
+		indexPage := generator.GenerateIndexPage(cfg.TLD, cfg.Standalone, gen.Containers(), fetchRunningConfig(api))
+		if werr := writeIndexPage(indexDir, indexPage); werr != nil {
+			return false, fmt.Errorf("writing index page: %w", werr)
+		}
 		return false, err
+	}
+
+	indexPage := generator.GenerateIndexPage(cfg.TLD, cfg.Standalone, gen.Containers(), fetchRunningConfig(api))
+	if err := writeIndexPage(indexDir, indexPage); err != nil {
+		return false, fmt.Errorf("writing index page: %w", err)
 	}
 
 	api.setFingerprint(fp)
@@ -263,6 +270,27 @@ func writeDevlocalAutosave(indexDir string, devlocal *devlocalConfig) {
 	if err := os.WriteFile(filepath.Join(indexDir, "devlocal.json"), data, 0600); err != nil {
 		logger.Warn("failed to write devlocal autosave", zap.Error(err))
 	}
+}
+
+var lastConfigCache atomic.Pointer[string]
+
+func fetchRunningConfig(api *adminAPI) string {
+	status, body, err := api.getConfig("/config/")
+	if err != nil || status != http.StatusOK {
+		caddy.Log().Named(appName).Warn("failed to fetch running config",
+			zap.Int("status", status), zap.Error(err))
+		if prev := lastConfigCache.Load(); prev != nil {
+			return *prev
+		}
+		return ""
+	}
+	var pretty bytes.Buffer
+	if err := json.Indent(&pretty, body, "", "  "); err != nil {
+		return string(body)
+	}
+	s := pretty.String()
+	lastConfigCache.Store(&s)
+	return s
 }
 
 func writeIndexPage(indexDir, page string) error {
