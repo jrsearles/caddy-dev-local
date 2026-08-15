@@ -1238,6 +1238,23 @@ func TestGeneratorSkipsUnreachable(t *testing.T) {
 	}
 }
 
+func TestTLDLocalhost(t *testing.T) {
+	tests := []struct {
+		tld  string
+		want string
+	}{
+		{"dev.local", "dev.localhost"},
+		{"test.local", "test.localhost"},
+		{"localhost", "localhost"},
+		{"my.dev.local", "my.localhost"},
+	}
+	for _, tt := range tests {
+		if got := TLDLocalhost(tt.tld); got != tt.want {
+			t.Errorf("TLDLocalhost(%q) = %q, want %q", tt.tld, got, tt.want)
+		}
+	}
+}
+
 func TestGeneratorSkipsSelf(t *testing.T) {
 	mock := &mockDocker{containers: withSelf()}
 	cfg := &config.Config{

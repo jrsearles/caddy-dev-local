@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/jsearles/caddy-dev-local/generator"
 )
 
 const (
@@ -40,20 +42,20 @@ func buildDevlocalConfig(tld, indexDir string, targets map[string][]string) (*de
 		policies: make(map[string]json.RawMessage),
 	}
 
-	indexRoute, err := buildIndexRoute(tld, indexDir)
+	domains := make([]string, 0, len(targets))
+	for host := range targets {
+		domains = append(domains, host)
+	}
+	slices.Sort(domains)
+
+	indexRoute, err := buildIndexRoute(tld, indexDir, domains)
 	if err != nil {
 		return nil, fmt.Errorf("building index route: %w", err)
 	}
 	cfg.indexRoute = indexRoute
 
-	hosts := make([]string, 0, len(targets))
-	for host := range targets {
-		hosts = append(hosts, host)
-	}
-	slices.Sort(hosts)
-
-	subjects := make([]string, 0, len(hosts))
-	for _, host := range hosts {
+	subjects := make([]string, 0, len(domains))
+	for _, host := range domains {
 		upstreams := slices.Clone(targets[host])
 		slices.Sort(upstreams)
 
@@ -107,7 +109,12 @@ func buildReverseProxyRoute(host string, targets []string) (json.RawMessage, err
 	return json.Marshal(route)
 }
 
-func buildIndexRoute(tld, indexDir string) (json.RawMessage, error) {
+func buildIndexRoute(tld, indexDir string, containerDomains []string) (json.RawMessage, error) {
+	hosts := []any{tld}
+	if alias := generator.TLDLocalhost(tld); alias != tld && !slices.Contains(containerDomains, alias) {
+		hosts = append(hosts, alias)
+	}
+
 	route := map[string]any{
 		keyHandle: []any{
 			map[string]any{
@@ -123,7 +130,7 @@ func buildIndexRoute(tld, indexDir string) (json.RawMessage, error) {
 			},
 		},
 		"match": []any{
-			map[string]any{"host": []any{tld}},
+			map[string]any{"host": hosts},
 		},
 		"terminal": true,
 	}

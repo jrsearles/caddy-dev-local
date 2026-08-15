@@ -10,7 +10,7 @@ import (
 
 func TestBuildBlock(t *testing.T) {
 	block := buildBlock("dev.local", []string{"b.dev.local", "a.dev.local"})
-	expected := "# dev-local:BEGIN\n# Managed by caddy-dev-local — do not edit.\n127.0.0.1    dev.local\n127.0.0.1    a.dev.local\n127.0.0.1    b.dev.local\n# dev-local:END\n"
+	expected := "# dev-local:BEGIN\n# Managed by caddy-dev-local — do not edit.\n127.0.0.1    dev.local\n127.0.0.1    dev.localhost\n127.0.0.1    a.dev.local\n127.0.0.1    b.dev.local\n# dev-local:END\n"
 	if block != expected {
 		t.Errorf("buildBlock mismatch\ngot:\n%s\nwant:\n%s", block, expected)
 	}
@@ -18,7 +18,7 @@ func TestBuildBlock(t *testing.T) {
 
 func TestBuildBlockEmpty(t *testing.T) {
 	block := buildBlock("dev.local", nil)
-	expected := "# dev-local:BEGIN\n# Managed by caddy-dev-local — do not edit.\n127.0.0.1    dev.local\n# dev-local:END\n"
+	expected := "# dev-local:BEGIN\n# Managed by caddy-dev-local — do not edit.\n127.0.0.1    dev.local\n127.0.0.1    dev.localhost\n# dev-local:END\n"
 	if block != expected {
 		t.Errorf("buildBlock empty mismatch\ngot:\n%s\nwant:\n%s", block, expected)
 	}
@@ -26,9 +26,17 @@ func TestBuildBlockEmpty(t *testing.T) {
 
 func TestBuildBlockTDLDedup(t *testing.T) {
 	block := buildBlock("dev.local", []string{"dev.local", "a.dev.local"})
-	expected := "# dev-local:BEGIN\n# Managed by caddy-dev-local — do not edit.\n127.0.0.1    dev.local\n127.0.0.1    a.dev.local\n# dev-local:END\n"
+	expected := "# dev-local:BEGIN\n# Managed by caddy-dev-local — do not edit.\n127.0.0.1    dev.local\n127.0.0.1    dev.localhost\n127.0.0.1    a.dev.local\n# dev-local:END\n"
 	if block != expected {
 		t.Errorf("buildBlock dedup mismatch\ngot:\n%s\nwant:\n%s", block, expected)
+	}
+}
+
+func TestBuildBlockSkipsAliasCollision(t *testing.T) {
+	block := buildBlock("dev.local", []string{"dev.dev.local", "dev.localhost"})
+	expected := "# dev-local:BEGIN\n# Managed by caddy-dev-local — do not edit.\n127.0.0.1    dev.local\n127.0.0.1    dev.dev.local\n127.0.0.1    dev.localhost\n# dev-local:END\n"
+	if block != expected {
+		t.Errorf("buildBlock alias collision mismatch\ngot:\n%s\nwant:\n%s", block, expected)
 	}
 }
 
@@ -69,7 +77,7 @@ func TestSyncReplacesExistingBlock(t *testing.T) {
 }
 
 func TestSyncNoOpWhenUnchanged(t *testing.T) {
-	initial := "# dev-local:BEGIN\n# Managed by caddy-dev-local — do not edit.\n127.0.0.1    dev.local\n127.0.0.1    foo.dev.local\n# dev-local:END\n"
+	initial := "# dev-local:BEGIN\n# Managed by caddy-dev-local — do not edit.\n127.0.0.1    dev.local\n127.0.0.1    dev.localhost\n127.0.0.1    foo.dev.local\n# dev-local:END\n"
 	path := tempHosts(t, initial)
 
 	info1, _ := os.Stat(path)

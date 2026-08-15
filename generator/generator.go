@@ -17,6 +17,11 @@ import (
 	"github.com/moby/moby/client"
 )
 
+const (
+	localhostName   = "localhost"
+	localhostSuffix = ".localhost"
+)
+
 type ContainerInfo struct {
 	ContainerID    string
 	ContainerName  string
@@ -342,7 +347,7 @@ func (info *ContainerInfo) hasReachablePort() bool {
 func (g *Generator) hostFor(info *ContainerInfo) string {
 	switch {
 	case g.cfg.Standalone:
-		return "localhost"
+		return localhostName
 	case info.TargetKind == targetGateway:
 		return info.GatewayHost
 	default:
@@ -398,9 +403,17 @@ func (g *Generator) domainForContainer(info *ContainerInfo) string {
 
 func (g *Generator) domainForContainerLocalhost(info *ContainerInfo) string {
 	if info.IsCompose {
-		return fmt.Sprintf("%s.%s.localhost", info.Project, info.Service)
+		return fmt.Sprintf("%s.%s%s", info.Project, info.Service, localhostSuffix)
 	}
-	return fmt.Sprintf("%s.localhost", info.ContainerName)
+	return fmt.Sprintf("%s%s", info.ContainerName, localhostSuffix)
+}
+
+// TLDLocalhost returns the .localhost alias for the TLD (e.g. dev.local → dev.localhost).
+func TLDLocalhost(tld string) string {
+	if strings.EqualFold(tld, localhostName) || strings.HasSuffix(strings.ToLower(tld), localhostSuffix) {
+		return tld
+	}
+	return strings.Split(tld, ".")[0] + localhostSuffix
 }
 
 func parseCustomDomains(labels map[string]string) []CustomDomain {

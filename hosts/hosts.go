@@ -4,8 +4,11 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
+
+	"github.com/jsearles/caddy-dev-local/generator"
 )
 
 const (
@@ -101,6 +104,9 @@ func buildBlock(tld string, domains []string) string {
 	sb.WriteString("\n")
 	sb.WriteString("# Managed by caddy-dev-local — do not edit.\n")
 	fmt.Fprintf(&sb, "127.0.0.1    %s\n", tld)
+	if alias := generator.TLDLocalhost(tld); alias != tld && !slices.Contains(sorted, alias) {
+		fmt.Fprintf(&sb, "127.0.0.1    %s\n", alias)
+	}
 	for _, d := range sorted {
 		if d == tld {
 			continue

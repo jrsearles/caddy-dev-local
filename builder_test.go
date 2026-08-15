@@ -67,6 +67,60 @@ func TestBuildDevlocalConfigEmptyTargets(t *testing.T) {
 	}
 }
 
+func TestBuildIndexRouteHosts(t *testing.T) {
+	route, err := buildIndexRoute("dev.local", "/cache", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var obj map[string]any
+	if err := json.Unmarshal(route, &obj); err != nil {
+		t.Fatal(err)
+	}
+
+	match := obj["match"].([]any)
+	hosts := match[0].(map[string]any)["host"].([]any)
+	if len(hosts) != 2 || hosts[0] != "dev.local" || hosts[1] != "dev.localhost" {
+		t.Errorf("index route hosts = %v, want [dev.local dev.localhost]", hosts)
+	}
+}
+
+func TestBuildIndexRouteSkipsAliasCollision(t *testing.T) {
+	route, err := buildIndexRoute("dev.local", "/cache", []string{"dev.dev.local", "dev.localhost"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var obj map[string]any
+	if err := json.Unmarshal(route, &obj); err != nil {
+		t.Fatal(err)
+	}
+
+	match := obj["match"].([]any)
+	hosts := match[0].(map[string]any)["host"].([]any)
+	if len(hosts) != 1 || hosts[0] != "dev.local" {
+		t.Errorf("index route hosts = %v, want [dev.local]", hosts)
+	}
+}
+
+func TestBuildIndexRouteNoDupWhenTldIsLocalhost(t *testing.T) {
+	route, err := buildIndexRoute("localhost", "/cache", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var obj map[string]any
+	if err := json.Unmarshal(route, &obj); err != nil {
+		t.Fatal(err)
+	}
+
+	match := obj["match"].([]any)
+	hosts := match[0].(map[string]any)["host"].([]any)
+	if len(hosts) != 1 || hosts[0] != "localhost" {
+		t.Errorf("index route hosts = %v, want [localhost]", hosts)
+	}
+}
+
 func TestBuildReverseProxyRoute(t *testing.T) {
 	route, err := buildReverseProxyRoute("my-nginx.dev.local", []string{"nginx:80", "nginx:81"})
 	if err != nil {

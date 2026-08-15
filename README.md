@@ -12,7 +12,7 @@ A Caddy plugin that automatically registers `{project}.{service}.dev.local` doma
 - **Self-signed TLS** — Zero-config HTTPS using Caddy's internal CA
 - **Custom domains** — Override auto-registration with `dev.local.domains` label
 - **Hosts file integration** — Automatically adds entries to `/etc/hosts` for local DNS resolution
-- **Index page** — Visit `dev.local` to see all registered containers; standalone containers (no Compose project) list at the top, Compose containers are grouped under collapsible project sections (collapsed by default); multi-port containers are listed as one row per port (HTTP port first, then ordered by port and domain), and each domain has a copy-to-clipboard button that copies the full URL for HTTP(S) services and `domain:port` for non-HTTP services. Containers whose image matches a well-known project show a brand icon next to the image name (sourced from [Simple Icons](https://simpleicons.org/), or the project's official brand assets where available); override it per-container with the open-standard labels below.
+- **Index page** — Visit `dev.local` (or `dev.localhost`) to see all registered containers; standalone containers (no Compose project) list at the top, Compose containers are grouped under collapsible project sections (collapsed by default); multi-port containers are listed as one row per port (HTTP port first, then ordered by port and domain), and each domain has a copy-to-clipboard button that copies the full URL for HTTP(S) services and `domain:port` for non-HTTP services. Containers whose image matches a well-known project show a brand icon next to the image name (sourced from [Simple Icons](https://simpleicons.org/), or the project's official brand assets where available); override it per-container with the open-standard labels below.
 - **Stale cleanup** — Stopped containers stay listed on the index page (marked stopped) until the stale TTL expires, then their config is removed
 - **Standalone hosts binary** — `devlocal-hosts` watches Docker and maintains hosts entries without running a proxy
 
@@ -264,7 +264,7 @@ docker compose up -d
 ```
 
 Then visit:
-- `https://dev.local` — Index page
+- `https://dev.local` — Index page (also available at `https://dev.localhost`)
 - `https://example.web.dev.local` — nginx web server
 - `https://example.api.dev.local` — API server
 - `https://myapp.custom.local` — Custom domain
@@ -286,7 +286,7 @@ caddy-dev-local writes two files to the user cache directory (`os.UserCacheDir()
 
 | File | Purpose |
 |---|---|
-| `index.html` | Served at the TLD (e.g. `http://dev.local`) as a status page listing discovered containers |
+| `index.html` | Served at the TLD and its `.localhost` alias (e.g. `http://dev.local` / `http://dev.localhost`) as a status page listing discovered containers |
 | `devlocal.json` | The last successfully applied devlocal config (routes, TLS policy, index route) — useful for debugging; only rewritten when the config actually changes |
 
 ## Hosts File
@@ -298,6 +298,8 @@ Entries are written inside a managed block with searchable markers:
 ```
 # dev-local:BEGIN
 # Managed by caddy-dev-local — do not edit.
+127.0.0.1    dev.local
+127.0.0.1    dev.localhost
 127.0.0.1    myapp.web.dev.local
 127.0.0.1    myapp.web.localhost
 127.0.0.1    my-nginx.dev.local
@@ -305,7 +307,7 @@ Entries are written inside a managed block with searchable markers:
 # dev-local:END
 ```
 
-The block is updated on every config reload — added when containers start, removed when they stop. Both `.dev.local` and `.localhost` domains are included so non-browser tools (curl, API clients, etc.) can resolve them without relying on DNS.
+The block is updated on every config reload — added when containers start, removed when they stop. The TLD (`dev.local`) and its `.localhost` alias (`dev.localhost`) always point at the index page; container `.dev.local` and `.localhost` domains are included so non-browser tools (curl, API clients, etc.) can resolve them without relying on DNS.
 
 ### Opt Out
 
