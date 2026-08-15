@@ -36,6 +36,32 @@ func TestNormalizeImageName(t *testing.T) {
 	}
 }
 
+func TestImageRepository(t *testing.T) {
+	tests := []struct {
+		name  string
+		image string
+		want  string
+	}{
+		{"bare", "nginx", "nginx"},
+		{"tag", "nginx:alpine", "nginx"},
+		{"registry with path", "mcr.microsoft.com/mssql/server:2022-CU14-ubuntu-22.04", "mcr.microsoft.com/mssql/server"},
+		{"registry port", "localhost:5000/myapp:1.0", "localhost:5000/myapp"},
+		{"digest", "repo@sha256:abc123", "repo"},
+		{"tag and digest", "nginx:latest@sha256:abc123", "nginx"},
+		{"uppercase", "MCR.MICROSOFT.COM/MSSQL/SERVER:2022", "mcr.microsoft.com/mssql/server"},
+		{"whitespace", "  nginx  ", "nginx"},
+		{"empty", "", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := imageRepository(tt.image); got != tt.want {
+				t.Errorf("imageRepository(%q) = %q, want %q", tt.image, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestValidIconURL(t *testing.T) {
 	tests := []struct {
 		name string
@@ -103,6 +129,7 @@ func TestIconForContainer(t *testing.T) {
 		{"known image", "postgres:16", nil, "https://cdn.simpleicons.org/postgresql"},
 		{"known image with registry", "docker.io/library/nginx:alpine", nil, "https://cdn.simpleicons.org/nginx"},
 		{"custom brand asset", "mcr.microsoft.com/dotnet/aspire-dashboard:latest", nil, "https://microsoft.github.io/aspire-brand/logo/aspire-icon-256.svg"},
+		{"mssql server", "mcr.microsoft.com/mssql/server:2022-CU14-ubuntu-22.04", nil, "https://upload.wikimedia.org/wikipedia/commons/4/41/Microsoft_SQL_Server_2025_icon.svg"},
 		{"unknown image", "my-custom-app:latest", nil, ""},
 		{"empty image", "", nil, ""},
 		{"label overrides known image", "nginx:alpine", map[string]string{
@@ -155,6 +182,18 @@ func TestGenerateIndexPageIcon(t *testing.T) {
 				Labels:        map[string]string{"com.docker.extension.icon": "https://example.com/icon.png"},
 			},
 			contains: []string{`class="container-icon"`, "https://example.com/icon.png"},
+		},
+		{
+			name: "mssql renders icon",
+			info: &ContainerInfo{
+				ContainerName: "db",
+				Image:         "mcr.microsoft.com/mssql/server:2022-CU14-ubuntu-22.04",
+				Ports:         []uint16{1433},
+				TargetKind:    targetDNS,
+				IsRunning:     true,
+				Created:       now,
+			},
+			contains: []string{`class="container-icon"`, "https://upload.wikimedia.org/wikipedia/commons/4/41/Microsoft_SQL_Server_2025_icon.svg"},
 		},
 		{
 			name: "unknown image renders no icon",

@@ -12,7 +12,7 @@ A Caddy plugin that automatically registers `{project}.{service}.dev.local` doma
 - **Self-signed TLS** — Zero-config HTTPS using Caddy's internal CA
 - **Custom domains** — Override auto-registration with `dev.local.domains` label
 - **Hosts file integration** — Automatically adds entries to `/etc/hosts` for local DNS resolution
-- **Index page** — Visit `dev.local` (or `dev.localhost`) to see all registered containers; standalone containers (no Compose project) list at the top, Compose containers are grouped under collapsible project sections (collapsed by default); multi-port containers are listed as one row per port (HTTP port first, then ordered by port and domain), and each domain has a copy-to-clipboard button that copies the full URL for HTTP(S) services and `domain:port` for non-HTTP services. Containers whose image matches a well-known project show a brand icon next to the image name (sourced from [Simple Icons](https://simpleicons.org/), or the project's official brand assets where available); override it per-container with the open-standard labels below.
+- **Index page** — Visit `dev.local` (or `dev.localhost`) to see all registered containers. Cards show each container's icon, image, IP, and running/stopped status; Compose services are grouped under collapsible project sections with up/down counts. Each domain is listed once with its ports as copyable chips (`domain:port`). A sticky header provides live search and container counts, and the page auto-refreshes when containers change.
 - **Stale cleanup** — Stopped containers stay listed on the index page (marked stopped) until the stale TTL expires, then their config is removed
 - **Standalone hosts binary** — `devlocal-hosts` watches Docker and maintains hosts entries without running a proxy
 
@@ -219,7 +219,7 @@ just build-linux-amd64
 ./artifacts/binaries/linux-amd64/caddy devlocal
 ```
 
-Containers must publish ports to be reachable in standalone mode. Containers without published ports are automatically skipped.
+Containers must publish ports to be reachable in standalone mode; unpublished containers are skipped.
 
 ```bash
 docker run -d --name my-app -p 8080:80 nginx:alpine
@@ -268,6 +268,8 @@ Then visit:
 - `https://example.web.dev.local` — nginx web server
 - `https://example.api.dev.local` — API server
 - `https://myapp.custom.local` — Custom domain
+
+Non-HTTP services like `mssql` are also registered (see it on the index page); SQL Server listens on port `1433` (`SA` / `DevLocalPass123!`).
 
 ## How It Works
 

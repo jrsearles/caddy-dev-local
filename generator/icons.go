@@ -77,8 +77,16 @@ var customImageIcons = map[string]string{
 	"aspire-dashboard": "https://microsoft.github.io/aspire-brand/logo/aspire-icon-256.svg",
 }
 
+//nolint:goconst // images keyed by full repository path whose normalized name is too generic
+var repoImageIcons = map[string]string{
+	"mcr.microsoft.com/mssql/server": "https://upload.wikimedia.org/wikipedia/commons/4/41/Microsoft_SQL_Server_2025_icon.svg",
+}
+
 func iconForContainer(image string, labels map[string]string) string {
 	if url := labelIconURL(labels); url != "" {
+		return url
+	}
+	if url, ok := repoImageIcons[imageRepository(image)]; ok {
 		return url
 	}
 	name := normalizeImageName(image)
@@ -89,6 +97,17 @@ func iconForContainer(image string, labels map[string]string) string {
 		return simpleIconsURL + slug
 	}
 	return ""
+}
+
+func imageRepository(image string) string {
+	image = strings.ToLower(strings.TrimSpace(image))
+	if i := strings.Index(image, "@"); i >= 0 {
+		image = image[:i]
+	}
+	if i := strings.LastIndex(image, ":"); i >= 0 && !strings.Contains(image[i+1:], "/") {
+		image = image[:i]
+	}
+	return image
 }
 
 //nolint:goconst // open-standard label keys

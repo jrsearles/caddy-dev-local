@@ -4,263 +4,774 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>devlocal — Container Index</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --bg:            #0d1117;
+            --bg-card:       #161b22;
+            --bg-card-hover: #1c2128;
+            --bg-elevated:   #21262d;
+            --border:        #30363d;
+            --border-subtle: #21262d;
+            --text-primary:  #e6edf3;
+            --text-secondary:#8b949e;
+            --text-muted:    #6e7681;
+            --accent:        #58a6ff;
+            --accent-dim:    #1f3a5f;
+            --green:         #3fb950;
+            --red:           #f85149;
+        }
+
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
-            background: #0d1117;
-            color: #c9d1d9;
-            padding: 2rem;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: var(--bg);
+            color: var(--text-primary);
+            min-height: 100vh;
+            font-size: 14px;
         }
-        h1 {
-            font-size: 1.5rem;
-            margin-bottom: 0.5rem;
-            color: #58a6ff;
+
+        /* ── Sticky header ───────────────────────────────────────────── */
+        .header {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 0.75rem 1.75rem;
+            background: rgba(13, 17, 23, 0.88);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border);
         }
-        .subtitle {
-            color: #8b949e;
-            margin-bottom: 2rem;
-            font-size: 0.875rem;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        th {
-            text-align: left;
-            padding: 0.75rem 1rem;
-            border-bottom: 1px solid #30363d;
-            color: #8b949e;
-            font-weight: 600;
-            font-size: 0.75rem;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
-        td {
-            padding: 0.75rem 1rem;
-            border-bottom: 1px solid #21262d;
-            vertical-align: top;
-        }
-        a {
-            color: #58a6ff;
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            flex-shrink: 0;
             text-decoration: none;
         }
-        a:hover {
-            text-decoration: underline;
+
+        .brand-icon {
+            width: 26px;
+            height: 26px;
+            background: linear-gradient(135deg, #58a6ff 0%, #a5d6ff 100%);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
         }
-        .status-running {
-            color: #3fb950;
+
+        .brand-icon svg {
+            width: 14px;
+            height: 14px;
+            fill: #0d1117;
         }
-        .status-stopped {
-            color: #f85149;
-        }
-        .badge {
-            display: inline-block;
-            padding: 0.15rem 0.5rem;
-            border-radius: 1rem;
-            font-size: 0.75rem;
+
+        .brand-name {
+            font-size: 0.9rem;
             font-weight: 600;
+            color: var(--text-primary);
+            letter-spacing: -0.01em;
         }
-        .badge-compose {
-            background: #1f3a5f;
-            color: #58a6ff;
+
+        /* search */
+        .search-wrap {
+            position: relative;
+            flex: 1;
+            max-width: 380px;
         }
-        .empty {
-            color: #8b949e;
-            padding: 2rem;
-            text-align: center;
+
+        .search-icon {
+            position: absolute;
+            left: 0.6rem;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 13px;
+            height: 13px;
+            color: var(--text-muted);
+            pointer-events: none;
         }
-        .port {
-            color: #8b949e;
+
+        #search {
+            width: 100%;
+            padding: 0.4rem 2rem 0.4rem 1.9rem;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-family: inherit;
             font-size: 0.8rem;
+            outline: none;
+            transition: border-color 0.15s, box-shadow 0.15s;
         }
-        .ip-address {
-            color: #8b949e;
-            font-size: 0.8rem;
-            margin-top: 0.25rem;
+
+        #search:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.12);
         }
-        .container-icon {
-            width: 32px;
-            height: 32px;
+
+        #search::placeholder { color: var(--text-muted); }
+
+        .search-kbd {
+            position: absolute;
+            right: 0.5rem;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            background: var(--bg-card);
+            border: 1px solid var(--border);
             border-radius: 3px;
-            vertical-align: middle;
-            margin-right: 0.4rem;
+            padding: 0.1rem 0.3rem;
+            pointer-events: none;
+            transition: opacity 0.15s;
         }
-        tr.stopped {
-            opacity: 0.5;
+
+        #search:focus + .search-kbd { opacity: 0; }
+
+        /* header stats */
+        .header-stats {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-left: auto;
+            flex-shrink: 0;
         }
+
+        .chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+            padding: 0.2rem 0.55rem;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 2rem;
+            font-size: 0.72rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            white-space: nowrap;
+        }
+
+        .chip-dot {
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .chip-running .chip-dot  { background: var(--green); }
+        .chip-stopped .chip-dot  { background: var(--red); }
+        .chip-projects .chip-dot { background: var(--accent); }
+
+        .live-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--text-muted);
+            flex-shrink: 0;
+            transition: background 0.2s;
+        }
+
+        .live-dot.ping {
+            background: var(--green);
+            animation: ping 0.5s ease-out;
+        }
+
+        @keyframes ping {
+            0%   { transform: scale(1.6); opacity: 1; }
+            100% { transform: scale(1);   opacity: 0.7; }
+        }
+
+        /* ── Main content ────────────────────────────────────────────── */
+        .content {
+            padding: 1.5rem 1.75rem;
+            max-width: 960px;
+            margin: 0 auto;
+        }
+
+        /* section labels */
+        .section-label {
+            font-size: 0.68rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-muted);
+            margin-bottom: 0.6rem;
+        }
+
+        /* ── Container cards ─────────────────────────────────────────── */
+        .card-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.4rem;
+            margin-bottom: 1.75rem;
+        }
+
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: 8px;
+            overflow: hidden;
+            transition: border-color 0.15s;
+        }
+
+        .card:hover { border-color: var(--border); }
+        .card.stopped { opacity: 0.55; }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 0.65rem;
+            padding: 0.65rem 0.9rem;
+        }
+
+        .container-icon {
+            width: 26px;
+            height: 26px;
+            border-radius: 4px;
+            object-fit: contain;
+            flex-shrink: 0;
+        }
+
+        .card-title {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .container-name {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .container-meta {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            margin-top: 0.1rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .card-badges {
+            display: flex;
+            align-items: center;
+            gap: 0.45rem;
+            flex-shrink: 0;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.15rem 0.45rem;
+            border-radius: 1rem;
+            font-size: 0.68rem;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+        }
+
+        .badge-service {
+            background: var(--accent-dim);
+            color: var(--accent);
+        }
+
+        /* status indicator */
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+            font-size: 0.72rem;
+            font-weight: 500;
+            flex-shrink: 0;
+        }
+
+        .status-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .status-running .status-dot {
+            background: var(--green);
+            animation: glow 2.5s infinite;
+        }
+
+        @keyframes glow {
+            0%,100% { box-shadow: 0 0 0 0   rgba(63,185,80,0.5); }
+            50%      { box-shadow: 0 0 0 4px rgba(63,185,80,0); }
+        }
+
+        .status-running .status-label { color: var(--green); }
+        .status-stopped .status-dot   { background: var(--red); }
+        .status-stopped .status-label { color: var(--red); }
+
+        .status-time {
+            font-size: 0.68rem;
+            color: var(--text-muted);
+            margin-left: 0.1rem;
+        }
+
+        /* domain rows */
+        .card-domains {
+            border-top: 1px solid var(--border-subtle);
+        }
+
+        .domain-row {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.3rem 0.9rem;
+            transition: background 0.1s;
+        }
+
+        .domain-row:hover { background: var(--bg-elevated); }
+
+        .domain-link {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.78rem;
+            color: var(--accent);
+            text-decoration: none;
+            flex: 1;
+            min-width: 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .domain-link:hover { text-decoration: underline; }
+
+        .domain-plain {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+            flex: 1;
+            min-width: 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .port-chips {
+            display: flex;
+            gap: 0.25rem;
+            flex-shrink: 0;
+        }
+
+        .port-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.2rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.68rem;
+            color: var(--text-muted);
+            background: var(--bg-elevated);
+            border: 1px solid var(--border-subtle);
+            border-radius: 3px;
+            padding: 0.05rem 0.2rem 0.05rem 0.3rem;
+        }
+
+        .chip-copy-btn {
+            padding: 0.1rem;
+        }
+
+        .chip-copy-btn .icon-copy,
+        .chip-copy-btn .icon-check {
+            width: 10px;
+            height: 10px;
+        }
+
+        /* copy button */
         .copy-btn {
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            vertical-align: middle;
-            margin-left: 0.35rem;
-            padding: 0.15rem;
+            padding: 0.18rem;
             background: none;
             border: none;
             cursor: pointer;
-            color: #8b949e;
-            border-radius: 0.25rem;
+            color: var(--text-muted);
+            border-radius: 4px;
             line-height: 0;
             position: relative;
+            flex-shrink: 0;
+            transition: color 0.1s, background 0.1s;
         }
-        .copy-btn:hover {
-            color: #58a6ff;
-            background: #21262d;
-        }
+
+        .copy-btn:hover { color: var(--accent); background: var(--bg-elevated); }
+
         .copy-btn .icon-copy,
         .copy-btn .icon-check {
-            width: 14px;
-            height: 14px;
+            width: 12px;
+            height: 12px;
             fill: currentColor;
         }
-        .copy-btn .icon-check {
-            display: none;
-        }
-        .copy-btn.copied {
-            color: #3fb950;
-        }
-        .copy-btn.copied .icon-copy {
-            display: none;
-        }
-        .copy-btn.copied .icon-check {
-            display: block;
-        }
+
+        .copy-btn .icon-check { display: none; }
+        .copy-btn.copied { color: var(--green); }
+        .copy-btn.copied .icon-copy { display: none; }
+        .copy-btn.copied .icon-check { display: block; }
+
         .copy-btn::after {
             content: "Copied!";
             position: absolute;
-            bottom: 120%;
+            bottom: 130%;
             left: 50%;
-            transform: translateX(-50%) translateY(2px);
-            background: #30363d;
-            color: #c9d1d9;
-            padding: 0.2rem 0.45rem;
-            border-radius: 0.3rem;
-            font-size: 0.7rem;
+            transform: translateX(-50%);
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            padding: 0.18rem 0.45rem;
+            border-radius: 4px;
+            font-size: 0.68rem;
+            font-family: 'Inter', sans-serif;
             white-space: nowrap;
             opacity: 0;
             pointer-events: none;
-            transition: opacity 0.15s ease;
+            transition: opacity 0.12s;
             z-index: 10;
         }
-        .copy-btn.copied::after {
-            opacity: 1;
-        }
-        tr.project-header td {
-            background: #161b22;
-            padding: 0.5rem 1rem;
-            border-top: 2px solid #30363d;
-            border-bottom: 1px solid #30363d;
-        }
+
+        .copy-btn.copied::after { opacity: 1; }
+
+        /* ── Compose project sections ─────────────────────────────────── */
+        .project-section { margin-bottom: 1rem; }
+
         .project-toggle {
-            display: inline-flex;
+            display: flex;
             align-items: center;
-            gap: 0.5rem;
-            padding: 0;
-            background: none;
-            border: none;
+            gap: 0.55rem;
+            width: 100%;
+            padding: 0.5rem 0.8rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 7px;
             cursor: pointer;
             font: inherit;
+            font-size: 0.85rem;
             font-weight: 600;
-            color: #c9d1d9;
+            color: var(--text-primary);
+            margin-bottom: 0.35rem;
+            text-align: left;
+            transition: background 0.12s, color 0.12s;
         }
-        .project-toggle:hover {
-            color: #58a6ff;
+
+        .project-toggle:hover { background: var(--bg-card-hover); color: var(--accent); }
+
+        .chevron {
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            transition: transform 0.18s ease;
+            flex-shrink: 0;
         }
-        .project-toggle .chevron {
-            display: inline-block;
-            color: #8b949e;
-            font-size: 0.8rem;
-            transition: transform 0.15s ease;
+
+        .project-toggle[aria-expanded="true"] .chevron { transform: rotate(90deg); }
+
+        .project-name { flex: 1; }
+
+        .project-count {
+            font-size: 0.68rem;
+            font-weight: 500;
+            color: var(--text-muted);
+            background: var(--bg-elevated);
+            padding: 0.1rem 0.45rem;
+            border-radius: 1rem;
         }
-        tr.project-header.expanded .project-toggle .chevron {
-            transform: rotate(90deg);
+
+        .project-status-chips {
+            display: flex;
+            gap: 0.3rem;
         }
-        tr.project-member.hidden {
+
+        .mini-chip {
+            font-size: 0.65rem;
+            font-weight: 600;
+            padding: 0.1rem 0.4rem;
+            border-radius: 1rem;
+        }
+
+        .mini-chip-running { background: rgba(63,185,80,0.15); color: var(--green); }
+        .mini-chip-stopped { background: rgba(248,81,73,0.15); color: var(--red); }
+
+        .project-cards {
             display: none;
+            flex-direction: column;
+            gap: 0.35rem;
+            padding-left: 0.9rem;
+            border-left: 2px solid var(--border);
+            margin-left: 0.5rem;
         }
+
+        .project-cards.open { display: flex; }
+
+        /* ── Empty state ─────────────────────────────────────────────── */
+        .empty-state {
+            text-align: center;
+            padding: 5rem 2rem;
+            color: var(--text-muted);
+        }
+
+        .empty-state svg {
+            width: 44px;
+            height: 44px;
+            margin-bottom: 0.75rem;
+            opacity: 0.25;
+        }
+
+        .empty-state p { font-size: 0.875rem; }
+
+        /* search hide */
+        .hidden { display: none !important; }
     </style>
 </head>
 <body>
-    <h1>devlocal</h1>
-    <p class="subtitle">Local Docker container index</p>
-{{define "indexRow"}}
-            <tr{{if .Grouped}} class="project-member hidden{{if not .IsRunning}} stopped{{end}}"{{else if not .IsRunning}} class="stopped"{{end}}>
-                <td>{{if .URL}}<a href="{{.URL}}">{{.Domain}}</a>{{else}}{{.Domain}}{{end}} <span class="port">:{{.PortStr}}</span>{{if .CopyText}}<button class="copy-btn" type="button" data-copy="{{.CopyText}}" onclick="copyDomain(this)" aria-label="Copy {{.CopyText}}" title="Copy {{.CopyText}}">
-                    <svg class="icon-copy" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M22.6,4H21.55a3.89,3.89,0,0,0-7.31,0H13.4A2.41,2.41,0,0,0,11,6.4V10H25V6.4A2.41,2.41,0,0,0,22.6,4ZM23,8H13V6.25A.25.25,0,0,1,13.25,6h2.69l.12-1.11A1.24,1.24,0,0,1,16.61,4a2,2,0,0,1,3.15,1.18l.09.84h2.9a.25.25,0,0,1,.25.25Z"></path><path d="M33.25,18.06H21.33l2.84-2.83a1,1,0,1,0-1.42-1.42L17.5,19.06l5.25,5.25a1,1,0,0,0,.71.29,1,1,0,0,0,.71-1.7l-2.84-2.84H33.25a1,1,0,0,0,0-2Z"></path><path d="M29,16h2V6.68A1.66,1.66,0,0,0,29.35,5H27.08V7H29Z"></path><path d="M29,31H7V7H9V5H6.64A1.66,1.66,0,0,0,5,6.67V31.32A1.66,1.66,0,0,0,6.65,33H29.36A1.66,1.66,0,0,0,31,31.33V22.06H29Z"></path></svg>
-                    <svg class="icon-check" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"></path></svg>
-                </button>{{end}}</td>
-                {{if .IsFirst}}<td{{if gt .RowSpan 1}} rowspan="{{.RowSpan}}"{{end}}>{{.ContainerName}}{{if .IPAddress}}<div class="ip-address">{{.IPAddress}}</div>{{end}}</td>
-                <td{{if gt .RowSpan 1}} rowspan="{{.RowSpan}}"{{end}}>{{if .Icon}}<img class="container-icon" src="{{.Icon}}" alt="" title="{{.Image}}" onerror="this.style.display='none'">{{end}}{{.Image}}</td>
-                <td{{if gt .RowSpan 1}} rowspan="{{.RowSpan}}"{{end}}>{{if .ComposeProject}}<span class="badge badge-compose">{{.ComposeService}}</span>{{end}}</td>
-                <td{{if gt .RowSpan 1}} rowspan="{{.RowSpan}}"{{end}}>{{if .IsRunning}}<span class="status-running">running</span><br>{{.StartedAt}}{{else}}<span class="status-stopped">stopped</span><br>{{.StoppedAt}}{{end}}</td>{{end}}
-            </tr>
+    <header class="header">
+        <a class="brand" href="">
+            <div class="brand-icon">
+                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+            </div>
+            <span class="brand-name">devlocal</span>
+        </a>
+
+        <div class="search-wrap">
+            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" xmlns="http://www.w3.org/2000/svg"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            <input id="search" type="search" placeholder="Filter containers…" autocomplete="off" spellcheck="false">
+            <span class="search-kbd">/</span>
+        </div>
+
+        <div class="header-stats">
+            {{if gt .RunningCount 0}}<span class="chip chip-running"><span class="chip-dot"></span>{{.RunningCount}} running</span>{{end}}
+            {{if gt .StoppedCount 0}}<span class="chip chip-stopped"><span class="chip-dot"></span>{{.StoppedCount}} stopped</span>{{end}}
+            {{if .Groups}}<span class="chip chip-projects"><span class="chip-dot"></span>{{len .Groups}} {{if eq (len .Groups) 1}}project{{else}}projects{{end}}</span>{{end}}
+            <span class="chip" title="Refreshes when containers change"><span class="live-dot" id="liveDot"></span>live</span>
+        </div>
+    </header>
+
+{{define "containerCard"}}
+    <div class="card{{if not .IsRunning}} stopped{{end}}"
+         data-name="{{.ContainerName}}"
+         data-image="{{.Image}}"
+         data-project="{{.ComposeProject}}"
+         data-service="{{.ComposeService}}">
+        <div class="card-header">
+            {{if .Icon}}<img class="container-icon" src="{{.Icon}}" alt="" title="{{.Image}}" onerror="this.style.display='none'">{{end}}
+            <div class="card-title">
+                <div class="container-name">{{.ContainerName}}</div>
+                <div class="container-meta">{{.Image}}{{if .IPAddress}} · {{.IPAddress}}{{end}}</div>
+            </div>
+            <div class="card-badges">
+                {{if .ComposeService}}<span class="badge badge-service">{{.ComposeService}}</span>{{end}}
+                <div class="status {{if .IsRunning}}status-running{{else}}status-stopped{{end}}">
+                    <div class="status-dot"></div>
+                    <span class="status-label">{{if .IsRunning}}running{{else}}stopped{{end}}</span>
+                    <span class="status-time">{{if .IsRunning}}since {{.StartedAt}}{{else if .StoppedAt}}{{.StoppedAt}}{{end}}</span>
+                </div>
+            </div>
+        </div>
+        {{if .Domains}}<div class="card-domains">
+{{range .Domains}}            <div class="domain-row">
+                {{if .URL}}<a class="domain-link" href="{{.URL}}">{{.Domain}}</a>{{else}}<span class="domain-plain">{{.Domain}}</span>{{end}}
+                <div class="port-chips">{{range .Chips}}<span class="port-chip">:{{.PortStr}}{{if .CopyText}}<button class="copy-btn chip-copy-btn" type="button" data-copy="{{.CopyText}}" onclick="copyDomain(this)" aria-label="Copy {{.CopyText}}" title="Copy {{.CopyText}}"><svg class="icon-copy" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M22.6,4H21.55a3.89,3.89,0,0,0-7.31,0H13.4A2.41,2.41,0,0,0,11,6.4V10H25V6.4A2.41,2.41,0,0,0,22.6,4ZM23,8H13V6.25A.25.25,0,0,1,13.25,6h2.69l.12-1.11A1.24,1.24,0,0,1,16.61,4a2,2,0,0,1,3.15,1.18l.09.84h2.9a.25.25,0,0,1,.25.25Z"/><path d="M33.25,18.06H21.33l2.84-2.83a1,1,0,1,0-1.42-1.42L17.5,19.06l5.25,5.25a1,1,0,0,0,.71.29,1,1,0,0,0,.71-1.7l-2.84-2.84H33.25a1,1,0,0,0,0-2Z"/><path d="M29,16h2V6.68A1.66,1.66,0,0,0,29.35,5H27.08V7H29Z"/><path d="M29,31H7V7H9V5H6.64A1.66,1.66,0,0,0,5,6.67V31.32A1.66,1.66,0,0,0,6.65,33H29.36A1.66,1.66,0,0,0,31,31.33V22.06H29Z"/></svg><svg class="icon-check" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></button>{{end}}</span>{{end}}</div>
+            </div>
+{{end}}        </div>{{end}}
+    </div>
 {{end}}
+
+    <main class="content">
 {{if or .DisplayRows .Groups}}
-    <table>
-        <thead>
-            <tr>
-                <th>Domain</th>
-                <th>Container</th>
-                <th>Image</th>
-                <th>Service</th>
-                <th>Status</th>
-            </tr>
-        </thead>
-        <tbody>
-{{range .DisplayRows}}{{template "indexRow" .}}{{end}}
+{{if .DisplayRows}}
+        <div class="section-label">Containers</div>
+        <div class="card-list" id="top-list">
+{{range .DisplayRows}}{{template "containerCard" .}}{{end}}
+        </div>
+{{end}}
+{{if .Groups}}
+        <div class="section-label">Compose Projects</div>
 {{range .Groups}}
-            <tr class="project-header">
-                <td colspan="5">
-                    <button class="project-toggle" type="button" aria-expanded="false" onclick="toggleProject(this)">
-                        <span class="chevron">▸</span>
-                        <span class="project-name">{{.Project}}</span>
-                    </button>
-                </td>
-            </tr>
-{{range .Rows}}
-            {{template "indexRow" .}}
+        <div class="project-section" data-project="{{.Project}}">
+            <button class="project-toggle" type="button" aria-expanded="false" onclick="toggleProject(this)">
+                <span class="chevron">▸</span>
+                <span class="project-name">{{.Project}}</span>
+                <span class="project-status-chips">
+                    {{if gt .RunningCount 0}}<span class="mini-chip mini-chip-running">{{.RunningCount}} up</span>{{end}}
+                    {{if gt .StoppedCount 0}}<span class="mini-chip mini-chip-stopped">{{.StoppedCount}} down</span>{{end}}
+                </span>
+                <span class="project-count">{{len .Rows}} {{if eq (len .Rows) 1}}service{{else}}services{{end}}</span>
+            </button>
+            <div class="project-cards">
+{{range .Rows}}{{template "containerCard" .}}{{end}}
+            </div>
+        </div>
 {{end}}
 {{end}}
-        </tbody>
-    </table>
 {{else}}
-    <p class="empty">No containers registered.</p>
+        <div class="empty-state">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/><line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/></svg>
+            <p>No containers registered.</p>
+        </div>
 {{end}}
+    </main>
+
     <script>
+    // ── Search ───────────────────────────────────────────────────────
+    var searchEl = document.getElementById('search');
+    var searching = false;
+    var savedExpansion = {};
+
+    searchEl.addEventListener('input', function() { filterCards(); saveUIState(); });
+    document.addEventListener('keydown', function(e) {
+        if (e.key === '/' && document.activeElement !== searchEl) {
+            e.preventDefault();
+            searchEl.focus();
+            searchEl.select();
+        } else if (e.key === 'Escape' && document.activeElement === searchEl) {
+            searchEl.value = '';
+            filterCards();
+            saveUIState();
+            searchEl.blur();
+        }
+    });
+
+    function setProjectOpen(sec, open) {
+        var btn = sec.querySelector('.project-toggle');
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        var list = btn.nextElementSibling;
+        if (list) list.classList.toggle('open', open);
+    }
+
+    function filterCards() {
+        var q = searchEl.value.toLowerCase().trim();
+        var nowSearching = q !== '';
+        if (nowSearching && !searching) {
+            savedExpansion = {};
+            document.querySelectorAll('.project-section').forEach(function(sec) {
+                savedExpansion[sec.dataset.project] =
+                    sec.querySelector('.project-toggle').getAttribute('aria-expanded') === 'true';
+            });
+        }
+        searching = nowSearching;
+
+        document.querySelectorAll('.card').forEach(function(card) {
+            if (!q) { card.classList.remove('hidden'); return; }
+            var haystack = [
+                card.dataset.name,
+                card.dataset.image,
+                card.dataset.project,
+                card.dataset.service
+            ].join(' ').toLowerCase();
+            card.querySelectorAll('.domain-link, .domain-plain').forEach(function(el) {
+                haystack += ' ' + el.textContent.toLowerCase();
+            });
+            card.classList.toggle('hidden', haystack.indexOf(q) < 0);
+        });
+        document.querySelectorAll('.project-section').forEach(function(sec) {
+            if (!q) {
+                sec.classList.remove('hidden');
+                if (sec.dataset.project in savedExpansion) {
+                    setProjectOpen(sec, savedExpansion[sec.dataset.project]);
+                }
+                return;
+            }
+            var visible = sec.querySelectorAll('.card:not(.hidden)').length;
+            sec.classList.toggle('hidden', visible === 0);
+            if (visible > 0) setProjectOpen(sec, true);
+        });
+    }
+
+    // ── Copy ─────────────────────────────────────────────────────────
     function copyDomain(btn) {
         var text = btn.getAttribute('data-copy');
         function done() {
             btn.classList.add('copied');
-            setTimeout(function () { btn.classList.remove('copied'); }, 1200);
+            setTimeout(function() { btn.classList.remove('copied'); }, 1200);
         }
         if (navigator.clipboard && window.isSecureContext) {
-            navigator.clipboard.writeText(text).then(done, function () { fallbackCopy(text, done); });
+            navigator.clipboard.writeText(text).then(done, function() { fallbackCopy(text, done); });
         } else {
             fallbackCopy(text, done);
         }
     }
     function fallbackCopy(text, done) {
         var ta = document.createElement('textarea');
-        ta.value = text;
-        ta.style.position = 'fixed';
-        ta.style.opacity = '0';
-        document.body.appendChild(ta);
-        ta.select();
-        try { document.execCommand('copy'); } catch (e) {}
-        document.body.removeChild(ta);
-        done();
+        ta.value = text; ta.style.cssText = 'position:fixed;opacity:0';
+        document.body.appendChild(ta); ta.select();
+        try { document.execCommand('copy'); } catch(e) {}
+        document.body.removeChild(ta); done();
     }
+
+    // ── Project toggle ────────────────────────────────────────────────
     function toggleProject(btn) {
-        var headerRow = btn.closest('tr');
-        var expand = headerRow.classList.toggle('expanded');
-        btn.setAttribute('aria-expanded', expand ? 'true' : 'false');
-        var row = headerRow.nextElementSibling;
-        while (row && row.classList.contains('project-member')) {
-            row.classList.toggle('hidden', !expand);
-            row = row.nextElementSibling;
-        }
+        var expanded = btn.getAttribute('aria-expanded') === 'true';
+        btn.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+        var list = btn.nextElementSibling;
+        if (list) list.classList.toggle('open', !expanded);
+        saveUIState();
     }
+
+    // ── UI state across auto-reloads (sessionStorage) ────────────────
+    function saveUIState() {
+        try {
+            var open = [];
+            document.querySelectorAll('.project-toggle[aria-expanded="true"]').forEach(function(btn) {
+                open.push(btn.closest('.project-section').dataset.project);
+            });
+            sessionStorage.setItem('devlocal-open', JSON.stringify(open));
+            sessionStorage.setItem('devlocal-search', searchEl.value);
+        } catch (e) {}
+    }
+    function restoreUIState() {
+        try {
+            var q = sessionStorage.getItem('devlocal-search') || '';
+            if (q) { searchEl.value = q; }
+            var open = JSON.parse(sessionStorage.getItem('devlocal-open') || '[]');
+            document.querySelectorAll('.project-section').forEach(function(sec) {
+                if (open.indexOf(sec.dataset.project) >= 0) setProjectOpen(sec, true);
+            });
+            filterCards();
+        } catch (e) {}
+    }
+
+    // ── Live refresh (content-hash poll) ──────────────────────────────
+    (function() {
+        var dot = document.getElementById('liveDot');
+        var prev = null;
+        function hash(str) {
+            var h = 5381;
+            for (var i = 0; i < str.length; i++) {
+                h = ((h << 5) + h + str.charCodeAt(i)) | 0;
+            }
+            return h;
+        }
+        function check() {
+            fetch(location.href, { cache: 'no-store' })
+                .then(function(r) { return r.text(); })
+                .then(function(html) {
+                    var h = hash(html);
+                    if (prev !== null && h !== prev) {
+                        dot.classList.add('ping');
+                        setTimeout(function() { dot.classList.remove('ping'); }, 500);
+                        saveUIState();
+                        setTimeout(function() { location.reload(); }, 400);
+                        return;
+                    }
+                    prev = h;
+                })
+                .catch(function() {});
+        }
+        restoreUIState();
+        check();
+        setInterval(check, 5000);
+    })();
     </script>
 </body>
 </html>

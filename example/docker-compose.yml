@@ -52,6 +52,14 @@ services:
     labels:
       - "dev.local.domains=80:myapp.custom.local;80:myapp.alt.local"
 
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-CU14-ubuntu-22.04
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "DevLocalPass123!"
+    networks:
+      - devlocal
+
 networks:
   devlocal:
     name: devlocal

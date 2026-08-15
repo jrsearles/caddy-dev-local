@@ -25,7 +25,7 @@ import (
 func initCaddyConfig(gen *generator.Generator, cfg *config.Config, indexDir string, api *adminAPI, userConfigPath string) error {
 	logger := caddy.Log().Named(appName)
 	indexPage := generator.GenerateIndexPage(cfg.TLD, cfg.Standalone, gen.Containers())
-	if err := os.WriteFile(filepath.Join(indexDir, "index.html"), []byte(indexPage), 0600); err != nil {
+	if err := writeIndexPage(indexDir, indexPage); err != nil {
 		return fmt.Errorf("writing index page: %w", err)
 	}
 
@@ -193,7 +193,7 @@ func reloadCaddyConfig(gen *generator.Generator, cfg *config.Config, indexDir st
 	}
 
 	indexPage := generator.GenerateIndexPage(cfg.TLD, cfg.Standalone, gen.Containers())
-	if err := os.WriteFile(filepath.Join(indexDir, "index.html"), []byte(indexPage), 0600); err != nil {
+	if err := writeIndexPage(indexDir, indexPage); err != nil {
 		return false, fmt.Errorf("writing index page: %w", err)
 	}
 
@@ -263,4 +263,12 @@ func writeDevlocalAutosave(indexDir string, devlocal *devlocalConfig) {
 	if err := os.WriteFile(filepath.Join(indexDir, "devlocal.json"), data, 0600); err != nil {
 		logger.Warn("failed to write devlocal autosave", zap.Error(err))
 	}
+}
+
+func writeIndexPage(indexDir, page string) error {
+	path := filepath.Join(indexDir, "index.html")
+	if existing, err := os.ReadFile(path); err == nil && string(existing) == page {
+		return nil
+	}
+	return os.WriteFile(path, []byte(page), 0600)
 }

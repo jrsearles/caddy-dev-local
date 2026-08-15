@@ -13,11 +13,15 @@ import (
 var indexTemplateHTML string
 var indexTemplate = template.Must(template.New("index").Parse(indexTemplateHTML))
 
-type domainEntry struct {
-	Domain   string
+type portChip struct {
 	PortStr  string
-	URL      string
 	CopyText string
+}
+
+type domainEntry struct {
+	Domain string
+	Chips  []portChip
+	URL    string
 }
 
 type indexRow struct {
@@ -33,68 +37,30 @@ type indexRow struct {
 	StoppedAt      string
 }
 
-type displayRow struct {
-	Domain         string
-	PortStr        string
-	URL            string
-	CopyText       string
-	ContainerName  string
-	Image          string
-	Icon           string
-	IPAddress      string
-	ComposeProject string
-	ComposeService string
-	IsRunning      bool
-	StartedAt      string
-	StoppedAt      string
-	RowSpan        int
-	IsFirst        bool
-	Grouped        bool
-}
-
 type displayGroup struct {
-	Project string
-	Rows    []displayRow
+	Project      string
+	Rows         []indexRow
+	RunningCount int
+	StoppedCount int
 }
 
 type indexData struct {
-	TLD         string
-	DisplayRows []displayRow
-	Groups      []displayGroup
+	TLD          string
+	DisplayRows  []indexRow
+	Groups       []displayGroup
+	RunningCount int
+	StoppedCount int
 }
 
-func buildDomainEntries(domain string, portStrs []string, url string) []domainEntry {
-	if len(portStrs) == 0 {
-		return []domainEntry{{Domain: domain, PortStr: "-", URL: url, CopyText: url}}
+func buildDomainEntry(domain string, portStrs []string, url string) domainEntry {
+	chips := make([]portChip, 0, len(portStrs))
+	for _, p := range portStrs {
+		chips = append(chips, portChip{PortStr: p, CopyText: domain + ":" + p})
 	}
-
-	if len(portStrs) > 1 {
-		entries := make([]domainEntry, 0, len(portStrs))
-		for _, p := range portStrs {
-			copyText := domain + ":" + p
-			if url != "" {
-				copyText = url
-			}
-			entries = append(entries, domainEntry{
-				Domain:   domain,
-				PortStr:  p,
-				URL:      url,
-				CopyText: copyText,
-			})
-		}
-		return entries
+	if len(chips) == 0 {
+		chips = []portChip{{PortStr: "-"}}
 	}
-
-	copyText := domain + ":" + portStrs[0]
-	if url != "" {
-		copyText = url
-	}
-	return []domainEntry{{
-		Domain:   domain,
-		PortStr:  portStrs[0],
-		URL:      url,
-		CopyText: copyText,
-	}}
+	return domainEntry{Domain: domain, Chips: chips, URL: url}
 }
 
 func sortDomainEntries(entries []domainEntry, httpPortStr string) {
@@ -105,24 +71,23 @@ func sortDomainEntries(entries []domainEntry, httpPortStr string) {
 		}
 		return n
 	}
-	slices.SortStableFunc(entries, func(a, b domainEntry) int {
-		aHTTP := httpPortStr != "" && a.PortStr == httpPortStr
-		bHTTP := httpPortStr != "" && b.PortStr == httpPortStr
-		if aHTTP != bHTTP {
-			if aHTTP {
-				return -1
+	for i := range entries {
+		slices.SortStableFunc(entries[i].Chips, func(a, b portChip) int {
+			aHTTP := httpPortStr != "" && a.PortStr == httpPortStr
+			bHTTP := httpPortStr != "" && b.PortStr == httpPortStr
+			if aHTTP != bHTTP {
+				if aHTTP {
+					return -1
+				}
+				return 1
 			}
-			return 1
-		}
-		if c := cmp.Compare(portNum(a.PortStr), portNum(b.PortStr)); c != 0 {
-			return c
-		}
-		return strings.Compare(a.Domain, b.Domain)
-	})
+			return cmp.Compare(portNum(a.PortStr), portNum(b.PortStr))
+		})
+	}
 }
 
 func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo) string {
-	groups := make([]indexRow, 0, len(containers))
+	rows := make([]indexRow, 0, len(containers))
 
 	for _, info := range containers {
 		if !info.hasReachablePort() {
@@ -160,15 +125,11 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo)
 				if info.IsRunning {
 					url = "https://" + cd.Domain
 				}
-				copyText := cd.Domain + ":" + strconv.FormatUint(uint64(port), 10)
-				if url != "" {
-					copyText = url
-				}
+				portStr := strconv.FormatUint(uint64(port), 10)
 				domains = append(domains, domainEntry{
-					Domain:   cd.Domain,
-					PortStr:  strconv.FormatUint(uint64(port), 10),
-					URL:      url,
-					CopyText: copyText,
+					Domain: cd.Domain,
+					Chips:  []portChip{{PortStr: portStr, CopyText: cd.Domain + ":" + portStr}},
+					URL:    url,
 				})
 			}
 		} else {
@@ -189,7 +150,7 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo)
 				url = "https://" + domain
 			}
 
-			domains = append(domains, buildDomainEntries(domain, portStrs, url)...)
+			domains = append(domains, buildDomainEntry(domain, portStrs, url))
 
 			var localhostDomain string
 			if info.IsCompose {
@@ -201,12 +162,12 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo)
 			if info.IsRunning && info.SelectedPort > 0 {
 				localhostURL = "https://" + localhostDomain
 			}
-			domains = append(domains, buildDomainEntries(localhostDomain, portStrs, localhostURL)...)
+			domains = append(domains, buildDomainEntry(localhostDomain, portStrs, localhostURL))
 		}
 
 		sortDomainEntries(domains, httpPortStr)
 
-		groups = append(groups, indexRow{
+		rows = append(rows, indexRow{
 			Domains:        domains,
 			ContainerName:  info.ContainerName,
 			Image:          info.Image,
@@ -222,37 +183,67 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo)
 
 	var top []indexRow
 	var projectRows []indexRow
-	for gi := range groups {
-		if groups[gi].ComposeProject == "" {
-			top = append(top, groups[gi])
+	for i := range rows {
+		if rows[i].ComposeProject == "" {
+			top = append(top, rows[i])
 		} else {
-			projectRows = append(projectRows, groups[gi])
+			projectRows = append(projectRows, rows[i])
 		}
 	}
 
 	projectGroups := make(map[string][]indexRow)
 	var projectNames []string
-	for gi := range projectRows {
-		g := &projectRows[gi]
-		if _, ok := projectGroups[g.ComposeProject]; !ok {
-			projectNames = append(projectNames, g.ComposeProject)
+	for i := range projectRows {
+		r := &projectRows[i]
+		if _, ok := projectGroups[r.ComposeProject]; !ok {
+			projectNames = append(projectNames, r.ComposeProject)
 		}
-		projectGroups[g.ComposeProject] = append(projectGroups[g.ComposeProject], *g)
+		projectGroups[r.ComposeProject] = append(projectGroups[r.ComposeProject], *r)
 	}
 	slices.Sort(projectNames)
 
 	grouped := make([]displayGroup, 0, len(projectNames))
 	for _, name := range projectNames {
+		gr, gs := 0, 0
+		for i := range projectGroups[name] {
+			if projectGroups[name][i].IsRunning {
+				gr++
+			} else {
+				gs++
+			}
+		}
 		grouped = append(grouped, displayGroup{
-			Project: name,
-			Rows:    flattenRows(projectGroups[name], true),
+			Project:      name,
+			Rows:         projectGroups[name],
+			RunningCount: gr,
+			StoppedCount: gs,
 		})
 	}
 
+	running, stopped := 0, 0
+	for i := range top {
+		if top[i].IsRunning {
+			running++
+		} else {
+			stopped++
+		}
+	}
+	for gi := range grouped {
+		for i := range grouped[gi].Rows {
+			if grouped[gi].Rows[i].IsRunning {
+				running++
+			} else {
+				stopped++
+			}
+		}
+	}
+
 	data := indexData{
-		TLD:         tld,
-		DisplayRows: flattenRows(top, false),
-		Groups:      grouped,
+		TLD:          tld,
+		DisplayRows:  top,
+		Groups:       grouped,
+		RunningCount: running,
+		StoppedCount: stopped,
 	}
 
 	var sb strings.Builder
@@ -260,31 +251,4 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo)
 		return "template error: " + err.Error()
 	}
 	return sb.String()
-}
-
-func flattenRows(groups []indexRow, grouped bool) []displayRow {
-	var rows []displayRow
-	for gi := range groups {
-		for i, d := range groups[gi].Domains {
-			rows = append(rows, displayRow{
-				Domain:         d.Domain,
-				PortStr:        d.PortStr,
-				URL:            d.URL,
-				CopyText:       d.CopyText,
-				ContainerName:  groups[gi].ContainerName,
-				Image:          groups[gi].Image,
-				Icon:           groups[gi].Icon,
-				IPAddress:      groups[gi].IPAddress,
-				ComposeProject: groups[gi].ComposeProject,
-				ComposeService: groups[gi].ComposeService,
-				IsRunning:      groups[gi].IsRunning,
-				StartedAt:      groups[gi].StartedAt,
-				StoppedAt:      groups[gi].StoppedAt,
-				RowSpan:        len(groups[gi].Domains),
-				IsFirst:        i == 0,
-				Grouped:        grouped,
-			})
-		}
-	}
-	return rows
 }

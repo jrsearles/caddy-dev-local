@@ -40,3 +40,11 @@ services:
     ports:
       - "5432:5432"
 
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-CU14-ubuntu-22.04
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "DevLocalPass123!"
+    ports:
+      - "1433:1433"
+
