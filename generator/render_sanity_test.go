@@ -53,6 +53,11 @@ func TestRenderSanity(t *testing.T) {
 		`class="card"`,
 		`class="container-icon"`,
 		`data-name="my-nginx"`,
+		`docker-desktop://dashboard/apps"`,
+		`docker-desktop://dashboard/apps/demo`,
+		`Open Docker Desktop`,
+		`Open demo in Docker Desktop`,
+		`role="button"`,
 		`data-project="demo"`,
 		`class="project-section"`,
 		`class="project-toggle"`,
@@ -60,13 +65,18 @@ func TestRenderSanity(t *testing.T) {
 		`class="mini-chip mini-chip-running"`,
 		`class="mini-chip mini-chip-stopped"`,
 		`aria-expanded="false"`,
-		`id="search"`,
 		`id="liveDot"`,
 		`status-running`,
 		`status-stopped`,
 		`data-copy=`,
 		`sessionStorage.setItem('devlocal-open'`,
 		`fetch(location.href`,
+		`id="themeToggle"`,
+		`onclick="cycleTheme()"`,
+		`localStorage.getItem('devlocal-theme')`,
+		`data-theme="dark"`,
+		`data-theme="light"`,
+		`prefers-color-scheme: light`,
 		`>2 running<`,
 		`>1 stopped<`,
 		`>1 project<`,
@@ -76,8 +86,11 @@ func TestRenderSanity(t *testing.T) {
 			t.Errorf("page missing %q", c)
 		}
 	}
-	if strings.Contains(page, `class="config-panel"`) {
-		t.Error("config panel rendered with empty config")
+	if strings.Contains(page, `id="tab-config"`) {
+		t.Error("config tab rendered with empty config")
+	}
+	if strings.Contains(page, `id="config-json"`) {
+		t.Error("config JSON script rendered with empty config")
 	}
 	if strings.Contains(page, `class="project-header"`) {
 		t.Error("old table layout still present")
@@ -87,6 +100,9 @@ func TestRenderSanity(t *testing.T) {
 	}
 	if strings.Contains(page, "displayRow") {
 		t.Error("displayRow still referenced")
+	}
+	if got := strings.Count(page, `class="dd-link"`); got != 2 {
+		t.Errorf("expected 2 Docker Desktop links (standalone card + project header), got %d", got)
 	}
 }
 
@@ -105,13 +121,27 @@ func TestRenderConfigPanel(t *testing.T) {
 	page := GenerateIndexPage("dev.local", false, nil, configJSON)
 
 	checks := []string{
-		`class="config-panel"`,
-		`class="config-toggle"`,
+		`id="tab-config"`,
+		`>Caddy<`,
+		`class="config-view"`,
+		`class="config-toolbar"`,
+		`class="section-label"`,
 		`class="config-pre"`,
-		`onclick="toggleConfig(this)"`,
-		`aria-expanded="false"`,
-		`function toggleConfig(btn)`,
+		`id="rawToggle"`,
+		`onclick="toggleRawJSON()"`,
+		`function toggleRawJSON()`,
+		`function switchTab(name)`,
 		`&#34;srv0&#34;`,
+		`id="config-raw"`,
+		`id="config-tree"`,
+		`id="config-json"`,
+		`id="expandAllBtn"`,
+		`id="collapseAllBtn"`,
+		`configExpandAll`,
+		`configCollapseAll`,
+		`renderConfigTree`,
+		`@pgrabovets/json-view`,
+		`\u003c/script\u003e`,
 	}
 	for _, c := range checks {
 		if !strings.Contains(page, c) {

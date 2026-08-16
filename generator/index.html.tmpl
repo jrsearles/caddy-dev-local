@@ -7,6 +7,17 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://unpkg.com" crossorigin>
+    <link rel="stylesheet" href="https://unpkg.com/@pgrabovets/json-view@2.8.1/dist/jsonview.css">
+    <script src="https://unpkg.com/@pgrabovets/json-view@2.8.1/dist/jsonview.umd.cjs"></script>
+    <script>
+        (function () {
+            try {
+                var t = localStorage.getItem('devlocal-theme');
+                if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+            } catch (e) {}
+        })();
+    </script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -24,6 +35,52 @@
             --accent-dim:    #1f3a5f;
             --green:         #3fb950;
             --red:           #f85149;
+            --header-bg:     rgba(13, 17, 23, 0.88);
+            --syntax-string: #7ee787;
+            --syntax-number: #f9ae58;
+            --syntax-boolean:#d2a8ff;
+        }
+
+        :root[data-theme="light"] {
+            --bg:            #ffffff;
+            --bg-card:       #ffffff;
+            --bg-card-hover: #f6f8fa;
+            --bg-elevated:   #f6f8fa;
+            --border:        #d0d7de;
+            --border-subtle: #eaeef2;
+            --text-primary:  #1f2328;
+            --text-secondary:#59636e;
+            --text-muted:    #818b98;
+            --accent:        #0969da;
+            --accent-dim:    #ddf4ff;
+            --green:         #1a7f37;
+            --red:           #cf222e;
+            --header-bg:     rgba(255, 255, 255, 0.88);
+            --syntax-string: #116329;
+            --syntax-number: #953800;
+            --syntax-boolean:#8250df;
+        }
+
+        @media (prefers-color-scheme: light) {
+            :root:not([data-theme="dark"]) {
+                --bg:            #ffffff;
+                --bg-card:       #ffffff;
+                --bg-card-hover: #f6f8fa;
+                --bg-elevated:   #f6f8fa;
+                --border:        #d0d7de;
+                --border-subtle: #eaeef2;
+                --text-primary:  #1f2328;
+                --text-secondary:#59636e;
+                --text-muted:    #818b98;
+                --accent:        #0969da;
+                --accent-dim:    #ddf4ff;
+                --green:         #1a7f37;
+                --red:           #cf222e;
+                --header-bg:     rgba(255, 255, 255, 0.88);
+                --syntax-string: #116329;
+                --syntax-number: #953800;
+                --syntax-boolean:#8250df;
+            }
         }
 
         body {
@@ -43,7 +100,7 @@
             align-items: center;
             gap: 1rem;
             padding: 0.75rem 1.75rem;
-            background: rgba(13, 17, 23, 0.88);
+            background: var(--header-bg);
             backdrop-filter: blur(10px);
             border-bottom: 1px solid var(--border);
         }
@@ -80,61 +137,6 @@
             letter-spacing: -0.01em;
         }
 
-        /* search */
-        .search-wrap {
-            position: relative;
-            flex: 1;
-            max-width: 380px;
-        }
-
-        .search-icon {
-            position: absolute;
-            left: 0.6rem;
-            top: 50%;
-            transform: translateY(-50%);
-            width: 13px;
-            height: 13px;
-            color: var(--text-muted);
-            pointer-events: none;
-        }
-
-        #search {
-            width: 100%;
-            padding: 0.4rem 2rem 0.4rem 1.9rem;
-            background: var(--bg-elevated);
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            color: var(--text-primary);
-            font-family: inherit;
-            font-size: 0.8rem;
-            outline: none;
-            transition: border-color 0.15s, box-shadow 0.15s;
-        }
-
-        #search:focus {
-            border-color: var(--accent);
-            box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.12);
-        }
-
-        #search::placeholder { color: var(--text-muted); }
-
-        .search-kbd {
-            position: absolute;
-            right: 0.5rem;
-            top: 50%;
-            transform: translateY(-50%);
-            font-size: 0.65rem;
-            color: var(--text-muted);
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 3px;
-            padding: 0.1rem 0.3rem;
-            pointer-events: none;
-            transition: opacity 0.15s;
-        }
-
-        #search:focus + .search-kbd { opacity: 0; }
-
         /* header stats */
         .header-stats {
             display: flex;
@@ -169,6 +171,32 @@
         .chip-stopped .chip-dot  { background: var(--red); }
         .chip-projects .chip-dot { background: var(--accent); }
 
+        /* theme toggle */
+        .theme-toggle {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            padding: 0;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            flex-shrink: 0;
+            transition: color 0.12s, border-color 0.12s;
+        }
+
+        .theme-toggle:hover { color: var(--accent); border-color: var(--accent); }
+        .theme-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+        .theme-toggle svg { width: 15px; height: 15px; display: block; }
+        .theme-toggle .icon { display: none; }
+        :root[data-theme="light"] .theme-toggle .icon-light { display: block; }
+        :root[data-theme="dark"] .theme-toggle .icon-dark { display: block; }
+        :root:not([data-theme]) .theme-toggle .icon-system { display: block; }
+
         .live-dot {
             width: 6px;
             height: 6px;
@@ -197,6 +225,9 @@
 
         /* section labels */
         .section-label {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
             font-size: 0.68rem;
             font-weight: 600;
             text-transform: uppercase;
@@ -204,6 +235,8 @@
             color: var(--text-muted);
             margin-bottom: 0.6rem;
         }
+
+        .section-label .dd-link { color: var(--text-muted); }
 
         /* ── Container cards ─────────────────────────────────────────── */
         .card-list {
@@ -251,7 +284,36 @@
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            min-width: 0;
         }
+
+        .container-name > span {
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .dd-link {
+            flex-shrink: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0.2rem;
+            margin-left: 0.05rem;
+            border-radius: 5px;
+            color: var(--text-muted);
+            text-decoration: none;
+            transition: color 0.1s, background 0.1s;
+        }
+
+        .dd-link:hover { color: var(--accent); background: var(--bg-elevated); }
+        .dd-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+        .dd-link svg { width: 18px; height: 18px; display: block; }
 
         .container-meta {
             font-family: 'JetBrains Mono', monospace;
@@ -320,6 +382,10 @@
             font-size: 0.68rem;
             color: var(--text-muted);
             margin-left: 0.1rem;
+        }
+
+        .status-time .timeago {
+            font-variant-numeric: tabular-nums;
         }
 
         /* domain rows */
@@ -398,7 +464,7 @@
             height: 12px;
         }
 
-        .chip-globe:hover { color: #79c0ff; }
+        .chip-globe:hover { color: var(--accent); }
 
         .chip-globe:focus-visible {
             outline: 2px solid var(--accent);
@@ -535,58 +601,55 @@
 
         .project-cards.open { display: flex; }
 
-        /* ── Caddy config panel ─────────────────────────────────────── */
-        .config-panel {
-            margin-top: 1.75rem;
+        /* ── Tab navigation ──────────────────────────────────────────── */
+        .tab-nav {
+            display: flex;
+            padding: 0 1.75rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .tab-btn {
+            padding: 0.55rem 0.85rem;
+            background: none;
+            border: none;
+            border-bottom: 2px solid transparent;
+            color: var(--text-secondary);
+            font: inherit;
+            font-size: 0.82rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: color 0.12s, border-color 0.12s;
+            margin-bottom: -1px;
+        }
+
+        .tab-btn:hover { color: var(--text-primary); }
+        .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+
+        /* ── Tab panels ──────────────────────────────────────────────── */
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
+
+        /* ── Config view (inside tab) ────────────────────────────────── */
+        .config-view {
             border: 1px solid var(--border);
             border-radius: 8px;
             background: var(--bg-card);
             overflow: hidden;
         }
 
-        .config-header {
+        .config-toolbar {
             display: flex;
             align-items: center;
-            gap: 0.55rem;
+            gap: 0.35rem;
+            padding: 0.45rem 0.8rem;
+            border-bottom: 1px solid var(--border-subtle);
         }
 
-        .config-toggle {
+        .config-toolbar-actions {
             display: flex;
-            align-items: center;
-            gap: 0.55rem;
-            flex: 1;
-            min-width: 0;
-            padding: 0.5rem 0.8rem;
-            background: var(--bg-card);
-            border: none;
-            cursor: pointer;
-            font: inherit;
-            font-size: 0.85rem;
-            font-weight: 600;
-            color: var(--text-primary);
-            text-align: left;
-            transition: background 0.12s, color 0.12s;
+            gap: 0.35rem;
+            margin-left: auto;
         }
-
-        .config-toggle:hover { background: var(--bg-card-hover); color: var(--accent); }
-
-        .config-toggle .chevron {
-            font-size: 0.65rem;
-            color: var(--text-muted);
-            transition: transform 0.18s ease;
-            flex-shrink: 0;
-        }
-
-        .config-toggle[aria-expanded="true"] .chevron { transform: rotate(90deg); }
-
-        .config-label { flex: 1; }
-
-        .config-body {
-            display: none;
-            border-top: 1px solid var(--border-subtle);
-        }
-
-        .config-body.open { display: block; }
 
         .config-pre {
             margin: 0;
@@ -597,8 +660,44 @@
             color: var(--text-secondary);
             white-space: pre;
             overflow: auto;
-            max-height: 40vh;
+            max-height: 60vh;
         }
+
+        .config-action-btn {
+            padding: 0.22rem 0.55rem;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 5px;
+            color: var(--text-secondary);
+            font-family: 'Inter', sans-serif;
+            font-size: 0.7rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: color 0.12s, border-color 0.12s;
+        }
+
+        .config-action-btn:hover { color: var(--accent); border-color: var(--accent); }
+        .config-action-btn[hidden] { display: none; }
+
+        /* json-view tree overrides */
+        .json-container {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.72rem;
+            line-height: 1.5;
+            background: transparent;
+            color: var(--text-secondary);
+        }
+
+        .json-container .line { margin: 2px 0; }
+        .json-container .json-key { color: var(--accent); }
+        .json-container .json-separator { color: var(--text-muted); }
+        .json-container .json-size { color: var(--text-muted); margin-left: 0.35rem; }
+        .json-container .json-value { margin-left: 0.25rem; }
+        .json-container .json-string { color: var(--syntax-string); }
+        .json-container .json-number { color: var(--syntax-number); }
+        .json-container .json-boolean { color: var(--syntax-boolean); }
+        .json-container .json-null { color: var(--text-muted); font-style: italic; }
+        .json-container .caret-icon { color: var(--text-muted); }
 
         /* ── Empty state ─────────────────────────────────────────────── */
         .empty-state {
@@ -616,9 +715,7 @@
 
         .empty-state p { font-size: 0.875rem; }
 
-        /* search hide */
-        .hidden { display: none !important; }
-    </style>
+        </style>
 </head>
 <body>
     <header class="header">
@@ -629,19 +726,25 @@
             <span class="brand-name">devlocal</span>
         </a>
 
-        <div class="search-wrap">
-            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" xmlns="http://www.w3.org/2000/svg"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-            <input id="search" type="search" placeholder="Filter containers…" autocomplete="off" spellcheck="false">
-            <span class="search-kbd">/</span>
-        </div>
-
         <div class="header-stats">
             {{if gt .RunningCount 0}}<span class="chip chip-running"><span class="chip-dot"></span>{{.RunningCount}} running</span>{{end}}
             {{if gt .StoppedCount 0}}<span class="chip chip-stopped"><span class="chip-dot"></span>{{.StoppedCount}} stopped</span>{{end}}
             {{if .Groups}}<span class="chip chip-projects"><span class="chip-dot"></span>{{len .Groups}} {{if eq (len .Groups) 1}}project{{else}}projects{{end}}</span>{{end}}
             <span class="chip" title="Refreshes when containers change"><span class="live-dot" id="liveDot"></span>live</span>
+            <button class="theme-toggle" id="themeToggle" type="button" onclick="cycleTheme()" aria-label="Switch theme" title="Switch to light theme">
+                <svg class="icon icon-light" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+                <svg class="icon icon-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                <svg class="icon icon-system" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            </button>
         </div>
     </header>
+
+    <nav class="tab-nav">
+        <button class="tab-btn active" data-tab="containers" onclick="switchTab('containers')">Containers</button>
+        {{if .ConfigJSON}}<button class="tab-btn" data-tab="config" onclick="switchTab('config')">Caddy</button>{{end}}
+    </nav>
+
+{{define "ddIcon"}}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M22 7.7c0-.6-.4-1.2-.8-1.5l-6.3-3.9a1.72 1.72 0 0 0-1.7 0l-10.3 6c-.5.2-.9.8-.9 1.4v6.6c0 .5.4 1.2.8 1.5l6.3 3.9a1.72 1.72 0 0 0 1.7 0l10.3-6c.5-.3.9-1 .9-1.5Z"/><path d="M10 21.9V14L2.1 9.1"/><path d="m10 14 11.9-6.9"/><path d="M14 19.8v-8.1"/><path d="M18 17.5V9.4"/></svg>{{end}}
 
 {{define "containerCard"}}
     <div class="card{{if not .IsRunning}} stopped{{end}}"
@@ -652,7 +755,9 @@
         <div class="card-header">
             {{if .Icon}}<img class="container-icon" src="{{.Icon}}" alt="" title="{{.Image}}" onerror="this.style.display='none'">{{end}}
             <div class="card-title">
-                <div class="container-name">{{.ContainerName}}</div>
+                <div class="container-name">
+                    <span>{{.ContainerName}}</span>
+                </div>
                 <div class="container-meta">{{.Image}}{{if .IPAddress}} · {{.IPAddress}}{{end}}</div>
             </div>
             <div class="card-badges">
@@ -660,7 +765,7 @@
                 <div class="status {{if .IsRunning}}status-running{{else}}status-stopped{{end}}">
                     <div class="status-dot"></div>
                     <span class="status-label">{{if .IsRunning}}running{{else}}stopped{{end}}</span>
-                    <span class="status-time">{{if .IsRunning}}since {{.StartedAt}}{{else if .StoppedAt}}{{.StoppedAt}}{{end}}</span>
+                    <span class="status-time">{{if .IsRunning}}since <time class="timeago" data-ts="{{.StartedUnix}}" title="{{.StartedAbs}}">{{.StartedAbs}}</time>{{else if .StoppedUnix}}<time class="timeago" data-ts="{{.StoppedUnix}}" title="{{.StoppedAbs}}">{{.StoppedAbs}}</time>{{end}}</span>
                 </div>
             </div>
         </div>
@@ -674,115 +779,66 @@
 {{end}}
 
     <main class="content">
+        <div id="tab-containers" class="tab-panel active">
 {{if or .DisplayRows .Groups}}
 {{if .DisplayRows}}
-        <div class="section-label">Containers</div>
-        <div class="card-list" id="top-list">
+            <div class="section-label"><span>Containers</span>{{if .StandaloneDockerDesktopURL}}<a class="dd-link" href="{{.StandaloneDockerDesktopURL}}" title="{{.StandaloneDockerLabel}}" aria-label="{{.StandaloneDockerLabel}}">{{template "ddIcon"}}</a>{{end}}</div>
+            <div class="card-list" id="top-list">
 {{range .DisplayRows}}{{template "containerCard" .}}{{end}}
-        </div>
+            </div>
 {{end}}
 {{if .Groups}}
-        <div class="section-label">Compose Projects</div>
+            <div class="section-label">Compose Projects</div>
 {{range .Groups}}
-        <div class="project-section" data-project="{{.Project}}">
-            <button class="project-toggle" type="button" aria-expanded="false" onclick="toggleProject(this)">
-                <span class="chevron">▸</span>
-                <span class="project-name">{{.Project}}</span>
-                <span class="project-status-chips">
-                    {{if gt .RunningCount 0}}<span class="mini-chip mini-chip-running">{{.RunningCount}} up</span>{{end}}
-                    {{if gt .StoppedCount 0}}<span class="mini-chip mini-chip-stopped">{{.StoppedCount}} down</span>{{end}}
-                </span>
-                <span class="project-count">{{len .Rows}} {{if eq (len .Rows) 1}}service{{else}}services{{end}}</span>
-            </button>
-            <div class="project-cards">
+            <div class="project-section" data-project="{{.Project}}">
+                <div class="project-toggle" role="button" aria-expanded="false" onclick="toggleProject(this)">
+                    <span class="chevron">▸</span>
+                    <span class="project-name">{{.Project}}</span>
+                    <span class="project-status-chips">
+                        {{if gt .RunningCount 0}}<span class="mini-chip mini-chip-running">{{.RunningCount}} up</span>{{end}}
+                        {{if gt .StoppedCount 0}}<span class="mini-chip mini-chip-stopped">{{.StoppedCount}} down</span>{{end}}
+                    </span>
+                    <span class="project-count">{{len .Rows}} {{if eq (len .Rows) 1}}service{{else}}services{{end}}</span>
+                    {{if .DockerDesktopURL}}<a class="dd-link" href="{{.DockerDesktopURL}}" title="{{.DockerDesktopLabel}}" aria-label="{{.DockerDesktopLabel}}" onclick="event.stopPropagation()">{{template "ddIcon"}}</a>{{end}}
+                </div>
+                <div class="project-cards">
 {{range .Rows}}{{template "containerCard" .}}{{end}}
+                </div>
             </div>
-        </div>
 {{end}}
 {{end}}
 {{else}}
-        <div class="empty-state">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/><line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/></svg>
-            <p>No containers registered.</p>
-        </div>
-{{end}}
-{{if .ConfigJSON}}
-        <div class="config-panel">
-            <div class="config-header">
-                <button class="config-toggle" type="button" aria-expanded="false" onclick="toggleConfig(this)">
-                    <span class="chevron">▸</span>
-                    <span class="config-label">Caddy Config</span>
-                </button>
+            <div class="empty-state">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/><line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/></svg>
+                <p>No containers registered.</p>
             </div>
-            <div class="config-body"><pre class="config-pre">{{.ConfigJSON}}</pre></div>
+{{end}}
+        </div>
+{{if .ConfigJSON}}
+        <div id="tab-config" class="tab-panel">
+            <div class="config-view">
+                <div class="config-toolbar">
+                    <span class="section-label">Config</span>
+                    <div class="config-toolbar-actions">
+                        <button class="config-action-btn" id="rawToggle" type="button" onclick="toggleRawJSON()">Raw JSON</button>
+                        <button class="config-action-btn" id="expandAllBtn" type="button" onclick="configExpandAll()" hidden>Expand all</button>
+                        <button class="config-action-btn" id="collapseAllBtn" type="button" onclick="configCollapseAll()" hidden>Collapse all</button>
+                    </div>
+                </div>
+                <pre class="config-pre" id="config-raw">{{.ConfigJSON}}</pre>
+                <div class="config-pre" id="config-tree" hidden></div>
+            </div>
+            <script type="application/json" id="config-json">{{.ConfigJSON}}</script>
         </div>
 {{end}}
     </main>
 
     <script>
-    // ── Search ───────────────────────────────────────────────────────
-    const searchEl = document.getElementById('search');
-    let searching = false;
-    let savedExpansion = {};
-
-    searchEl.addEventListener('input', () => { filterCards(); saveUIState(); });
-    document.addEventListener('keydown', (e) => {
-        if (e.key === '/' && document.activeElement !== searchEl) {
-            e.preventDefault();
-            searchEl.focus();
-            searchEl.select();
-        } else if (e.key === 'Escape' && document.activeElement === searchEl) {
-            searchEl.value = '';
-            filterCards();
-            saveUIState();
-            searchEl.blur();
-        }
-    });
-
     function setProjectOpen(sec, open) {
         const btn = sec.querySelector('.project-toggle');
         btn.setAttribute('aria-expanded', open ? 'true' : 'false');
         const list = btn.nextElementSibling;
         if (list) list.classList.toggle('open', open);
-    }
-
-    function filterCards() {
-        const q = searchEl.value.toLowerCase().trim();
-        const nowSearching = q !== '';
-        if (nowSearching && !searching) {
-            savedExpansion = {};
-            document.querySelectorAll('.project-section').forEach((sec) => {
-                savedExpansion[sec.dataset.project] =
-                    sec.querySelector('.project-toggle').getAttribute('aria-expanded') === 'true';
-            });
-        }
-        searching = nowSearching;
-
-        document.querySelectorAll('.card').forEach((card) => {
-            if (!q) { card.classList.remove('hidden'); return; }
-            const haystack = [
-                card.dataset.name,
-                card.dataset.image,
-                card.dataset.project,
-                card.dataset.service
-            ].join(' ').toLowerCase();
-            card.querySelectorAll('.domain-link, .domain-plain').forEach((el) => {
-                haystack += ' ' + el.textContent.toLowerCase();
-            });
-            card.classList.toggle('hidden', !haystack.includes(q));
-        });
-        document.querySelectorAll('.project-section').forEach((sec) => {
-            if (!q) {
-                sec.classList.remove('hidden');
-                if (sec.dataset.project in savedExpansion) {
-                    setProjectOpen(sec, savedExpansion[sec.dataset.project]);
-                }
-                return;
-            }
-            const visible = sec.querySelectorAll('.card:not(.hidden)').length;
-            sec.classList.toggle('hidden', visible === 0);
-            if (visible > 0) setProjectOpen(sec, true);
-        });
     }
 
     // ── Copy ─────────────────────────────────────────────────────────
@@ -806,12 +862,107 @@
         document.body.removeChild(ta); done();
     }
 
-    // ── Config panel ────────────────────────────────────────────────
-    function toggleConfig(btn) {
-        const expanded = btn.getAttribute('aria-expanded') === 'true';
-        btn.setAttribute('aria-expanded', expanded ? 'false' : 'true');
-        const body = btn.closest('.config-header').nextElementSibling;
-        if (body) body.classList.toggle('open', !expanded);
+    // ── Theme ─────────────────────────────────────────────────────────
+    const themeLabels = {
+        system: 'Switch to light theme',
+        light:  'Switch to dark theme',
+        dark:   'Switch to system theme',
+    };
+
+    function currentTheme() {
+        const t = document.documentElement.getAttribute('data-theme');
+        return (t === 'light' || t === 'dark') ? t : 'system';
+    }
+
+    function updateThemeButton() {
+        const btn = document.getElementById('themeToggle');
+        if (!btn) return;
+        const t = currentTheme();
+        btn.title = themeLabels[t];
+        btn.setAttribute('aria-label', btn.title);
+    }
+
+    function setTheme(t) {
+        const root = document.documentElement;
+        try {
+            if (t === 'system') {
+                root.removeAttribute('data-theme');
+                localStorage.removeItem('devlocal-theme');
+            } else {
+                root.setAttribute('data-theme', t);
+                localStorage.setItem('devlocal-theme', t);
+            }
+        } catch (e) {}
+        updateThemeButton();
+    }
+
+    function cycleTheme() {
+        const next = currentTheme() === 'system' ? 'light' : currentTheme() === 'light' ? 'dark' : 'system';
+        setTheme(next);
+    }
+
+    // ── Tab switching ─────────────────────────────────────────────────
+    function switchTab(name) {
+        document.querySelectorAll('.tab-btn').forEach(function(btn) {
+            btn.classList.toggle('active', btn.dataset.tab === name);
+        });
+        document.querySelectorAll('.tab-panel').forEach(function(panel) {
+            panel.classList.toggle('active', panel.id === 'tab-' + name);
+        });
+        if (name === 'config' && !configTree) renderConfigTree();
+        try { sessionStorage.setItem('devlocal-tab', name); } catch (e) {}
+    }
+
+    // ── Config JSON tree (expand/collapse + highlighting) ─────────────
+    let configTree = null;
+    let showingRaw = false;
+
+    function configExpandAll() {
+        if (configTree && window.jsonview) jsonview.expand(configTree);
+    }
+    function configCollapseAll() {
+        if (configTree && window.jsonview) jsonview.collapse(configTree);
+    }
+
+    function toggleRawJSON() {
+        showingRaw = !showingRaw;
+        const raw = document.getElementById('config-raw');
+        const tree = document.getElementById('config-tree');
+        const btn = document.getElementById('rawToggle');
+        const expandAllBtn = document.getElementById('expandAllBtn');
+        const collapseAllBtn = document.getElementById('collapseAllBtn');
+        if (showingRaw) {
+            if (raw) raw.style.display = '';
+            if (tree) tree.hidden = true;
+            if (btn) btn.textContent = 'Tree View';
+            if (expandAllBtn) expandAllBtn.hidden = true;
+            if (collapseAllBtn) collapseAllBtn.hidden = true;
+        } else {
+            if (raw) raw.style.display = 'none';
+            if (tree) tree.hidden = false;
+            if (!configTree) renderConfigTree();
+            if (btn) btn.textContent = 'Raw JSON';
+            if (expandAllBtn) expandAllBtn.hidden = !configTree;
+            if (collapseAllBtn) collapseAllBtn.hidden = !configTree;
+        }
+    }
+
+    function renderConfigTree() {
+        const src = document.getElementById('config-json');
+        const tree = document.getElementById('config-tree');
+        const raw = document.getElementById('config-raw');
+        const expandAllBtn = document.getElementById('expandAllBtn');
+        const collapseAllBtn = document.getElementById('collapseAllBtn');
+        if (!src || !tree || !raw || typeof jsonview === 'undefined') return;
+        try {
+            configTree = jsonview.create(JSON.parse(src.textContent));
+            jsonview.traverse(configTree, (n) => { if (n.depth <= 1) n.isExpanded = true; });
+            jsonview.render(configTree, tree);
+            raw.style.display = 'none';
+            tree.hidden = false;
+            if (expandAllBtn) expandAllBtn.hidden = false;
+            if (collapseAllBtn) collapseAllBtn.hidden = false;
+        } catch (e) {}
     }
 
     // ── Project toggle ────────────────────────────────────────────────
@@ -831,19 +982,43 @@
                 open.push(btn.closest('.project-section').dataset.project);
             });
             sessionStorage.setItem('devlocal-open', JSON.stringify(open));
-            sessionStorage.setItem('devlocal-search', searchEl.value);
+            const activeTab = document.querySelector('.tab-btn.active');
+            if (activeTab) sessionStorage.setItem('devlocal-tab', activeTab.dataset.tab);
         } catch (e) {}
     }
     function restoreUIState() {
         try {
-            const q = sessionStorage.getItem('devlocal-search') || '';
-            if (q) { searchEl.value = q; }
+            const tab = sessionStorage.getItem('devlocal-tab') || 'containers';
+            if (tab !== 'containers') switchTab(tab);
             const open = JSON.parse(sessionStorage.getItem('devlocal-open') || '[]');
             document.querySelectorAll('.project-section').forEach((sec) => {
                 if (open.includes(sec.dataset.project)) setProjectOpen(sec, true);
             });
-            filterCards();
         } catch (e) {}
+    }
+
+    // ── Relative timestamps ──────────────────────────────────────────
+    function timeAgo(ts) {
+        const now = Math.floor(Date.now() / 1000);
+        const diff = Math.max(0, now - ts);
+        if (diff < 10) return 'just now';
+        if (diff < 60) return Math.floor(diff) + 's ago';
+        const mins = diff / 60;
+        if (mins < 60) return Math.floor(mins) + 'm ago';
+        const hours = mins / 60;
+        if (hours < 24) return Math.floor(hours) + 'h ago';
+        const days = hours / 24;
+        if (days < 30) return Math.floor(days) + 'd ago';
+        const months = days / 30.44;
+        if (months < 12) return Math.round(months) + 'mo ago';
+        return Math.round(months / 12) + 'y ago';
+    }
+    function renderTimeAgo() {
+        document.querySelectorAll('.timeago').forEach((el) => {
+            const ts = parseInt(el.dataset.ts, 10);
+            if (!ts) return;
+            el.textContent = timeAgo(ts);
+        });
     }
 
     // ── Live refresh (content-hash poll) ──────────────────────────────
@@ -874,6 +1049,9 @@
                 .catch(() => {});
         }
         restoreUIState();
+        renderTimeAgo();
+        updateThemeButton();
+        setInterval(renderTimeAgo, 10000);
         check();
         setInterval(check, 5000);
     })();

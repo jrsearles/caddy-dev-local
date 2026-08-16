@@ -34,24 +34,38 @@ type indexRow struct {
 	ComposeProject string
 	ComposeService string
 	IsRunning      bool
-	StartedAt      string
-	StoppedAt      string
+	StartedUnix    int64
+	StartedAbs     string
+	StoppedUnix    int64
+	StoppedAbs     string
 }
 
 type displayGroup struct {
-	Project      string
-	Rows         []indexRow
-	RunningCount int
-	StoppedCount int
+	Project            string
+	Rows               []indexRow
+	RunningCount       int
+	StoppedCount       int
+	DockerDesktopURL   template.URL
+	DockerDesktopLabel string
+}
+
+func projectDesktopURL(project string) template.URL {
+	return template.URL("docker-desktop://dashboard/apps/" + project) // #nosec G203
+}
+
+func containersDesktopURL() template.URL {
+	return template.URL("docker-desktop://dashboard/apps") // #nosec G203
 }
 
 type indexData struct {
-	TLD          string
-	DisplayRows  []indexRow
-	Groups       []displayGroup
-	RunningCount int
-	StoppedCount int
-	ConfigJSON   string
+	TLD                        string
+	DisplayRows                []indexRow
+	Groups                     []displayGroup
+	RunningCount               int
+	StoppedCount               int
+	ConfigJSON                 string
+	StandaloneDockerDesktopURL template.URL
+	StandaloneDockerLabel      string
 }
 
 func buildDomainEntry(domain string, portStrs []string, url string) domainEntry {
@@ -109,8 +123,10 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo,
 		}
 
 		stoppedAt := ""
+		var stoppedUnix int64
 		if !info.IsRunning && !info.LastStopped.IsZero() {
 			stoppedAt = info.LastStopped.Format("2006-01-02 15:04")
+			stoppedUnix = info.LastStopped.Unix()
 		}
 
 		ipAddress := ""
@@ -183,8 +199,10 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo,
 			ComposeProject: composeProject,
 			ComposeService: composeService,
 			IsRunning:      info.IsRunning,
-			StartedAt:      info.Created.Format("2006-01-02 15:04"),
-			StoppedAt:      stoppedAt,
+			StartedUnix:    info.Created.Unix(),
+			StartedAbs:     info.Created.Format("2006-01-02 15:04"),
+			StoppedUnix:    stoppedUnix,
+			StoppedAbs:     stoppedAt,
 		})
 	}
 
@@ -220,10 +238,12 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo,
 			}
 		}
 		grouped = append(grouped, displayGroup{
-			Project:      name,
-			Rows:         projectGroups[name],
-			RunningCount: gr,
-			StoppedCount: gs,
+			Project:            name,
+			Rows:               projectGroups[name],
+			RunningCount:       gr,
+			StoppedCount:       gs,
+			DockerDesktopURL:   projectDesktopURL(name),
+			DockerDesktopLabel: "Open " + name + " in Docker Desktop",
 		})
 	}
 
@@ -252,6 +272,10 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo,
 		RunningCount: running,
 		StoppedCount: stopped,
 		ConfigJSON:   configJSON,
+	}
+	if len(top) > 0 {
+		data.StandaloneDockerDesktopURL = containersDesktopURL()
+		data.StandaloneDockerLabel = "Open Docker Desktop"
 	}
 
 	var sb strings.Builder
