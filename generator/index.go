@@ -41,6 +41,7 @@ type indexRow struct {
 	ComposeProject     string
 	ComposeService     string
 	IsRunning          bool
+	NoPorts            bool
 	StartedUnix        int64
 	StartedAbs         string
 	StoppedUnix        int64
@@ -144,10 +145,6 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo,
 	rows := make([]indexRow, 0, len(containers))
 
 	for _, info := range containers {
-		if !info.hasReachablePort() {
-			continue
-		}
-
 		composeProject := ""
 		composeService := ""
 		if info.IsCompose {
@@ -188,7 +185,7 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo,
 					URL:    url,
 				})
 			}
-		} else {
+		} else if len(info.Ports) > 0 {
 			var domain string
 			if info.IsCompose {
 				domain = info.Project + "." + info.Service + "." + tld
@@ -264,6 +261,7 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo,
 			ComposeProject:     composeProject,
 			ComposeService:     composeService,
 			IsRunning:          info.IsRunning,
+			NoPorts:            len(info.Ports) == 0 && len(info.CustomDomains) == 0,
 			StartedUnix:        info.Created.Unix(),
 			StartedAbs:         info.Created.Format("2006-01-02 15:04"),
 			StoppedUnix:        stoppedUnix,

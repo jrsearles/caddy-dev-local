@@ -79,7 +79,6 @@ func TestRenderSanity(t *testing.T) {
 		`status-running`,
 		`status-stopped`,
 		`data-copy=`,
-		`domain-copy-btn`,
 		`sessionStorage.setItem('devlocal-open'`,
 		`fetch('/version.json'`,
 		`id="themeToggle"`,
@@ -389,28 +388,6 @@ func TestRenderConfigToolbarAlignment(t *testing.T) {
 	}
 }
 
-func TestRenderDomainCopyURL(t *testing.T) {
-	now := time.Now()
-	containers := []*ContainerInfo{
-		{
-			ContainerName: "webapp",
-			ContainerID:   "aaa",
-			Image:         "app:1",
-			Ports:         []uint16{80},
-			SelectedPort:  80,
-			TargetKind:    targetDNS,
-			IsRunning:     true,
-			Created:       now,
-		},
-	}
-
-	page := GenerateIndexPage("dev.local", false, containers, "", "", 0)
-
-	if !strings.Contains(page, `domain-copy-btn`) {
-		t.Error("domain URL copy button missing")
-	}
-}
-
 func TestRenderVersionPoll(t *testing.T) {
 	page := GenerateIndexPage("dev.local", false, nil, "", "", 0)
 
@@ -430,6 +407,82 @@ func TestRenderScrollPreserve(t *testing.T) {
 	}
 	if !strings.Contains(page, `window.scrollTo`) {
 		t.Error("scroll position restore missing")
+	}
+}
+
+func TestRenderPortlessContainer(t *testing.T) {
+	now := time.Now()
+	containers := []*ContainerInfo{
+		{
+			ContainerName: "no-ports-svc",
+			ContainerID:   "porterless123",
+			Image:         "redis:7",
+			Ports:         nil,
+			TargetKind:    targetDNS,
+			IsRunning:     true,
+			Created:       now,
+			Networks:      []string{"backend"},
+		},
+		{
+			ContainerName: "has-ports-svc",
+			ContainerID:   "withports1234",
+			Image:         "nginx:latest",
+			Ports:         []uint16{80},
+			SelectedPort:  80,
+			TargetKind:    targetDNS,
+			IsRunning:     true,
+			Created:       now,
+			Networks:      []string{"backend"},
+		},
+	}
+
+	page := GenerateIndexPage("dev.local", false, containers, "", "", 0)
+
+	if !strings.Contains(page, `data-name="no-ports-svc"`) {
+		t.Error("portless container card missing")
+	}
+	if !strings.Contains(page, `>no ports exposed<`) {
+		t.Error("no-ports hint missing for portless container")
+	}
+	if !strings.Contains(page, `data-name="has-ports-svc"`) {
+		t.Error("container with ports card missing")
+	}
+	if strings.Contains(page, `>no ports exposed<`) && strings.Count(page, `>no ports exposed<`) > 1 {
+		t.Error("no-ports hint should not appear for containers with ports")
+	}
+	if strings.Contains(page, `no-ports-svc.dev.local`) {
+		t.Error("portless container should not have domain entries")
+	}
+}
+
+func TestRenderPortlessComposeContainer(t *testing.T) {
+	now := time.Now()
+	containers := []*ContainerInfo{
+		{
+			ContainerName: "worker-1",
+			ContainerID:   "workerid12345",
+			Image:         "myapp:latest",
+			Ports:         nil,
+			TargetKind:    targetDNS,
+			IsRunning:     true,
+			Created:       now,
+			IsCompose:     true,
+			Project:       "myapp",
+			Service:       "worker",
+			Networks:      []string{"myapp_default"},
+		},
+	}
+
+	page := GenerateIndexPage("dev.local", false, containers, "", "", 0)
+
+	if !strings.Contains(page, `data-name="worker-1"`) {
+		t.Error("portless compose container card missing")
+	}
+	if !strings.Contains(page, `>no ports exposed<`) {
+		t.Error("no-ports hint missing for portless compose container")
+	}
+	if !strings.Contains(page, `data-project="myapp"`) {
+		t.Error("compose project section missing")
 	}
 }
 

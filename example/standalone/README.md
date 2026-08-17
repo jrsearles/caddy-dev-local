@@ -35,6 +35,7 @@ sudo ../../artifacts/binaries/linux-amd64/caddy devlocal
 | `multi` | 3000:3000, 8081:8080 | `multi.dev.local`, `multi.localhost` (HTTP port auto-detected) |
 | `ignored` | — | Skipped via `dev.local=false` label |
 | `custom` | 8082:80 | `myapp.custom.local`, `myapp.alt.local` |
+| `worker` | — | Shown on index page with "no ports exposed" (Redis, no published ports) |
 | `mssql` | 1433:1433 | `mssql.dev.local`, `mssql.localhost` (SQL Server, no HTTP) |
 
 ## URLs
