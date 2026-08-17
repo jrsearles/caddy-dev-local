@@ -1625,7 +1625,7 @@
                     if (prevVersion !== null && v !== prevVersion) { reload(); return; }
                     prevVersion = v;
                 })
-                .catch(() => { useFallback = true; });
+                .catch(() => { useFallback = true; prevVersion = null; });
         }
 
         function checkFallback() {
