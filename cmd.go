@@ -110,7 +110,9 @@ func cmdFunc(fs caddycmd.Flags) (int, error) {
 
 	api := newAdminAPI()
 
-	if err := initCaddyConfig(gen, cfg, indexDir, api, configPath); err != nil {
+	ctrl := discovery.New(cfg, dockerClient, gen, gen.RefreshAndSelect, nil, logger)
+
+	if err := initCaddyConfig(gen, cfg, indexDir, api, configPath, ctrl.Status); err != nil {
 		return 1, fmt.Errorf("loading initial caddy config: %w", err)
 	}
 
@@ -118,8 +120,9 @@ func cmdFunc(fs caddycmd.Flags) (int, error) {
 		logger.Error("failed to update hosts file", zap.Error(err))
 	}
 
-	apply := func() { applyDevlocal(gen, cfg, indexDir, api, hostsOK) }
-	discovery.New(cfg, dockerClient, gen, gen.RefreshAndSelect, apply, logger).Run(ctx)
+	apply := func() { applyDevlocal(gen, cfg, indexDir, api, hostsOK, ctrl.Status) }
+	ctrl.SetApply(apply)
+	ctrl.Run(ctx)
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
@@ -138,7 +141,7 @@ func applyCommandFlags(cfg *config.Config, fs caddycmd.Flags) {
 	cfg.ApplyFlags(o)
 }
 
-func applyDevlocal(gen *generator.Generator, cfg *config.Config, indexDir string, api *adminAPI, hostsOK bool) {
+func applyDevlocal(gen *generator.Generator, cfg *config.Config, indexDir string, api *adminAPI, hostsOK bool, statusFn func() discovery.Status) {
 	logger := caddy.Log().Named(appName)
 	if !api.tryBeginApply() {
 		logger.Debug("apply in flight, skipping")
@@ -146,7 +149,7 @@ func applyDevlocal(gen *generator.Generator, cfg *config.Config, indexDir string
 	}
 	defer api.endApply()
 
-	applied, err := reloadCaddyConfig(gen, cfg, indexDir, api)
+	applied, err := reloadCaddyConfig(gen, cfg, indexDir, api, statusFn)
 	if err != nil {
 		logger.Error("failed to reload caddy config", zap.Error(err))
 	} else if applied {

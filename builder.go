@@ -123,7 +123,7 @@ func buildIndexRoute(tld, indexDir string, containerDomains []string) (json.RawM
 					map[string]any{
 						keyHandle: []any{
 							map[string]any{keyHandler: "vars", "root": indexDir},
-							map[string]any{keyHandler: "file_server", "hide": []any{"./Caddyfile"}},
+							map[string]any{keyHandler: "file_server", "hide": []any{"./Caddyfile", "./devlocal.json"}},
 						},
 					},
 				},

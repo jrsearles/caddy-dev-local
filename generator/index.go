@@ -3,6 +3,7 @@ package generator
 import (
 	"cmp"
 	_ "embed"
+	"encoding/json"
 	"html/template"
 	"slices"
 	"strconv"
@@ -25,19 +26,30 @@ type domainEntry struct {
 	URL    string
 }
 
+type publishedPort struct {
+	Private string
+	Public  string
+}
+
 type indexRow struct {
-	Domains        []domainEntry
-	ContainerName  string
-	Image          string
-	Icon           string
-	IPAddress      string
-	ComposeProject string
-	ComposeService string
-	IsRunning      bool
-	StartedUnix    int64
-	StartedAbs     string
-	StoppedUnix    int64
-	StoppedAbs     string
+	Domains            []domainEntry
+	ContainerName      string
+	ContainerIDShort   string
+	Image              string
+	Icon               string
+	IPAddress          string
+	ComposeProject     string
+	ComposeService     string
+	IsRunning          bool
+	StartedUnix        int64
+	StartedAbs         string
+	StoppedUnix        int64
+	StoppedAbs         string
+	Health             string
+	Networks           []string
+	PublishedPortPairs []publishedPort
+	LabelsJSON         template.JS
+	DomainsFlat        string
 }
 
 type displayGroup struct {
@@ -54,7 +66,26 @@ func projectDesktopURL(project string) template.URL {
 }
 
 func containersDesktopURL() template.URL {
-	return template.URL("docker-desktop://dashboard/apps") // #nosec G203
+	return template.URL("docker-desktop://dashboard/open") // #nosec G203
+}
+
+func filteredLabels(labels map[string]string) map[string]string {
+	prefixes := []string{
+		"dev.local.",
+		"com.docker.compose.",
+		"org.opencontainers.image.",
+		"com.docker.extension.",
+	}
+	out := make(map[string]string)
+	for k, v := range labels {
+		for _, p := range prefixes {
+			if strings.HasPrefix(k, p) {
+				out[k] = v
+				break
+			}
+		}
+	}
+	return out
 }
 
 type indexData struct {
@@ -66,6 +97,8 @@ type indexData struct {
 	ConfigJSON                 string
 	StandaloneDockerDesktopURL template.URL
 	StandaloneDockerLabel      string
+	DiscoveryError             string
+	LastRefreshUnix            int64
 }
 
 func buildDomainEntry(domain string, portStrs []string, url string) domainEntry {
@@ -107,7 +140,7 @@ func sortDomainEntries(entries []domainEntry, httpPortStr string) {
 	}
 }
 
-func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo, configJSON string) string {
+func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo, configJSON string, discoveryError string, lastRefreshUnix int64) string {
 	rows := make([]indexRow, 0, len(containers))
 
 	for _, info := range containers {
@@ -190,19 +223,56 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo,
 
 		sortDomainEntries(domains, httpPortStr)
 
+		domainNames := make([]string, 0, len(domains))
+		for _, d := range domains {
+			domainNames = append(domainNames, d.Domain)
+		}
+
+		pubPairs := make([]publishedPort, 0, len(info.PublishedPorts))
+		privKeys := make([]uint16, 0, len(info.PublishedPorts))
+		for priv := range info.PublishedPorts {
+			privKeys = append(privKeys, priv)
+		}
+		slices.Sort(privKeys)
+		for _, priv := range privKeys {
+			pubPairs = append(pubPairs, publishedPort{
+				Private: strconv.Itoa(int(priv)),
+				Public:  strconv.Itoa(int(info.PublishedPorts[priv])),
+			})
+		}
+
+		fl := filteredLabels(info.Labels)
+		labelsJSON := template.JS("{}")
+		if len(fl) > 0 {
+			if b, err := json.Marshal(fl); err == nil {
+				labelsJSON = template.JS(b) // #nosec G203
+			}
+		}
+
+		shortID := info.ContainerID
+		if len(shortID) > 12 {
+			shortID = shortID[:12]
+		}
+
 		rows = append(rows, indexRow{
-			Domains:        domains,
-			ContainerName:  info.ContainerName,
-			Image:          info.Image,
-			Icon:           iconForContainer(info.Image, info.Labels),
-			IPAddress:      ipAddress,
-			ComposeProject: composeProject,
-			ComposeService: composeService,
-			IsRunning:      info.IsRunning,
-			StartedUnix:    info.Created.Unix(),
-			StartedAbs:     info.Created.Format("2006-01-02 15:04"),
-			StoppedUnix:    stoppedUnix,
-			StoppedAbs:     stoppedAt,
+			Domains:            domains,
+			ContainerName:      info.ContainerName,
+			ContainerIDShort:   shortID,
+			Image:              info.Image,
+			Icon:               iconForContainer(info.Image, info.Labels),
+			IPAddress:          ipAddress,
+			ComposeProject:     composeProject,
+			ComposeService:     composeService,
+			IsRunning:          info.IsRunning,
+			StartedUnix:        info.Created.Unix(),
+			StartedAbs:         info.Created.Format("2006-01-02 15:04"),
+			StoppedUnix:        stoppedUnix,
+			StoppedAbs:         stoppedAt,
+			Health:             info.Health,
+			Networks:           info.Networks,
+			PublishedPortPairs: pubPairs,
+			LabelsJSON:         labelsJSON,
+			DomainsFlat:        strings.Join(domainNames, " "),
 		})
 	}
 
@@ -266,12 +336,14 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo,
 	}
 
 	data := indexData{
-		TLD:          tld,
-		DisplayRows:  top,
-		Groups:       grouped,
-		RunningCount: running,
-		StoppedCount: stopped,
-		ConfigJSON:   configJSON,
+		TLD:             tld,
+		DisplayRows:     top,
+		Groups:          grouped,
+		RunningCount:    running,
+		StoppedCount:    stopped,
+		ConfigJSON:      configJSON,
+		DiscoveryError:  discoveryError,
+		LastRefreshUnix: lastRefreshUnix,
 	}
 	if len(top) > 0 {
 		data.StandaloneDockerDesktopURL = containersDesktopURL()

@@ -40,6 +40,8 @@ type ContainerInfo struct {
 	Created        time.Time
 	Labels         map[string]string
 	CustomDomains  []CustomDomain
+	Health         string
+	Networks       []string
 }
 
 type CustomDomain struct {
@@ -272,6 +274,19 @@ func (g *Generator) buildContainerInfo(c *container.Summary, self selfInfo) *Con
 	case targetUnreachable:
 	}
 
+	health := ""
+	if c.Health != nil {
+		health = string(c.Health.Status)
+	}
+
+	networks := make([]string, 0)
+	if c.NetworkSettings != nil {
+		for netName := range c.NetworkSettings.Networks {
+			networks = append(networks, netName)
+		}
+		slices.Sort(networks)
+	}
+
 	info := &ContainerInfo{
 		ContainerID:    c.ID,
 		ContainerName:  name,
@@ -282,6 +297,8 @@ func (g *Generator) buildContainerInfo(c *container.Summary, self selfInfo) *Con
 		Ports:          ports,
 		PublishedPorts: publishedPorts,
 		TargetKind:     kind,
+		Health:         health,
+		Networks:       networks,
 		GatewayHost:    self.gateway,
 		IsCompose:      isCompose,
 		Created:        time.Unix(c.Created, 0),

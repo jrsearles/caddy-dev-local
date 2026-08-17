@@ -11,15 +11,19 @@ func TestRenderSanity(t *testing.T) {
 	containers := []*ContainerInfo{
 		{
 			ContainerName: "my-nginx",
+			ContainerID:   "abcdef123456789",
 			Image:         "nginx:latest",
 			Ports:         []uint16{80},
 			SelectedPort:  80,
 			TargetKind:    targetGateway,
 			IsRunning:     true,
 			Created:       now,
+			Networks:      []string{"bridge"},
+			Health:        "healthy",
 		},
 		{
 			ContainerName: "web-1",
+			ContainerID:   "bbbbbbbbbbbb",
 			Image:         "myapp:latest",
 			Ports:         []uint16{8080},
 			SelectedPort:  8080,
@@ -29,9 +33,11 @@ func TestRenderSanity(t *testing.T) {
 			IsCompose:     true,
 			Project:       "demo",
 			Service:       "web",
+			Networks:      []string{"demo_default"},
 		},
 		{
 			ContainerName: "db-1",
+			ContainerID:   "cccccccccccc",
 			Image:         "postgres:16",
 			Ports:         []uint16{5432},
 			SelectedPort:  5432,
@@ -45,7 +51,7 @@ func TestRenderSanity(t *testing.T) {
 		},
 	}
 
-	page := GenerateIndexPage("dev.local", false, containers, "")
+	page := GenerateIndexPage("dev.local", false, containers, "", "", 0)
 
 	checks := []string{
 		`<title>devlocal — Container Index</title>`,
@@ -53,11 +59,15 @@ func TestRenderSanity(t *testing.T) {
 		`class="card"`,
 		`class="container-icon"`,
 		`data-name="my-nginx"`,
-		`docker-desktop://dashboard/apps"`,
+		`data-domains=`,
+		`data-id="abcdef123456"`,
+		`data-networks="bridge"`,
+		`data-health="healthy"`,
+		`class="health-badge health-healthy"`,
+		`docker-desktop://dashboard/open`,
 		`docker-desktop://dashboard/apps/demo`,
 		`Open Docker Desktop`,
 		`Open demo in Docker Desktop`,
-		`role="button"`,
 		`data-project="demo"`,
 		`class="project-section"`,
 		`class="project-toggle"`,
@@ -69,8 +79,9 @@ func TestRenderSanity(t *testing.T) {
 		`status-running`,
 		`status-stopped`,
 		`data-copy=`,
+		`domain-copy-btn`,
 		`sessionStorage.setItem('devlocal-open'`,
-		`fetch(location.href`,
+		`fetch('/version.json'`,
 		`id="themeToggle"`,
 		`onclick="cycleTheme()"`,
 		`localStorage.getItem('devlocal-theme')`,
@@ -80,20 +91,36 @@ func TestRenderSanity(t *testing.T) {
 		`>2 running<`,
 		`>1 stopped<`,
 		`>1 project<`,
+		`id="drawer"`,
+		`id="drawerBody"`,
+		`function openDrawer`,
+		`function closeDrawer`,
+		`id="devlocal-search"`,
+		`function runFilter`,
+		`function pushState`,
+		`history.replaceState`,
+		`sessionStorage.setItem('devlocal-scroll'`,
+		`window.scrollTo`,
 	}
 	for _, c := range checks {
 		if !strings.Contains(page, c) {
 			t.Errorf("page missing %q", c)
 		}
 	}
+
+	// banner should not appear when DiscoveryError is empty
+	if strings.Contains(page, `id="errorBanner"`) {
+		t.Error("error banner rendered with no discovery error")
+	}
+
 	if strings.Contains(page, `id="tab-config"`) {
 		t.Error("config tab rendered with empty config")
 	}
 	if strings.Contains(page, `id="config-json"`) {
 		t.Error("config JSON script rendered with empty config")
 	}
-	if strings.Contains(page, `class="project-header"`) {
-		t.Error("old table layout still present")
+	if !strings.Contains(page, `class="project-header"`) {
+		t.Error("project header wrapper missing")
 	}
 	if strings.Contains(page, "rowspan") {
 		t.Error("rowspan table logic still present")
@@ -103,6 +130,306 @@ func TestRenderSanity(t *testing.T) {
 	}
 	if got := strings.Count(page, `class="dd-link"`); got != 2 {
 		t.Errorf("expected 2 Docker Desktop links (standalone card + project header), got %d", got)
+	}
+}
+
+func TestRenderDiscoveryErrorBanner(t *testing.T) {
+	page := GenerateIndexPage("dev.local", false, nil, "", "Docker socket unreachable", 1700000000)
+
+	if !strings.Contains(page, `id="errorBanner"`) {
+		t.Error("error banner missing when DiscoveryError is set")
+	}
+	if !strings.Contains(page, "Docker socket unreachable") {
+		t.Error("error message not present in banner")
+	}
+	if !strings.Contains(page, `data-ts="1700000000"`) {
+		t.Error("last refresh timestamp not in banner")
+	}
+}
+
+func TestRenderDiscoveryErrorInEmptyState(t *testing.T) {
+	page := GenerateIndexPage("dev.local", false, nil, "", "connection refused", 0)
+
+	if !strings.Contains(page, "connection refused") {
+		t.Error("error message not present in empty state")
+	}
+	if !strings.Contains(page, "class=\"empty-error\"") {
+		t.Error("empty-error block missing")
+	}
+}
+
+func TestRenderEmptyStateHints(t *testing.T) {
+	page := GenerateIndexPage("dev.local", false, nil, "", "", 0)
+
+	hints := []string{
+		"No containers registered.",
+		"/var/run/docker.sock",
+		"publish ports",
+		"README",
+	}
+	for _, h := range hints {
+		if !strings.Contains(page, h) {
+			t.Errorf("empty state missing hint %q", h)
+		}
+	}
+}
+
+func TestRenderHealthBadge(t *testing.T) {
+	now := time.Now()
+	containers := []*ContainerInfo{
+		{
+			ContainerName: "healthy-svc",
+			ContainerID:   "aaa",
+			Image:         "app:1",
+			Ports:         []uint16{80},
+			SelectedPort:  80,
+			TargetKind:    targetDNS,
+			IsRunning:     true,
+			Created:       now,
+			Health:        "healthy",
+		},
+		{
+			ContainerName: "sick-svc",
+			ContainerID:   "bbb",
+			Image:         "app:2",
+			Ports:         []uint16{80},
+			SelectedPort:  80,
+			TargetKind:    targetDNS,
+			IsRunning:     true,
+			Created:       now,
+			Health:        "unhealthy",
+		},
+		{
+			ContainerName: "starting-svc",
+			ContainerID:   "ccc",
+			Image:         "app:3",
+			Ports:         []uint16{80},
+			SelectedPort:  80,
+			TargetKind:    targetDNS,
+			IsRunning:     true,
+			Created:       now,
+			Health:        "starting",
+		},
+		{
+			ContainerName: "no-health-svc",
+			ContainerID:   "ddd",
+			Image:         "app:4",
+			Ports:         []uint16{80},
+			SelectedPort:  80,
+			TargetKind:    targetDNS,
+			IsRunning:     true,
+			Created:       now,
+			Health:        "",
+		},
+	}
+
+	page := GenerateIndexPage("dev.local", false, containers, "", "", 0)
+
+	if !strings.Contains(page, `health-badge health-healthy`) {
+		t.Error("healthy badge missing")
+	}
+	if !strings.Contains(page, `health-badge health-unhealthy`) {
+		t.Error("unhealthy badge missing")
+	}
+	if !strings.Contains(page, `health-badge health-starting`) {
+		t.Error("starting badge missing")
+	}
+	if strings.Count(page, `class="health-badge health-healthy"`) != 1 {
+		t.Errorf("expected 1 healthy badge")
+	}
+	if strings.Count(page, `class="health-badge health-unhealthy"`) != 1 {
+		t.Errorf("expected 1 unhealthy badge")
+	}
+	if strings.Count(page, `class="health-badge health-starting"`) != 1 {
+		t.Errorf("expected 1 starting badge")
+	}
+}
+
+func TestRenderHealthBadgeNotShownWhenStopped(t *testing.T) {
+	now := time.Now()
+	containers := []*ContainerInfo{
+		{
+			ContainerName: "stopped-svc",
+			ContainerID:   "aaa",
+			Image:         "app:1",
+			Ports:         []uint16{80},
+			SelectedPort:  80,
+			TargetKind:    targetDNS,
+			IsRunning:     false,
+			Created:       now,
+			LastStopped:   now,
+			Health:        "unhealthy",
+		},
+	}
+
+	page := GenerateIndexPage("dev.local", false, containers, "", "", 0)
+
+	if strings.Contains(page, `class="health-badge health-unhealthy"`) {
+		t.Error("health badge should not render for stopped containers")
+	}
+}
+
+func TestRenderDrawerDataAttrs(t *testing.T) {
+	now := time.Now()
+	containers := []*ContainerInfo{
+		{
+			ContainerName:  "myapp",
+			ContainerID:    "deadbeef1234",
+			Image:          "myapp:latest",
+			Ports:          []uint16{8080},
+			SelectedPort:   8080,
+			TargetKind:     targetDNS,
+			IsRunning:      true,
+			Created:        now,
+			Networks:       []string{"backend", "frontend"},
+			Health:         "healthy",
+			PublishedPorts: map[uint16]uint16{8080: 32000},
+			Labels: map[string]string{
+				"dev.local.domains":            "8080:custom.dev.local",
+				"com.docker.compose.project":   "proj",
+				"com.docker.compose.service":   "app",
+				"org.opencontainers.image.url": "https://example.com",
+				"unrelated.label":              "ignored",
+			},
+		},
+	}
+
+	page := GenerateIndexPage("dev.local", false, containers, "", "", 0)
+
+	checks := []string{
+		`data-id="deadbeef1234"`,
+		`data-networks="backend,frontend"`,
+		`data-published="8080:32000"`,
+		`data-health="healthy"`,
+		`data-ip=`,
+		`dev.local.domains`,
+		`com.docker.compose.project`,
+		`org.opencontainers.image.url`,
+	}
+	for _, c := range checks {
+		if !strings.Contains(page, c) {
+			t.Errorf("page missing drawer attr/data %q", c)
+		}
+	}
+	if strings.Contains(page, `"unrelated.label"`) {
+		t.Error("unrelated label should be filtered from labels JSON")
+	}
+}
+
+func TestRenderSearchAttrs(t *testing.T) {
+	now := time.Now()
+	containers := []*ContainerInfo{
+		{
+			ContainerName: "nginx-proxy",
+			ContainerID:   "aaa",
+			Image:         "nginx:latest",
+			Ports:         []uint16{80},
+			SelectedPort:  80,
+			TargetKind:    targetGateway,
+			IsRunning:     true,
+			Created:       now,
+			IsCompose:     true,
+			Project:       "infra",
+			Service:       "proxy",
+		},
+	}
+
+	page := GenerateIndexPage("dev.local", false, containers, "", "", 0)
+
+	if !strings.Contains(page, `data-domains=`) {
+		t.Error("data-domains attribute missing")
+	}
+	if !strings.Contains(page, `id="devlocal-search"`) {
+		t.Error("search input missing")
+	}
+	if !strings.Contains(page, `function runFilter`) {
+		t.Error("runFilter function missing")
+	}
+	if !strings.Contains(page, `id="noMatch"`) {
+		t.Error("no-match element missing")
+	}
+}
+
+func TestNoExpandCollapseAll(t *testing.T) {
+	now := time.Now()
+	containers := []*ContainerInfo{
+		{
+			ContainerName: "web-1",
+			ContainerID:   "aaa",
+			Image:         "myapp:latest",
+			Ports:         []uint16{8080},
+			SelectedPort:  8080,
+			TargetKind:    targetDNS,
+			IsRunning:     true,
+			Created:       now,
+			IsCompose:     true,
+			Project:       "demo",
+			Service:       "web",
+		},
+	}
+
+	page := GenerateIndexPage("dev.local", false, containers, "", "", 0)
+
+	for _, s := range []string{"expandAllProjects", "collapseAllProjects", "Expand all", "Collapse all", "section-btn", "section-actions"} {
+		if strings.Contains(page, s) {
+			t.Errorf("expand/collapse-all leftover %q", s)
+		}
+	}
+}
+
+func TestRenderConfigToolbarAlignment(t *testing.T) {
+	configJSON := `{"apps":{}}`
+	page := GenerateIndexPage("dev.local", false, nil, configJSON, "", 0)
+
+	if !strings.Contains(page, `.config-toolbar .section-label`) {
+		t.Error("config toolbar section-label alignment fix missing")
+	}
+	if !strings.Contains(page, "margin-bottom: 0") {
+		t.Error("config toolbar section-label margin reset missing")
+	}
+}
+
+func TestRenderDomainCopyURL(t *testing.T) {
+	now := time.Now()
+	containers := []*ContainerInfo{
+		{
+			ContainerName: "webapp",
+			ContainerID:   "aaa",
+			Image:         "app:1",
+			Ports:         []uint16{80},
+			SelectedPort:  80,
+			TargetKind:    targetDNS,
+			IsRunning:     true,
+			Created:       now,
+		},
+	}
+
+	page := GenerateIndexPage("dev.local", false, containers, "", "", 0)
+
+	if !strings.Contains(page, `domain-copy-btn`) {
+		t.Error("domain URL copy button missing")
+	}
+}
+
+func TestRenderVersionPoll(t *testing.T) {
+	page := GenerateIndexPage("dev.local", false, nil, "", "", 0)
+
+	if !strings.Contains(page, `fetch('/version.json'`) {
+		t.Error("version.json poll missing")
+	}
+	if !strings.Contains(page, `checkFallback`) {
+		t.Error("fallback poll missing")
+	}
+}
+
+func TestRenderScrollPreserve(t *testing.T) {
+	page := GenerateIndexPage("dev.local", false, nil, "", "", 0)
+
+	if !strings.Contains(page, `sessionStorage.setItem('devlocal-scroll'`) {
+		t.Error("scroll position save missing")
+	}
+	if !strings.Contains(page, `window.scrollTo`) {
+		t.Error("scroll position restore missing")
 	}
 }
 
@@ -118,7 +445,7 @@ func TestRenderConfigPanel(t *testing.T) {
     }
   }
 }`
-	page := GenerateIndexPage("dev.local", false, nil, configJSON)
+	page := GenerateIndexPage("dev.local", false, nil, configJSON, "", 0)
 
 	checks := []string{
 		`id="tab-config"`,

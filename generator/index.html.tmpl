@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>devlocal — Container Index</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0%25' stop-color='%231f6feb'/%3E%3Cstop offset='100%25' stop-color='%2358a6ff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='24' height='24' rx='5' fill='url(%23g)'/%3E%3Cpath d='M13 10V3L4 14h7v7l9-11h-7z' fill='white' stroke='white' stroke-width='0.5' stroke-linejoin='round'/%3E%3C/svg%3E">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -35,6 +36,7 @@
             --accent-dim:    #1f3a5f;
             --green:         #3fb950;
             --red:           #f85149;
+            --yellow:        #d29922;
             --header-bg:     rgba(13, 17, 23, 0.88);
             --syntax-string: #7ee787;
             --syntax-number: #f9ae58;
@@ -55,6 +57,7 @@
             --accent-dim:    #ddf4ff;
             --green:         #1a7f37;
             --red:           #cf222e;
+            --yellow:        #9a6700;
             --header-bg:     rgba(255, 255, 255, 0.88);
             --syntax-string: #116329;
             --syntax-number: #953800;
@@ -76,6 +79,7 @@
                 --accent-dim:    #ddf4ff;
                 --green:         #1a7f37;
                 --red:           #cf222e;
+                --yellow:        #9a6700;
                 --header-bg:     rgba(255, 255, 255, 0.88);
                 --syntax-string: #116329;
                 --syntax-number: #953800;
@@ -136,6 +140,28 @@
             color: var(--text-primary);
             letter-spacing: -0.01em;
         }
+
+        /* search */
+        .header-search {
+            flex: 1;
+            max-width: 280px;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 0.3rem 0.65rem;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font: inherit;
+            font-size: 0.8rem;
+            transition: border-color 0.12s;
+            outline: none;
+        }
+
+        .search-input::placeholder { color: var(--text-muted); }
+        .search-input:focus { border-color: var(--accent); }
 
         /* header stats */
         .header-stats {
@@ -216,6 +242,50 @@
             100% { transform: scale(1);   opacity: 0.7; }
         }
 
+        /* ── Discovery error banner ──────────────────────────────────── */
+        .banner {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            padding: 0.5rem 1.75rem;
+            font-size: 0.78rem;
+        }
+
+        .banner-error {
+            background: rgba(248, 81, 73, 0.1);
+            border-bottom: 1px solid rgba(248, 81, 73, 0.3);
+            color: var(--red);
+        }
+
+        .banner-icon {
+            flex-shrink: 0;
+            width: 14px;
+            height: 14px;
+        }
+
+        .banner-msg { flex: 1; }
+
+        .banner-time {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            flex-shrink: 0;
+        }
+
+        .banner-dismiss {
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: var(--text-muted);
+            padding: 0.1rem;
+            line-height: 0;
+            flex-shrink: 0;
+            border-radius: 3px;
+            transition: color 0.1s;
+        }
+
+        .banner-dismiss:hover { color: var(--text-primary); }
+        .banner-dismiss svg { width: 12px; height: 12px; }
+
         /* ── Main content ────────────────────────────────────────────── */
         .content {
             padding: 1.5rem 1.75rem;
@@ -262,7 +332,10 @@
             align-items: center;
             gap: 0.65rem;
             padding: 0.65rem 0.9rem;
+            cursor: pointer;
         }
+
+        .card-header:hover { background: var(--bg-card-hover); }
 
         .container-icon {
             width: 26px;
@@ -387,6 +460,21 @@
         .status-time .timeago {
             font-variant-numeric: tabular-nums;
         }
+
+        /* health badge */
+        .health-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.1rem 0.4rem;
+            border-radius: 1rem;
+            font-size: 0.65rem;
+            font-weight: 600;
+            margin-left: 0.25rem;
+        }
+
+        .health-healthy  { background: rgba(63,185,80,0.15);  color: var(--green);  }
+        .health-starting { background: rgba(210,153,34,0.15); color: var(--yellow); }
+        .health-unhealthy{ background: rgba(248,81,73,0.15);  color: var(--red);    }
 
         /* domain rows */
         .card-domains {
@@ -531,14 +619,27 @@
 
         .copy-btn.copied::after { opacity: 1; }
 
+        /* url copy button next to domain text */
+        .domain-copy-btn {
+            flex-shrink: 0;
+        }
+
         /* ── Compose project sections ─────────────────────────────────── */
         .project-section { margin-bottom: 1rem; }
+        .project-section[hidden] { display: none; }
+
+        .project-header {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            margin-bottom: 0.35rem;
+        }
 
         .project-toggle {
             display: flex;
             align-items: center;
             gap: 0.55rem;
-            width: 100%;
+            flex: 1;
             padding: 0.5rem 0.8rem;
             background: var(--bg-card);
             border: 1px solid var(--border);
@@ -548,7 +649,6 @@
             font-size: 0.85rem;
             font-weight: 600;
             color: var(--text-primary);
-            margin-bottom: 0.35rem;
             text-align: left;
             transition: background 0.12s, color 0.12s;
         }
@@ -645,6 +745,10 @@
             border-bottom: 1px solid var(--border-subtle);
         }
 
+        .config-toolbar .section-label {
+            margin-bottom: 0;
+        }
+
         .config-toolbar-actions {
             display: flex;
             gap: 0.35rem;
@@ -702,7 +806,7 @@
         /* ── Empty state ─────────────────────────────────────────────── */
         .empty-state {
             text-align: center;
-            padding: 5rem 2rem;
+            padding: 4rem 2rem;
             color: var(--text-muted);
         }
 
@@ -713,18 +817,257 @@
             opacity: 0.25;
         }
 
-        .empty-state p { font-size: 0.875rem; }
+        .empty-state p { font-size: 0.875rem; margin-bottom: 1.25rem; }
 
-        </style>
+        .empty-hints {
+            display: inline-flex;
+            flex-direction: column;
+            gap: 0.4rem;
+            text-align: left;
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            font-size: 0.78rem;
+        }
+
+        .empty-hints li {
+            list-style: none;
+            display: flex;
+            align-items: baseline;
+            gap: 0.4rem;
+            color: var(--text-secondary);
+        }
+
+        .empty-hints li::before {
+            content: "·";
+            color: var(--text-muted);
+            flex-shrink: 0;
+        }
+
+        .empty-hints a { color: var(--accent); }
+
+        .empty-error {
+            margin-top: 0.75rem;
+            padding: 0.5rem 0.75rem;
+            background: rgba(248,81,73,0.08);
+            border: 1px solid rgba(248,81,73,0.25);
+            border-radius: 6px;
+            font-size: 0.75rem;
+            color: var(--red);
+            font-family: 'JetBrains Mono', monospace;
+            text-align: left;
+        }
+
+        /* ── Drawer ──────────────────────────────────────────────────── */
+        .drawer-backdrop {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 200;
+            background: rgba(0,0,0,0.4);
+        }
+
+        .drawer-backdrop.open { display: block; }
+
+        .drawer {
+            position: fixed;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 201;
+            width: min(420px, 100vw);
+            background: var(--bg-card);
+            border-left: 1px solid var(--border);
+            transform: translateX(100%);
+            transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .drawer.open { transform: translateX(0); }
+
+        .drawer-header {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.6rem;
+            padding: 1rem 1rem 0.75rem;
+            border-bottom: 1px solid var(--border-subtle);
+            flex-shrink: 0;
+        }
+
+        .drawer-title {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .drawer-name {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .drawer-subtitle {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin-top: 0.2rem;
+        }
+
+        .drawer-close {
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: var(--text-muted);
+            padding: 0.2rem;
+            border-radius: 4px;
+            line-height: 0;
+            flex-shrink: 0;
+            transition: color 0.1s, background 0.1s;
+        }
+
+        .drawer-close:hover { color: var(--text-primary); background: var(--bg-elevated); }
+        .drawer-close svg { width: 16px; height: 16px; }
+
+        .drawer-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0.75rem 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .drawer-section-title {
+            font-size: 0.65rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-muted);
+            margin-bottom: 0.4rem;
+        }
+
+        .drawer-row {
+            display: flex;
+            align-items: baseline;
+            gap: 0.5rem;
+            font-size: 0.78rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .drawer-row-label {
+            color: var(--text-muted);
+            flex-shrink: 0;
+            width: 80px;
+            font-size: 0.72rem;
+        }
+
+        .drawer-row-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.72rem;
+            color: var(--text-secondary);
+            word-break: break-all;
+            flex: 1;
+        }
+
+        .drawer-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.3rem;
+        }
+
+        .drawer-tag {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.68rem;
+            padding: 0.15rem 0.4rem;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border-subtle);
+            border-radius: 3px;
+            color: var(--text-secondary);
+        }
+
+        .drawer-ports-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.72rem;
+        }
+
+        .drawer-ports-table th {
+            text-align: left;
+            color: var(--text-muted);
+            font-weight: 500;
+            padding: 0.15rem 0.5rem 0.15rem 0;
+            font-size: 0.68rem;
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .drawer-ports-table td {
+            color: var(--text-secondary);
+            padding: 0.2rem 0.5rem 0.2rem 0;
+        }
+
+        .drawer-labels {
+            display: flex;
+            flex-direction: column;
+            gap: 0.2rem;
+        }
+
+        .drawer-label-row {
+            display: flex;
+            gap: 0.5rem;
+            font-size: 0.68rem;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .drawer-label-key {
+            color: var(--accent);
+            flex-shrink: 0;
+            width: 55%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .drawer-label-val {
+            color: var(--text-secondary);
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            text-align: left;
+        }
+
+
+        /* ── No-match state ──────────────────────────────────────────── */
+        .no-match {
+            text-align: center;
+            padding: 3rem 1rem;
+            color: var(--text-muted);
+            font-size: 0.875rem;
+            display: none;
+        }
+
+        .no-match.visible { display: block; }
+
+    </style>
 </head>
 <body>
     <header class="header">
-        <a class="brand" href="">
+        <a class="brand" href="/">
             <div class="brand-icon">
                 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
             </div>
             <span class="brand-name">devlocal</span>
         </a>
+
+        <div class="header-search">
+            <input class="search-input" id="devlocal-search" type="search" placeholder="Filter containers…" autocomplete="off" spellcheck="false">
+        </div>
 
         <div class="header-stats">
             {{if gt .RunningCount 0}}<span class="chip chip-running"><span class="chip-dot"></span>{{.RunningCount}} running</span>{{end}}
@@ -739,6 +1082,17 @@
         </div>
     </header>
 
+{{if .DiscoveryError}}
+    <div class="banner banner-error" id="errorBanner">
+        <svg class="banner-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <span class="banner-msg">Docker discovery error: {{.DiscoveryError}}</span>
+        {{if .LastRefreshUnix}}<span class="banner-time">Last refresh: <time class="timeago" data-ts="{{.LastRefreshUnix}}">…</time></span>{{end}}
+        <button class="banner-dismiss" type="button" onclick="document.getElementById('errorBanner').remove()" title="Dismiss">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+    </div>
+{{end}}
+
     <nav class="tab-nav">
         <button class="tab-btn active" data-tab="containers" onclick="switchTab('containers')">Containers</button>
         {{if .ConfigJSON}}<button class="tab-btn" data-tab="config" onclick="switchTab('config')">Caddy</button>{{end}}
@@ -746,13 +1100,22 @@
 
 {{define "ddIcon"}}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M22 7.7c0-.6-.4-1.2-.8-1.5l-6.3-3.9a1.72 1.72 0 0 0-1.7 0l-10.3 6c-.5.2-.9.8-.9 1.4v6.6c0 .5.4 1.2.8 1.5l6.3 3.9a1.72 1.72 0 0 0 1.7 0l10.3-6c.5-.3.9-1 .9-1.5Z"/><path d="M10 21.9V14L2.1 9.1"/><path d="m10 14 11.9-6.9"/><path d="M14 19.8v-8.1"/><path d="M18 17.5V9.4"/></svg>{{end}}
 
+{{define "copyIcon"}}<svg class="icon-copy" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M22.6,4H21.55a3.89,3.89,0,0,0-7.31,0H13.4A2.41,2.41,0,0,0,11,6.4V10H25V6.4A2.41,2.41,0,0,0,22.6,4ZM23,8H13V6.25A.25.25,0,0,1,13.25,6h2.69l.12-1.11A1.24,1.24,0,0,1,16.61,4a2,2,0,0,1,3.15,1.18l.09.84h2.9a.25.25,0,0,1,.25.25Z"/><path d="M33.25,18.06H21.33l2.84-2.83a1,1,0,1,0-1.42-1.42L17.5,19.06l5.25,5.25a1,1,0,0,0,.71.29,1,1,0,0,0,.71-1.7l-2.84-2.84H33.25a1,1,0,0,0,0-2Z"/><path d="M29,16h2V6.68A1.66,1.66,0,0,0,29.35,5H27.08V7H29Z"/><path d="M29,31H7V7H9V5H6.64A1.66,1.66,0,0,0,5,6.67V31.32A1.66,1.66,0,0,0,6.65,33H29.36A1.66,1.66,0,0,0,31,31.33V22.06H29Z"/></svg><svg class="icon-check" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>{{end}}
+
 {{define "containerCard"}}
     <div class="card{{if not .IsRunning}} stopped{{end}}"
          data-name="{{.ContainerName}}"
          data-image="{{.Image}}"
          data-project="{{.ComposeProject}}"
-         data-service="{{.ComposeService}}">
-        <div class="card-header">
+         data-service="{{.ComposeService}}"
+         data-domains="{{.DomainsFlat}}"
+         data-id="{{.ContainerIDShort}}"
+         data-ip="{{.IPAddress}}"
+         data-networks="{{range $i, $n := .Networks}}{{if $i}},{{end}}{{$n}}{{end}}"
+         data-published="{{range $i, $p := .PublishedPortPairs}}{{if $i}},{{end}}{{$p.Private}}:{{$p.Public}}{{end}}"
+         data-health="{{.Health}}"
+         data-labels='{{.LabelsJSON}}'>
+        <div class="card-header" onclick="openDrawer(this.closest('.card'))">
             {{if .Icon}}<img class="container-icon" src="{{.Icon}}" alt="" title="{{.Image}}" onerror="this.style.display='none'">{{end}}
             <div class="card-title">
                 <div class="container-name">
@@ -765,14 +1128,16 @@
                 <div class="status {{if .IsRunning}}status-running{{else}}status-stopped{{end}}">
                     <div class="status-dot"></div>
                     <span class="status-label">{{if .IsRunning}}running{{else}}stopped{{end}}</span>
+                    {{if and .IsRunning (and (ne .Health "") (ne .Health "none"))}}<span class="health-badge health-{{.Health}}">{{.Health}}</span>{{end}}
                     <span class="status-time">{{if .IsRunning}}since <time class="timeago" data-ts="{{.StartedUnix}}" title="{{.StartedAbs}}">{{.StartedAbs}}</time>{{else if .StoppedUnix}}<time class="timeago" data-ts="{{.StoppedUnix}}" title="{{.StoppedAbs}}">{{.StoppedAbs}}</time>{{end}}</span>
                 </div>
             </div>
         </div>
         {{if .Domains}}<div class="card-domains">
-{{range .Domains}}            <div class="domain-row">
+{{range .Domains}}            <div class="domain-row" onclick="event.stopPropagation()">
                 {{if .URL}}<a class="domain-link" href="{{.URL}}">{{.Domain}}</a>{{else}}<span class="domain-plain">{{.Domain}}</span>{{end}}
-                {{$url := .URL}}<div class="port-chips">{{range .Chips}}<span class="port-chip">{{if .IsHTTP}}<a class="chip-globe" href="{{$url}}" aria-label="Open {{$url}}" title="Open {{$url}}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></a>{{end}}:{{.PortStr}}{{if .CopyText}}<button class="copy-btn chip-copy-btn" type="button" data-copy="{{.CopyText}}" onclick="copyDomain(this)" aria-label="Copy {{.CopyText}}" title="Copy {{.CopyText}}"><svg class="icon-copy" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M22.6,4H21.55a3.89,3.89,0,0,0-7.31,0H13.4A2.41,2.41,0,0,0,11,6.4V10H25V6.4A2.41,2.41,0,0,0,22.6,4ZM23,8H13V6.25A.25.25,0,0,1,13.25,6h2.69l.12-1.11A1.24,1.24,0,0,1,16.61,4a2,2,0,0,1,3.15,1.18l.09.84h2.9a.25.25,0,0,1,.25.25Z"/><path d="M33.25,18.06H21.33l2.84-2.83a1,1,0,1,0-1.42-1.42L17.5,19.06l5.25,5.25a1,1,0,0,0,.71.29,1,1,0,0,0,.71-1.7l-2.84-2.84H33.25a1,1,0,0,0,0-2Z"/><path d="M29,16h2V6.68A1.66,1.66,0,0,0,29.35,5H27.08V7H29Z"/><path d="M29,31H7V7H9V5H6.64A1.66,1.66,0,0,0,5,6.67V31.32A1.66,1.66,0,0,0,6.65,33H29.36A1.66,1.66,0,0,0,31,31.33V22.06H29Z"/></svg><svg class="icon-check" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></button>{{end}}</span>{{end}}</div>
+                <button class="copy-btn domain-copy-btn" type="button" data-copy="{{if .URL}}{{.URL}}{{else}}{{.Domain}}{{end}}" onclick="copyDomain(this)" aria-label="Copy URL" title="Copy URL">{{template "copyIcon"}}</button>
+                {{$url := .URL}}<div class="port-chips">{{range .Chips}}<span class="port-chip">{{if .IsHTTP}}<a class="chip-globe" href="{{$url}}" aria-label="Open {{$url}}" title="Open {{$url}}" onclick="event.stopPropagation()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></a>{{end}}:{{.PortStr}}{{if .CopyText}}<button class="copy-btn chip-copy-btn" type="button" data-copy="{{.CopyText}}" onclick="copyDomain(this)" aria-label="Copy {{.CopyText}}" title="Copy {{.CopyText}}">{{template "copyIcon"}}</button>{{end}}</span>{{end}}</div>
             </div>
 {{end}}        </div>{{end}}
     </div>
@@ -788,17 +1153,19 @@
             </div>
 {{end}}
 {{if .Groups}}
-            <div class="section-label">Compose Projects</div>
+            <div class="section-label"><span>Compose Projects</span></div>
 {{range .Groups}}
             <div class="project-section" data-project="{{.Project}}">
-                <div class="project-toggle" role="button" aria-expanded="false" onclick="toggleProject(this)">
-                    <span class="chevron">▸</span>
-                    <span class="project-name">{{.Project}}</span>
-                    <span class="project-status-chips">
-                        {{if gt .RunningCount 0}}<span class="mini-chip mini-chip-running">{{.RunningCount}} up</span>{{end}}
-                        {{if gt .StoppedCount 0}}<span class="mini-chip mini-chip-stopped">{{.StoppedCount}} down</span>{{end}}
-                    </span>
-                    <span class="project-count">{{len .Rows}} {{if eq (len .Rows) 1}}service{{else}}services{{end}}</span>
+                <div class="project-header">
+                    <button class="project-toggle" aria-expanded="false" onclick="toggleProject(this)">
+                        <span class="chevron">▸</span>
+                        <span class="project-name">{{.Project}}</span>
+                        <span class="project-status-chips">
+                            {{if gt .RunningCount 0}}<span class="mini-chip mini-chip-running">{{.RunningCount}} up</span>{{end}}
+                            {{if gt .StoppedCount 0}}<span class="mini-chip mini-chip-stopped">{{.StoppedCount}} down</span>{{end}}
+                        </span>
+                        <span class="project-count">{{len .Rows}} {{if eq (len .Rows) 1}}service{{else}}services{{end}}</span>
+                    </button>
                     {{if .DockerDesktopURL}}<a class="dd-link" href="{{.DockerDesktopURL}}" title="{{.DockerDesktopLabel}}" aria-label="{{.DockerDesktopLabel}}" onclick="event.stopPropagation()">{{template "ddIcon"}}</a>{{end}}
                 </div>
                 <div class="project-cards">
@@ -807,10 +1174,18 @@
             </div>
 {{end}}
 {{end}}
+            <div class="no-match" id="noMatch">No containers match your filter.</div>
 {{else}}
             <div class="empty-state">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/><line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/></svg>
                 <p>No containers registered.</p>
+                <ul class="empty-hints">
+                    <li>Docker socket mounted at <code>/var/run/docker.sock</code>?</li>
+                    <li>Containers expose or publish ports?</li>
+                    <li>Container is on the same Docker network as the proxy?</li>
+                    <li>See the <a href="https://github.com/jsearles/caddy-dev-local#troubleshooting" target="_blank" rel="noopener">README</a> for troubleshooting.</li>
+                </ul>
+                {{if .DiscoveryError}}<div class="empty-error">{{.DiscoveryError}}</div>{{end}}
             </div>
 {{end}}
         </div>
@@ -833,11 +1208,26 @@
 {{end}}
     </main>
 
+    <!-- ── Drawer ───────────────────────────────────────────────────── -->
+    <div class="drawer-backdrop" id="drawerBackdrop" onclick="closeDrawer()"></div>
+    <aside class="drawer" id="drawer">
+        <div class="drawer-header">
+            <div class="drawer-title">
+                <div class="drawer-name" id="drawerName"></div>
+                <div class="drawer-subtitle" id="drawerSubtitle"></div>
+            </div>
+            <button class="drawer-close" type="button" onclick="closeDrawer()" title="Close">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+        <div class="drawer-body" id="drawerBody"></div>
+    </aside>
+
     <script>
     function setProjectOpen(sec, open) {
         const btn = sec.querySelector('.project-toggle');
         btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-        const list = btn.nextElementSibling;
+        const list = sec.querySelector('.project-cards');
         if (list) list.classList.toggle('open', open);
     }
 
@@ -911,6 +1301,7 @@
         });
         if (name === 'config' && !configTree) renderConfigTree();
         try { sessionStorage.setItem('devlocal-tab', name); } catch (e) {}
+        pushState();
     }
 
     // ── Config JSON tree (expand/collapse + highlighting) ─────────────
@@ -969,9 +1360,11 @@
     function toggleProject(btn) {
         const expanded = btn.getAttribute('aria-expanded') === 'true';
         btn.setAttribute('aria-expanded', expanded ? 'false' : 'true');
-        const list = btn.nextElementSibling;
+        const sec = btn.closest('.project-section');
+        const list = sec ? sec.querySelector('.project-cards') : null;
         if (list) list.classList.toggle('open', !expanded);
         saveUIState();
+        pushState();
     }
 
     // ── UI state across auto-reloads (sessionStorage) ────────────────
@@ -984,17 +1377,117 @@
             sessionStorage.setItem('devlocal-open', JSON.stringify(open));
             const activeTab = document.querySelector('.tab-btn.active');
             if (activeTab) sessionStorage.setItem('devlocal-tab', activeTab.dataset.tab);
+            sessionStorage.setItem('devlocal-scroll', String(Math.round(window.scrollY)));
+            const q = document.getElementById('devlocal-search');
+            if (q) sessionStorage.setItem('devlocal-search', q.value);
         } catch (e) {}
     }
     function restoreUIState() {
         try {
-            const tab = sessionStorage.getItem('devlocal-tab') || 'containers';
+            const params = new URLSearchParams(location.search);
+
+            const tab = params.get('tab') || sessionStorage.getItem('devlocal-tab') || 'containers';
             if (tab !== 'containers') switchTab(tab);
+
             const open = JSON.parse(sessionStorage.getItem('devlocal-open') || '[]');
+            const openParam = params.getAll('open');
+            const openSet = new Set([...open, ...openParam]);
             document.querySelectorAll('.project-section').forEach((sec) => {
-                if (open.includes(sec.dataset.project)) setProjectOpen(sec, true);
+                if (openSet.has(sec.dataset.project)) setProjectOpen(sec, true);
             });
+
+            const q = params.get('q') || sessionStorage.getItem('devlocal-search') || '';
+            if (q) {
+                const input = document.getElementById('devlocal-search');
+                if (input) { input.value = q; runFilter(q); }
+            }
+
+            const scroll = parseInt(sessionStorage.getItem('devlocal-scroll') || '0', 10);
+            if (scroll > 0) window.scrollTo(0, scroll);
         } catch (e) {}
+    }
+
+    // ── URL state (history.replaceState) ─────────────────────────────
+    function pushState() {
+        try {
+            const params = new URLSearchParams();
+            const activeTab = document.querySelector('.tab-btn.active');
+            if (activeTab && activeTab.dataset.tab !== 'containers') params.set('tab', activeTab.dataset.tab);
+            const q = (document.getElementById('devlocal-search') || {}).value || '';
+            if (q) params.set('q', q);
+            document.querySelectorAll('.project-toggle[aria-expanded="true"]').forEach((btn) => {
+                params.append('open', btn.closest('.project-section').dataset.project);
+            });
+            const qs = params.toString();
+            history.replaceState(null, '', qs ? '?' + qs : location.pathname);
+        } catch (e) {}
+    }
+
+    // ── Search / filter ───────────────────────────────────────────────
+    let filterSaveTimer = null;
+    let filterOpenSnapshot = null;
+    let filterOpened = new Set();
+    function onSearchInput() {
+        const q = (document.getElementById('devlocal-search') || {}).value || '';
+        runFilter(q);
+        clearTimeout(filterSaveTimer);
+        filterSaveTimer = setTimeout(() => { saveUIState(); pushState(); }, 150);
+    }
+
+    function runFilter(raw) {
+        const terms = raw.trim().toLowerCase().split(/\s+/).filter(Boolean);
+        const noMatch = document.getElementById('noMatch');
+        let anyVisible = false;
+
+        if (!terms.length) {
+            if (filterOpenSnapshot) {
+                const keepOpen = new Set(filterOpenSnapshot);
+                filterOpened.forEach((name) => {
+                    if (keepOpen.has(name)) return;
+                    document.querySelectorAll('.project-section').forEach((sec) => {
+                        if (sec.dataset.project === name) setProjectOpen(sec, false);
+                    });
+                });
+            }
+            filterOpenSnapshot = null;
+            filterOpened = new Set();
+        } else if (!filterOpenSnapshot) {
+            filterOpenSnapshot = new Set(
+                [...document.querySelectorAll('.project-toggle[aria-expanded="true"]')]
+                    .map((btn) => btn.closest('.project-section').dataset.project)
+            );
+        }
+
+        document.querySelectorAll('.card').forEach((card) => {
+            if (!terms.length) {
+                card.hidden = false;
+                return;
+            }
+            const haystack = [
+                card.dataset.name || '',
+                card.dataset.image || '',
+                card.dataset.project || '',
+                card.dataset.service || '',
+                card.dataset.domains || '',
+            ].join(' ').toLowerCase();
+            card.hidden = !terms.every((t) => haystack.includes(t));
+        });
+
+        document.querySelectorAll('.project-section').forEach((sec) => {
+            const visible = [...sec.querySelectorAll('.card')].some((c) => !c.hidden);
+            sec.hidden = !visible;
+            if (visible) {
+                anyVisible = true;
+                if (terms.length) {
+                    setProjectOpen(sec, true);
+                    filterOpened.add(sec.dataset.project);
+                }
+            }
+        });
+
+        document.querySelectorAll('#top-list .card').forEach((c) => { if (!c.hidden) anyVisible = true; });
+
+        if (noMatch) noMatch.classList.toggle('visible', !anyVisible && terms.length > 0);
     }
 
     // ── Relative timestamps ──────────────────────────────────────────
@@ -1021,33 +1514,147 @@
         });
     }
 
-    // ── Live refresh (content-hash poll) ──────────────────────────────
+    // ── Drawer ────────────────────────────────────────────────────────
+    function openDrawer(card) {
+        const name    = card.dataset.name    || '';
+        const image   = card.dataset.image   || '';
+        const id      = card.dataset.id      || '';
+        const ip      = card.dataset.ip      || '';
+        const health  = card.dataset.health  || '';
+        const networks = (card.dataset.networks || '').split(',').filter(Boolean);
+
+        let labels = {};
+        try { labels = JSON.parse(card.dataset.labels || '{}'); } catch (e) {}
+
+        const isRunning = !card.classList.contains('stopped');
+
+        document.getElementById('drawerName').textContent = name;
+        document.getElementById('drawerSubtitle').textContent = id ? id + ' · ' + (isRunning ? 'running' : 'stopped') : (isRunning ? 'running' : 'stopped');
+
+        const body = document.getElementById('drawerBody');
+        const rows = [];
+
+        rows.push(section('Details',
+            row('Image', image) +
+            (id ? row('ID', id) : '') +
+            (ip ? row('IP', ip) : '') +
+            (health && health !== 'none' ? row('Health', '<span class="health-badge health-' + esc(health) + '">' + esc(health) + '</span>') : '')
+        ));
+
+        if (networks.length) {
+            rows.push(section('Networks',
+                '<div class="drawer-tags">' + networks.map((n) => '<span class="drawer-tag">' + esc(n) + '</span>').join('') + '</div>'
+            ));
+        }
+
+        const pubAttr = card.dataset.published || '';
+        if (pubAttr) {
+            const pairs = pubAttr.split(',').map((p) => p.split(':'));
+            if (pairs.length && pairs[0].length === 2) {
+                rows.push(section('Published Ports',
+                    '<table class="drawer-ports-table"><thead><tr><th>Container</th><th>Host</th></tr></thead><tbody>' +
+                    pairs.map(([priv, pub]) => '<tr><td>' + esc(priv) + '</td><td>' + esc(pub) + '</td></tr>').join('') +
+                    '</tbody></table>'
+                ));
+            }
+        }
+
+        const labelKeys = Object.keys(labels).sort();
+        if (labelKeys.length) {
+            rows.push(section('Labels',
+                '<div class="drawer-labels">' +
+                labelKeys.map((k) => '<div class="drawer-label-row"><span class="drawer-label-key" title="' + esc(k) + '">' + esc(k) + '</span><span class="drawer-label-val" title="' + esc(labels[k]) + '">' + esc(labels[k]) + '</span></div>').join('') +
+                '</div>'
+            ));
+        }
+
+        body.innerHTML = rows.join('');
+
+        document.getElementById('drawer').classList.add('open');
+        document.getElementById('drawerBackdrop').classList.add('open');
+    }
+
+    function closeDrawer() {
+        document.getElementById('drawer').classList.remove('open');
+        document.getElementById('drawerBackdrop').classList.remove('open');
+    }
+
+    function section(title, content) {
+        return '<div><div class="drawer-section-title">' + esc(title) + '</div>' + content + '</div>';
+    }
+
+    function row(label, valueHTML) {
+        return '<div class="drawer-row"><span class="drawer-row-label">' + esc(label) + '</span><span class="drawer-row-value">' + valueHTML + '</span></div>';
+    }
+
+    function esc(str) {
+        return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeDrawer();
+    });
+
+    // ── Live refresh (version.json poll) ──────────────────────────────
     (() => {
         const dot = document.getElementById('liveDot');
-        let prev = null;
+        let prevVersion = null;
+        let useFallback = false;
+        let fallbackChecks = 0;
+        let fallbackPrev = null;
+
         function hash(str) {
             let h = 5381;
-            for (let i = 0; i < str.length; i++) {
-                h = ((h << 5) + h + str.charCodeAt(i)) | 0;
-            }
+            for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0;
             return h;
         }
-        function check() {
+
+        function reload() {
+            dot.classList.add('ping');
+            setTimeout(() => dot.classList.remove('ping'), 500);
+            saveUIState();
+            setTimeout(() => location.reload(), 400);
+        }
+
+        function checkVersion() {
+            fetch('/version.json', { cache: 'no-store' })
+                .then((r) => { if (!r.ok) throw new Error('not ok'); return r.json(); })
+                .then((data) => {
+                    fallbackChecks = 0;
+                    const v = data.v || '';
+                    if (prevVersion !== null && v !== prevVersion) { reload(); return; }
+                    prevVersion = v;
+                })
+                .catch(() => { useFallback = true; });
+        }
+
+        function checkFallback() {
+            fallbackChecks++;
             fetch(location.href, { cache: 'no-store' })
                 .then((r) => r.text())
                 .then((html) => {
                     const h = hash(html);
-                    if (prev !== null && h !== prev) {
-                        dot.classList.add('ping');
-                        setTimeout(() => dot.classList.remove('ping'), 500);
-                        saveUIState();
-                        setTimeout(() => location.reload(), 400);
-                        return;
-                    }
-                    prev = h;
+                    if (fallbackPrev !== null && h !== fallbackPrev) { reload(); return; }
+                    fallbackPrev = h;
                 })
                 .catch(() => {});
         }
+
+        function check() {
+            if (useFallback) {
+                checkFallback();
+                if (fallbackChecks >= 12) {
+                    fallbackChecks = 0;
+                    useFallback = false;
+                }
+            } else {
+                checkVersion();
+            }
+        }
+
+        const searchInput = document.getElementById('devlocal-search');
+        if (searchInput) searchInput.addEventListener('input', onSearchInput);
+
         restoreUIState();
         renderTimeAgo();
         updateThemeButton();

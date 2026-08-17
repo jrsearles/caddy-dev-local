@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strconv"
 	"sync/atomic"
+	"time"
 
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig"
@@ -21,10 +22,11 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/jsearles/caddy-dev-local/config"
+	"github.com/jsearles/caddy-dev-local/discovery"
 	"github.com/jsearles/caddy-dev-local/generator"
 )
 
-func initCaddyConfig(gen *generator.Generator, cfg *config.Config, indexDir string, api *adminAPI, userConfigPath string) error {
+func initCaddyConfig(gen *generator.Generator, cfg *config.Config, indexDir string, api *adminAPI, userConfigPath string, statusFn func() discovery.Status) error {
 	logger := caddy.Log().Named(appName)
 
 	httpPort, httpsPort := 80, 443
@@ -72,12 +74,14 @@ func initCaddyConfig(gen *generator.Generator, cfg *config.Config, indexDir stri
 		return fmt.Errorf("applying devlocal config: %w", err)
 	}
 
-	indexPage := generator.GenerateIndexPage(cfg.TLD, cfg.Standalone, gen.Containers(), fetchRunningConfig(api))
-	if err := writeIndexPage(indexDir, indexPage); err != nil {
+	st := statusFn()
+	fp := fingerprintState(gen.DomainTargets(), gen.Containers(), st.LastError)
+	indexPage := generator.GenerateIndexPage(cfg.TLD, cfg.Standalone, gen.Containers(), fetchRunningConfig(api), st.LastError, unixOrZero(st.LastRefresh))
+	if err := writeIndexArtifacts(indexDir, indexPage, fp); err != nil {
 		return fmt.Errorf("writing index page: %w", err)
 	}
 
-	api.setFingerprint(fingerprintState(gen.DomainTargets(), gen.Containers()))
+	api.setFingerprint(fp)
 	writeDevlocalAutosave(indexDir, devlocal)
 
 	logger.Info("loaded initial config", zap.Int("domains", len(gen.Domains())))
@@ -185,11 +189,12 @@ func postDevlocalViaAPI(api *adminAPI, devlocal *devlocalConfig) error {
 	return api.reconcileDevlocal(devlocal.routes, devlocal.policies)
 }
 
-func reloadCaddyConfig(gen *generator.Generator, cfg *config.Config, indexDir string, api *adminAPI) (bool, error) {
+func reloadCaddyConfig(gen *generator.Generator, cfg *config.Config, indexDir string, api *adminAPI, statusFn func() discovery.Status) (bool, error) {
 	logger := caddy.Log().Named(appName)
 
 	domains := gen.DomainTargets()
-	fp := fingerprintState(domains, gen.Containers())
+	st := statusFn()
+	fp := fingerprintState(domains, gen.Containers(), st.LastError)
 	if fp == api.fingerprint() {
 		logger.Debug("no changes to apply")
 		return false, nil
@@ -201,15 +206,15 @@ func reloadCaddyConfig(gen *generator.Generator, cfg *config.Config, indexDir st
 	}
 
 	if err := api.reconcileDevlocal(devlocal.routes, devlocal.policies); err != nil {
-		indexPage := generator.GenerateIndexPage(cfg.TLD, cfg.Standalone, gen.Containers(), fetchRunningConfig(api))
-		if werr := writeIndexPage(indexDir, indexPage); werr != nil {
+		indexPage := generator.GenerateIndexPage(cfg.TLD, cfg.Standalone, gen.Containers(), fetchRunningConfig(api), st.LastError, unixOrZero(st.LastRefresh))
+		if werr := writeIndexArtifacts(indexDir, indexPage, fp); werr != nil {
 			return false, fmt.Errorf("writing index page: %w", werr)
 		}
 		return false, err
 	}
 
-	indexPage := generator.GenerateIndexPage(cfg.TLD, cfg.Standalone, gen.Containers(), fetchRunningConfig(api))
-	if err := writeIndexPage(indexDir, indexPage); err != nil {
+	indexPage := generator.GenerateIndexPage(cfg.TLD, cfg.Standalone, gen.Containers(), fetchRunningConfig(api), st.LastError, unixOrZero(st.LastRefresh))
+	if err := writeIndexArtifacts(indexDir, indexPage, fp); err != nil {
 		return false, fmt.Errorf("writing index page: %w", err)
 	}
 
@@ -218,7 +223,7 @@ func reloadCaddyConfig(gen *generator.Generator, cfg *config.Config, indexDir st
 	return true, nil
 }
 
-func fingerprintState(domains map[string][]string, containers []*generator.ContainerInfo) string {
+func fingerprintState(domains map[string][]string, containers []*generator.ContainerInfo, discoveryError string) string {
 	sorted := slices.Clone(containers)
 	slices.SortFunc(sorted, func(a, b *generator.ContainerInfo) int {
 		return cmp.Compare(a.ContainerID, b.ContainerID)
@@ -226,13 +231,14 @@ func fingerprintState(domains map[string][]string, containers []*generator.Conta
 
 	containerState, err := json.Marshal(sorted)
 	if err != nil {
-		return fingerprintDomains(domains)
+		return fingerprintDomains(domains) + "\x00" + discoveryError
 	}
 
 	h := sha256.New()
 	io.WriteString(h, fingerprintDomains(domains)) //nolint:errcheck // sha256 writer never errors
 	h.Write([]byte{0})
 	h.Write(containerState)
+	io.WriteString(h, discoveryError) //nolint:errcheck // sha256 writer never errors
 	return hex.EncodeToString(h.Sum(nil))
 }
 
@@ -293,10 +299,28 @@ func fetchRunningConfig(api *adminAPI) string {
 	return s
 }
 
-func writeIndexPage(indexDir, page string) error {
-	path := filepath.Join(indexDir, "index.html")
-	if existing, err := os.ReadFile(path); err == nil && string(existing) == page {
-		return nil
+func writeIndexArtifacts(indexDir, page, fingerprint string) error {
+	htmlPath := filepath.Join(indexDir, "index.html")
+	if existing, err := os.ReadFile(htmlPath); err != nil || string(existing) != page {
+		if err := os.WriteFile(htmlPath, []byte(page), 0600); err != nil {
+			return err
+		}
 	}
-	return os.WriteFile(path, []byte(page), 0600)
+
+	type versionDoc struct {
+		V  string `json:"v"`
+		Ts int64  `json:"ts"`
+	}
+	vb, err := json.Marshal(versionDoc{V: fingerprint, Ts: time.Now().Unix()})
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(indexDir, "version.json"), vb, 0600)
+}
+
+func unixOrZero(t time.Time) int64 {
+	if t.IsZero() {
+		return 0
+	}
+	return t.Unix()
 }

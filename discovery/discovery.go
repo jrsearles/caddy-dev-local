@@ -2,6 +2,7 @@ package discovery
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/moby/moby/api/types/events"
@@ -13,6 +14,12 @@ import (
 	"github.com/jsearles/caddy-dev-local/generator"
 )
 
+type Status struct {
+	LastError   string
+	LastErrorAt time.Time
+	LastRefresh time.Time
+}
+
 type Controller struct {
 	cfg     *config.Config
 	docker  docker.Client
@@ -20,6 +27,9 @@ type Controller struct {
 	refresh func(context.Context) error
 	apply   func()
 	logger  *zap.Logger
+
+	mu     sync.RWMutex
+	status Status
 }
 
 func New(cfg *config.Config, dockerClient docker.Client, gen *generator.Generator, refresh func(context.Context) error, apply func(), logger *zap.Logger) *Controller {
@@ -30,6 +40,39 @@ func New(cfg *config.Config, dockerClient docker.Client, gen *generator.Generato
 		refresh: refresh,
 		apply:   apply,
 		logger:  logger,
+	}
+}
+
+func (c *Controller) SetApply(fn func()) {
+	c.apply = fn
+}
+
+func (c *Controller) Status() Status {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.status
+}
+
+func (c *Controller) setError(msg string) {
+	c.mu.Lock()
+	c.status.LastError = msg
+	c.status.LastErrorAt = time.Now()
+	c.mu.Unlock()
+}
+
+func (c *Controller) clearError() {
+	c.mu.Lock()
+	c.status.LastError = ""
+	c.status.LastErrorAt = time.Time{}
+	c.status.LastRefresh = time.Now()
+	c.mu.Unlock()
+}
+
+func (c *Controller) runRefresh(ctx context.Context) {
+	if err := c.refresh(ctx); err != nil {
+		c.setError(err.Error())
+	} else {
+		c.clearError()
 	}
 }
 
@@ -70,6 +113,7 @@ func (c *Controller) watchEvents(ctx context.Context) {
 			case event, ok := <-msgCh:
 				if !ok {
 					c.logger.Warn("event stream closed, reconnecting in 30s")
+					c.setError("Docker event stream closed, reconnecting")
 					throttle.Stop()
 					streaming = false
 				} else if shouldRefresh(&event) {
@@ -81,13 +125,14 @@ func (c *Controller) watchEvents(ctx context.Context) {
 			case err, ok := <-errCh:
 				if !ok || err != nil {
 					c.logger.Error("event stream error, reconnecting in 30s", zap.Error(err))
+					c.setError("Docker event stream error: " + err.Error())
 					throttle.Stop()
 					streaming = false
 				}
 			case <-throttle.C:
 				if pending {
 					pending = false
-					c.refresh(ctx) //nolint:errcheck // non-critical
+					c.runRefresh(ctx)
 					c.apply()
 				}
 			}
@@ -148,7 +193,7 @@ func (c *Controller) pollLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			c.refresh(ctx) //nolint:errcheck // non-critical
+			c.runRefresh(ctx)
 			c.apply()
 		}
 	}

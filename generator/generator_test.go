@@ -1271,3 +1271,71 @@ func TestGeneratorSkipsSelf(t *testing.T) {
 		t.Errorf("expected the plugin's own container to be excluded, got %+v", infos)
 	}
 }
+
+func TestHealthAndNetworksPopulated(t *testing.T) {
+	cfg := &config.Config{
+		TLD:      "dev.local",
+		StaleTTL: time.Hour,
+	}
+
+	c := makeContainer("c1", "myapp", "", "", []container.PortSummary{
+		{PrivatePort: 8080, PublicPort: 32000, Type: "tcp"},
+	}, nil, "running")
+	c.Health = &container.HealthSummary{Status: "healthy"}
+	c.NetworkSettings = &container.NetworkSettingsSummary{
+		Networks: map[string]*network.EndpointSettings{
+			"backend":  {IPAddress: netip.MustParseAddr("172.20.0.2")},
+			"frontend": {IPAddress: netip.MustParseAddr("172.21.0.2")},
+			"devlocal": {IPAddress: netip.MustParseAddr("172.18.0.2")},
+		},
+	}
+
+	mock := &mockDocker{containers: withSelf(c)}
+	gen := testGenerator(t, cfg, mock)
+	ctx := context.Background()
+
+	gen.Refresh(ctx) //nolint:errcheck // test helper
+
+	infos := gen.Containers()
+	if len(infos) != 1 {
+		t.Fatalf("expected 1 container, got %d", len(infos))
+	}
+
+	info := infos[0]
+	if info.Health != "healthy" {
+		t.Errorf("expected Health %q, got %q", "healthy", info.Health)
+	}
+	if !slices.Contains(info.Networks, "backend") {
+		t.Errorf("expected Networks to contain %q, got %v", "backend", info.Networks)
+	}
+	if !slices.Contains(info.Networks, "frontend") {
+		t.Errorf("expected Networks to contain %q, got %v", "frontend", info.Networks)
+	}
+	if !slices.IsSorted(info.Networks) {
+		t.Errorf("expected Networks to be sorted, got %v", info.Networks)
+	}
+}
+
+func TestHealthEmptyWhenNoHealthcheck(t *testing.T) {
+	cfg := &config.Config{
+		TLD:      "dev.local",
+		StaleTTL: time.Hour,
+	}
+
+	c := makeContainer("c2", "nohealth", "", "", []container.PortSummary{
+		{PrivatePort: 80, PublicPort: 32001, Type: "tcp"},
+	}, nil, "running")
+
+	mock := &mockDocker{containers: withSelf(c)}
+	gen := testGenerator(t, cfg, mock)
+
+	gen.Refresh(context.Background()) //nolint:errcheck // test helper
+
+	infos := gen.Containers()
+	if len(infos) != 1 {
+		t.Fatalf("expected 1 container, got %d", len(infos))
+	}
+	if infos[0].Health != "" {
+		t.Errorf("expected empty Health when no HealthSummary, got %q", infos[0].Health)
+	}
+}
