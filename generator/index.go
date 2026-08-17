@@ -283,6 +283,15 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo,
 			projectRows = append(projectRows, rows[i])
 		}
 	}
+	slices.SortStableFunc(top, func(a, b indexRow) int {
+		if a.IsRunning != b.IsRunning {
+			if a.IsRunning {
+				return -1
+			}
+			return 1
+		}
+		return 0
+	})
 
 	projectGroups := make(map[string][]indexRow)
 	var projectNames []string
@@ -294,6 +303,18 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo,
 		projectGroups[r.ComposeProject] = append(projectGroups[r.ComposeProject], *r)
 	}
 	slices.Sort(projectNames)
+
+	for _, name := range projectNames {
+		slices.SortStableFunc(projectGroups[name], func(a, b indexRow) int {
+			if a.IsRunning != b.IsRunning {
+				if a.IsRunning {
+					return -1
+				}
+				return 1
+			}
+			return 0
+		})
+	}
 
 	grouped := make([]displayGroup, 0, len(projectNames))
 	for _, name := range projectNames {
