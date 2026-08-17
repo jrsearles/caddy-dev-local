@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/jsearles/caddy-dev-local/generator"
+	"github.com/jrsearles/caddy-dev-local/generator"
 )
 
 const (

@@ -9,9 +9,9 @@ import (
 	"github.com/moby/moby/client"
 	"go.uber.org/zap"
 
-	"github.com/jsearles/caddy-dev-local/config"
-	"github.com/jsearles/caddy-dev-local/docker"
-	"github.com/jsearles/caddy-dev-local/generator"
+	"github.com/jrsearles/caddy-dev-local/config"
+	"github.com/jrsearles/caddy-dev-local/docker"
+	"github.com/jrsearles/caddy-dev-local/generator"
 )
 
 type Status struct {

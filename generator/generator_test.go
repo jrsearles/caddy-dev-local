@@ -17,8 +17,8 @@ import (
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
 
-	"github.com/jsearles/caddy-dev-local/config"
-	"github.com/jsearles/caddy-dev-local/docker"
+	"github.com/jrsearles/caddy-dev-local/config"
+	"github.com/jrsearles/caddy-dev-local/docker"
 )
 
 type mockDocker struct {

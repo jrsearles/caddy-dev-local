@@ -1,7 +1,7 @@
 set shell := ["bash", "-euco", "pipefail"]
 
 artifacts := env_var_or_default("ARTIFACTS", "./artifacts")
-plugin := "github.com/jsearles/caddy-dev-local"
+plugin := "github.com/jrsearles/caddy-dev-local"
 
 # Build binaries for all platforms
 build-all: check build-linux-amd64 build-linux-arm64 build-windows-amd64 build-hosts

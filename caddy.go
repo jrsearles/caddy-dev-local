@@ -21,9 +21,9 @@ import (
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"go.uber.org/zap"
 
-	"github.com/jsearles/caddy-dev-local/config"
-	"github.com/jsearles/caddy-dev-local/discovery"
-	"github.com/jsearles/caddy-dev-local/generator"
+	"github.com/jrsearles/caddy-dev-local/config"
+	"github.com/jrsearles/caddy-dev-local/discovery"
+	"github.com/jrsearles/caddy-dev-local/generator"
 )
 
 func initCaddyConfig(gen *generator.Generator, cfg *config.Config, indexDir string, api *adminAPI, userConfigPath string, statusFn func() discovery.Status) error {

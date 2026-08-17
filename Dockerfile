@@ -5,7 +5,7 @@ WORKDIR /src
 
 RUN xcaddy build \
     --output /usr/bin/caddy \
-    --with github.com/jsearles/caddy-dev-local=/src
+    --with github.com/jrsearles/caddy-dev-local=/src
 
 FROM caddy:2.11.4
 

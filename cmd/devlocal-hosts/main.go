@@ -12,11 +12,11 @@ import (
 	"github.com/spf13/pflag"
 	"go.uber.org/zap"
 
-	"github.com/jsearles/caddy-dev-local/config"
-	"github.com/jsearles/caddy-dev-local/discovery"
-	"github.com/jsearles/caddy-dev-local/docker"
-	"github.com/jsearles/caddy-dev-local/generator"
-	"github.com/jsearles/caddy-dev-local/hosts"
+	"github.com/jrsearles/caddy-dev-local/config"
+	"github.com/jrsearles/caddy-dev-local/discovery"
+	"github.com/jrsearles/caddy-dev-local/docker"
+	"github.com/jrsearles/caddy-dev-local/generator"
+	"github.com/jrsearles/caddy-dev-local/hosts"
 )
 
 const name = "devlocal-hosts"

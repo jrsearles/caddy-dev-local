@@ -7,7 +7,7 @@ import (
 	caddycmd "github.com/caddyserver/caddy/v2/cmd"
 	"github.com/spf13/pflag"
 
-	"github.com/jsearles/caddy-dev-local/config"
+	"github.com/jrsearles/caddy-dev-local/config"
 )
 
 func newDevlocalFlags(t *testing.T, args ...string) caddycmd.Flags {

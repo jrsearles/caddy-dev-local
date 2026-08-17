@@ -62,4 +62,4 @@ formatters:
   settings:
     goimports:
       local-prefixes:
-        - github.com/jsearles/caddy-dev-local
+        - github.com/jrsearles/caddy-dev-local

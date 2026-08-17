@@ -1,4 +1,4 @@
-module github.com/jsearles/caddy-dev-local
+module github.com/jrsearles/caddy-dev-local
 
 go 1.26
 
