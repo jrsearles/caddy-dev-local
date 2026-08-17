@@ -1155,8 +1155,8 @@
                         <span class="chevron">▸</span>
                         <span class="project-name">{{.Project}}</span>
                         <span class="project-status-chips">
-                            {{if gt .RunningCount 0}}<span class="mini-chip mini-chip-running">{{.RunningCount}} up</span>{{end}}
-                            {{if gt .StoppedCount 0}}<span class="mini-chip mini-chip-stopped">{{.StoppedCount}} down</span>{{end}}
+                            {{if gt .RunningCount 0}}<span class="mini-chip mini-chip-running">{{.RunningCount}} running</span>{{end}}
+                            {{if gt .StoppedCount 0}}<span class="mini-chip mini-chip-stopped">{{.StoppedCount}} stopped</span>{{end}}
                         </span>
                         <span class="project-count">{{len .Rows}} {{if eq (len .Rows) 1}}service{{else}}services{{end}}</span>
                     </button>
