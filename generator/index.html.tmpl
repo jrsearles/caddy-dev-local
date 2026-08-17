@@ -490,6 +490,7 @@
         }
 
         .domain-row:hover { background: var(--bg-elevated); }
+        .domain-row-noports:hover { background: none; }
 
         .domain-link {
             font-family: 'JetBrains Mono', monospace;
@@ -1133,7 +1134,7 @@
                 {{if .URL}}<a class="domain-link" href="{{.URL}}" target="_blank" rel="noopener noreferrer">{{.Domain}}</a>{{else}}<span class="domain-plain">{{.Domain}}</span>{{end}}
                 {{$url := .URL}}<div class="port-chips">{{range .Chips}}<span class="port-chip">{{if .IsHTTP}}<a class="chip-globe" href="{{$url}}" target="_blank" rel="noopener noreferrer" aria-label="Open {{$url}}" title="Open {{$url}}" onclick="event.stopPropagation()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></a>{{end}}:{{.PortStr}}{{if .CopyText}}<button class="copy-btn chip-copy-btn" type="button" data-copy="{{.CopyText}}" onclick="copyDomain(this)" aria-label="Copy {{.CopyText}}" title="Copy {{.CopyText}}">{{template "copyIcon"}}</button>{{end}}</span>{{end}}</div>
             </div>
-{{end}}        </div>{{else if .NoPorts}}<div class="card-domains"><div class="domain-row" onclick="event.stopPropagation()"><span class="domain-plain">no ports exposed</span></div></div>{{end}}
+{{end}}        </div>{{else if .NoPorts}}<div class="card-domains"><div class="domain-row domain-row-noports"><span class="domain-plain">no ports exposed</span></div></div>{{end}}
     </div>
 {{end}}
 
