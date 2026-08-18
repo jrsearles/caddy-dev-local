@@ -26,7 +26,7 @@ func TestBuildDevlocalConfig(t *testing.T) {
 		"myapp.web.dev.local": {"web:3000", "web:3001"},
 		"my-nginx.dev.local":  {"nginx:80"},
 		"api.custom.local":    {"web:8080"},
-	})
+	}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +52,7 @@ func TestBuildDevlocalConfig(t *testing.T) {
 }
 
 func TestBuildDevlocalConfigEmptyTargets(t *testing.T) {
-	got, err := buildDevlocalConfig("dev.local", "/cache", nil)
+	got, err := buildDevlocalConfig("dev.local", "/cache", nil, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ func TestBuildIndexRouteNoDupWhenTldIsLocalhost(t *testing.T) {
 }
 
 func TestBuildReverseProxyRoute(t *testing.T) {
-	route, err := buildReverseProxyRoute("my-nginx.dev.local", []string{"nginx:80", "nginx:81"})
+	route, err := buildReverseProxyRoute("my-nginx.dev.local", []string{"nginx:80", "nginx:81"}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +146,7 @@ func TestBuildReverseProxyRoute(t *testing.T) {
 	}
 
 	handle := obj["handle"].([]any)
-	subroute := handle[0].(map[string]any)
+	subroute := handle[1].(map[string]any)
 	routes := subroute["routes"].([]any)
 	inner := routes[0].(map[string]any)
 	innerHandle := inner["handle"].([]any)
@@ -187,5 +187,51 @@ func TestBuildTLSPolicy(t *testing.T) {
 	subjects := obj["subjects"].([]any)
 	if len(subjects) != 2 || subjects[0] != "api.custom.local" || subjects[1] != "my-nginx.dev.local" {
 		t.Errorf("subjects = %v, want sorted [api.custom.local my-nginx.dev.local]", subjects)
+	}
+}
+
+func TestBuildReverseProxyRouteWithTracing(t *testing.T) {
+	route, err := buildReverseProxyRoute("my-nginx.dev.local", []string{"nginx:80"}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var obj map[string]any
+	if err := json.Unmarshal(route, &obj); err != nil {
+		t.Fatal(err)
+	}
+
+	handle := obj["handle"].([]any)
+	if handle[0].(map[string]any)["handler"] != "tracing" {
+		t.Errorf("first handler = %v, want tracing", handle[0].(map[string]any)["handler"])
+	}
+	subroute := handle[1].(map[string]any)
+	routes := subroute["routes"].([]any)
+	inner := routes[0].(map[string]any)
+	innerHandle := inner["handle"].([]any)
+	proxy := innerHandle[0].(map[string]any)
+	if proxy["handler"] != "reverse_proxy" {
+		t.Errorf("second handler = %v, want reverse_proxy", proxy["handler"])
+	}
+}
+
+func TestBuildReverseProxyRouteWithoutTracing(t *testing.T) {
+	route, err := buildReverseProxyRoute("my-nginx.dev.local", []string{"nginx:80"}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var obj map[string]any
+	if err := json.Unmarshal(route, &obj); err != nil {
+		t.Fatal(err)
+	}
+
+	handle := obj["handle"].([]any)
+	if len(handle) != 1 {
+		t.Fatalf("expected 1 handle entry, got %d", len(handle))
+	}
+	subroute := handle[0].(map[string]any)
+	if subroute["handler"] != "subroute" {
+		t.Errorf("handler = %v, want subroute", subroute["handler"])
 	}
 }

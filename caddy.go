@@ -61,7 +61,7 @@ func initCaddyConfig(gen *generator.Generator, cfg *config.Config, indexDir stri
 		return fmt.Errorf("injecting listen ports: %w", err)
 	}
 
-	devlocal, err := buildDevlocalConfig(cfg.TLD, indexDir, gen.DomainTargets())
+	devlocal, err := buildDevlocalConfig(cfg.TLD, indexDir, gen.DomainTargets(), cfg.Tracing)
 	if err != nil {
 		return fmt.Errorf("building devlocal config: %w", err)
 	}
@@ -200,7 +200,7 @@ func reloadCaddyConfig(gen *generator.Generator, cfg *config.Config, indexDir st
 		return false, nil
 	}
 
-	devlocal, err := buildDevlocalConfig(cfg.TLD, indexDir, domains)
+	devlocal, err := buildDevlocalConfig(cfg.TLD, indexDir, domains, cfg.Tracing)
 	if err != nil {
 		return false, fmt.Errorf("building devlocal config: %w", err)
 	}

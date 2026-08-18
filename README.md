@@ -24,6 +24,7 @@ A Caddy plugin that automatically registers `{project}.{service}.dev.local` doma
   - **Caddy config tab** — shows the effective running Caddy config as a collapsible JSON tree (via [json-view](https://github.com/pgrabovets/json-view)) with expand/collapse-all; toggle to raw JSON; only appears if a config is available
   - **Theme** — defaults to system preference; header toggle cycles light → dark → system
 - **Stale cleanup** — Stopped containers stay listed on the index page (marked stopped) until the stale TTL expires, then their config is removed
+- **OpenTelemetry tracing** — Dynamic reverse proxy routes include Caddy's `tracing` handler for automatic span collection; opt out with `--no-tracing`
 - **Standalone hosts binary** — `devlocal-hosts` watches Docker and maintains hosts entries without running a proxy
 
 ## Quick Start
@@ -182,6 +183,7 @@ services:
 | `--stale-ttl` | `DEVLOCAL_STALE_TTL` | `1h` | Keep config for stopped containers |
 | `--probe-timeout` | `DEVLOCAL_PROBE_TIMEOUT` | `2s` | HTTP probe timeout |
 | `--hosts-file` | `DEVLOCAL_HOSTS_FILE` | `true` | Manage hosts file entries for domains |
+| `--no-tracing` | `DEVLOCAL_TRACING=false` | tracing enabled | Disable OpenTelemetry tracing on dynamic routes |
 | `--poll-interval` | `DEVLOCAL_POLL_INTERVAL` | `30s` | Periodic full refresh as a safety net for missed Docker events; `0` disables |
 | `--config` | `DEVLOCAL_CONFIG` | (auto-detect) | Path to a static Caddyfile loaded as-is |
 
@@ -344,6 +346,20 @@ devlocal-hosts clean
 ### Permissions
 
 On Linux, writing to `/etc/hosts` requires root. If the process doesn't have write permission, caddy-dev-local logs a warning and skips hosts file updates (Caddy still works normally).
+
+## OpenTelemetry Tracing
+
+All dynamic reverse proxy routes include Caddy's [tracing handler](https://caddyserver.com/docs/modules/caddyhttp.tracing) by default. The handler creates spans using the standard OTel SDK, which auto-configures from environment variables like `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_TRACES_EXPORTER`. The index page route is not instrumented to avoid noise from periodic polling.
+
+### Opt Out
+
+Disable tracing on dynamic routes:
+
+```bash
+caddy devlocal --no-tracing
+# or
+DEVLOCAL_TRACING=false caddy devlocal
+```
 
 ## Standalone Hosts Binary
 

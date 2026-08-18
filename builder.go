@@ -15,9 +15,12 @@ const (
 )
 
 const (
-	keyHandler = "handler"
-	keyHandle  = "handle"
-	keyRoutes  = "routes"
+	keyHandler      = "handler"
+	keyHandle       = "handle"
+	keyRoutes       = "routes"
+	handlerTracing  = "tracing"
+	handlerSubroute = "subroute"
+	handlerProxy    = "reverse_proxy"
 )
 
 type devlocalConfig struct {
@@ -36,7 +39,7 @@ func devlocalRouteID(host string) string {
 	return "devlocal-route-" + strings.ReplaceAll(host, ".", "-")
 }
 
-func buildDevlocalConfig(tld, indexDir string, targets map[string][]string) (*devlocalConfig, error) {
+func buildDevlocalConfig(tld, indexDir string, targets map[string][]string, tracing bool) (*devlocalConfig, error) {
 	cfg := &devlocalConfig{
 		routes:   make(map[string]json.RawMessage, len(targets)),
 		policies: make(map[string]json.RawMessage),
@@ -59,7 +62,7 @@ func buildDevlocalConfig(tld, indexDir string, targets map[string][]string) (*de
 		upstreams := slices.Clone(targets[host])
 		slices.Sort(upstreams)
 
-		route, err := buildReverseProxyRoute(host, upstreams)
+		route, err := buildReverseProxyRoute(host, upstreams, tracing)
 		if err != nil {
 			return nil, fmt.Errorf("building route for %s: %w", host, err)
 		}
@@ -78,29 +81,46 @@ func buildDevlocalConfig(tld, indexDir string, targets map[string][]string) (*de
 	return cfg, nil
 }
 
-func buildReverseProxyRoute(host string, targets []string) (json.RawMessage, error) {
+func buildReverseProxyRoute(host string, targets []string, tracing bool) (json.RawMessage, error) {
 	upstreams := make([]any, 0, len(targets))
 	for _, t := range targets {
 		upstreams = append(upstreams, map[string]any{"dial": t})
 	}
 
-	route := map[string]any{
-		"@id": devlocalRouteID(host),
-		keyHandle: []any{
+	proxyHandler := map[string]any{
+		keyHandler:  handlerProxy,
+		"upstreams": upstreams,
+	}
+
+	var handle []any
+	if tracing {
+		handle = []any{
+			map[string]any{keyHandler: handlerTracing, "span": "{http.request.method} {http.request.host}"},
 			map[string]any{
-				keyHandler: "subroute",
+				keyHandler: handlerSubroute,
 				keyRoutes: []any{
 					map[string]any{
-						keyHandle: []any{
-							map[string]any{
-								keyHandler:  "reverse_proxy",
-								"upstreams": upstreams,
-							},
-						},
+						keyHandle: []any{proxyHandler},
 					},
 				},
 			},
-		},
+		}
+	} else {
+		handle = []any{
+			map[string]any{
+				keyHandler: handlerSubroute,
+				keyRoutes: []any{
+					map[string]any{
+						keyHandle: []any{proxyHandler},
+					},
+				},
+			},
+		}
+	}
+
+	route := map[string]any{
+		"@id":     devlocalRouteID(host),
+		keyHandle: handle,
 		"match": []any{
 			map[string]any{"host": []any{host}},
 		},
@@ -118,7 +138,7 @@ func buildIndexRoute(tld, indexDir string, containerDomains []string) (json.RawM
 	route := map[string]any{
 		keyHandle: []any{
 			map[string]any{
-				keyHandler: "subroute",
+				keyHandler: handlerSubroute,
 				keyRoutes: []any{
 					map[string]any{
 						keyHandle: []any{

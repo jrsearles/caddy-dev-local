@@ -35,6 +35,9 @@ func init() {
 			fs.Bool("hosts-file", true,
 				"Manage /etc/hosts entries for domains (env: DEVLOCAL_HOSTS_FILE)")
 
+			fs.Bool("no-tracing", false,
+				"Disable OpenTelemetry tracing on dynamic routes (env: DEVLOCAL_TRACING)")
+
 			fs.String("config", "",
 				"Path to Caddyfile or config file (env: DEVLOCAL_CONFIG)")
 
@@ -137,6 +140,11 @@ func applyCommandFlags(cfg *config.Config, fs caddycmd.Flags) {
 	if fs.Changed("hosts-file") {
 		v := fs.Bool("hosts-file")
 		o.HostsFile = &v
+	}
+	if fs.Changed("no-tracing") {
+		v := fs.Bool("no-tracing")
+		f := !v
+		o.Tracing = &f
 	}
 	cfg.ApplyFlags(o)
 }
