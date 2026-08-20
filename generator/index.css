@@ -361,6 +361,12 @@ body {
 
 .dd-link svg { width: 18px; height: 18px; display: block; }
 
+.card-header .dd-link {
+    margin-left: auto;
+    padding: 0.15rem;
+}
+.card-header .dd-link svg { width: 15px; height: 15px; }
+
 .container-meta {
     font-family: 'JetBrains Mono', monospace;
     font-size: 0.72rem;

@@ -66,9 +66,7 @@ func TestRenderSanity(t *testing.T) {
 		`data-networks="bridge"`,
 		`data-health="healthy"`,
 		`class="health-badge health-healthy"`,
-		`docker-desktop://dashboard/open`,
 		`docker-desktop://dashboard/apps/demo`,
-		`Open Docker Desktop`,
 		`Open demo in Docker Desktop`,
 		`data-project="demo"`,
 		`class="project-section"`,
@@ -127,8 +125,8 @@ func TestRenderSanity(t *testing.T) {
 	if strings.Contains(page, "displayRow") {
 		t.Error("displayRow still referenced")
 	}
-	if got := strings.Count(page, `class="dd-link"`); got != 2 {
-		t.Errorf("expected 2 Docker Desktop links (standalone card + project header), got %d", got)
+	if got := strings.Count(page, `class="dd-link"`); got != 4 {
+		t.Errorf("expected 4 Docker Desktop links (3 container cards + project header), got %d", got)
 	}
 }
 

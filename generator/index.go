@@ -38,6 +38,7 @@ type publishedPort struct {
 type indexRow struct {
 	Domains            []domainEntry
 	ContainerName      string
+	ContainerID        string
 	ContainerIDShort   string
 	Image              string
 	Icon               string
@@ -55,6 +56,7 @@ type indexRow struct {
 	PublishedPortPairs []publishedPort
 	LabelsJSON         template.JS
 	DomainsFlat        string
+	DockerDesktopURL   template.URL
 }
 
 type displayGroup struct {
@@ -70,8 +72,8 @@ func projectDesktopURL(project string) template.URL {
 	return template.URL("docker-desktop://dashboard/apps/" + project) // #nosec G203
 }
 
-func containersDesktopURL() template.URL {
-	return template.URL("docker-desktop://dashboard/open") // #nosec G203
+func containerDesktopURL(id string) template.URL {
+	return template.URL("docker-desktop://dashboard/logs?containerIds=" + id) // #nosec G203
 }
 
 func filteredLabels(labels map[string]string) map[string]string {
@@ -94,17 +96,15 @@ func filteredLabels(labels map[string]string) map[string]string {
 }
 
 type indexData struct {
-	TLD                        string
-	DisplayRows                []indexRow
-	Groups                     []displayGroup
-	RunningCount               int
-	StoppedCount               int
-	ConfigJSON                 string
-	ConfigJSONRaw              template.JS
-	StandaloneDockerDesktopURL template.URL
-	StandaloneDockerLabel      string
-	DiscoveryError             string
-	LastRefreshUnix            int64
+	TLD             string
+	DisplayRows     []indexRow
+	Groups          []displayGroup
+	RunningCount    int
+	StoppedCount    int
+	ConfigJSON      string
+	ConfigJSONRaw   template.JS
+	DiscoveryError  string
+	LastRefreshUnix int64
 }
 
 func buildDomainEntry(domain string, portStrs []string, url string) domainEntry {
@@ -275,6 +275,7 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo,
 		rows = append(rows, indexRow{
 			Domains:            domains,
 			ContainerName:      info.ContainerName,
+			ContainerID:        info.ContainerID,
 			ContainerIDShort:   shortID,
 			Image:              info.Image,
 			Icon:               iconForContainer(info.Image, info.Labels),
@@ -292,6 +293,7 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo,
 			PublishedPortPairs: pubPairs,
 			LabelsJSON:         labelsJSON,
 			DomainsFlat:        strings.Join(domainNames, " "),
+			DockerDesktopURL:   containerDesktopURL(info.ContainerID),
 		})
 	}
 
@@ -385,10 +387,6 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo,
 		ConfigJSONRaw:   safeConfigJSONJS(configJSON),
 		DiscoveryError:  discoveryError,
 		LastRefreshUnix: lastRefreshUnix,
-	}
-	if len(top) > 0 {
-		data.StandaloneDockerDesktopURL = containersDesktopURL()
-		data.StandaloneDockerLabel = "Open Docker Desktop"
 	}
 
 	var sb strings.Builder
