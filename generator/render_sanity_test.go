@@ -77,7 +77,7 @@ func TestRenderSanity(t *testing.T) {
 		`class="mini-chip mini-chip-running"`,
 		`class="mini-chip mini-chip-stopped"`,
 		`aria-expanded="false"`,
-		`id="liveDot"`,
+		`id="refreshToast"`,
 		`status-running`,
 		`status-stopped`,
 		`data-copy=`,
