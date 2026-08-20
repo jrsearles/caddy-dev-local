@@ -80,8 +80,8 @@ func TestBuildIndexRouteHosts(t *testing.T) {
 
 	match := obj["match"].([]any)
 	hosts := match[0].(map[string]any)["host"].([]any)
-	if len(hosts) != 2 || hosts[0] != "dev.local" || hosts[1] != "dev.localhost" {
-		t.Errorf("index route hosts = %v, want [dev.local dev.localhost]", hosts)
+	if len(hosts) != 1 || hosts[0] != "dev.localhost" {
+		t.Errorf("index route hosts = %v, want [dev.localhost]", hosts)
 	}
 }
 
@@ -97,9 +97,12 @@ func TestBuildIndexRouteSkipsAliasCollision(t *testing.T) {
 	}
 
 	match := obj["match"].([]any)
-	hosts := match[0].(map[string]any)["host"].([]any)
-	if len(hosts) != 1 || hosts[0] != "dev.local" {
-		t.Errorf("index route hosts = %v, want [dev.local]", hosts)
+	hostsRaw := match[0].(map[string]any)["host"]
+	if hostsRaw != nil {
+		hosts := hostsRaw.([]any)
+		if len(hosts) != 0 {
+			t.Errorf("index route hosts = %v, want []", hosts)
+		}
 	}
 }
 

@@ -130,9 +130,9 @@ func buildReverseProxyRoute(host string, targets []string, tracing bool) (json.R
 }
 
 func buildIndexRoute(tld, indexDir string, containerDomains []string) (json.RawMessage, error) {
-	hosts := []any{tld}
-	if alias := generator.TLDLocalhost(tld); alias != tld && !slices.Contains(containerDomains, alias) {
-		hosts = append(hosts, alias)
+	var hosts []any
+	if alias := generator.TLDLocalhost(tld); !slices.Contains(containerDomains, alias) {
+		hosts = []any{alias}
 	}
 
 	route := map[string]any{
