@@ -157,7 +157,7 @@
 {{if .ConfigJSON}}
         <div id="tab-routes" class="tab-panel">
             <div class="section-label"><span>Registered Routes</span></div>
-            <div class="route-grid" id="routeGrid"></div>
+            <div class="route-table-wrap" id="routeGrid"></div>
             <div class="route-empty" id="routeEmpty" hidden>No routes found.</div>
         </div>
         <div id="tab-config" class="tab-panel">
@@ -562,7 +562,7 @@
         return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
 
-    // ── Route grid ─────────────────────────────────────────────────
+    // ── Route table ─────────────────────────────────────────────────
     let routesRendered = false;
 
     function renderRoutes() {
@@ -611,7 +611,7 @@
             });
         });
 
-        const html = routes.map(function(route) {
+        const rows = routes.map(function(route) {
             const id = route['@id'] || '(no id)';
             const hosts = ((route.match || [])[0] || {}).host || [];
             const tlsInfo = hosts.map(function(h) {
@@ -622,54 +622,62 @@
             const hasReverseProxy = handlerInfo.handlers.indexOf('reverse_proxy') !== -1;
             const isIndex = id.indexOf('devlocal-index') !== -1;
 
-            let cardContent = '';
-            cardContent += '<div class="route-card-header">';
-            cardContent += '<div class="route-card-id" title="' + esc(id) + '">' + esc(id) + '</div>';
-            const handlerTypes = handlerInfo.handlers;
-            handlerTypes.forEach(function(h) {
+            const handlerHtml = handlerInfo.handlers.map(function(h) {
                 const cls = h === 'reverse_proxy' ? 'handler-reverse_proxy' : h === 'file_server' ? 'handler-file_server' : 'handler-other';
-                cardContent += '<span class="route-handler-badge ' + cls + '">' + esc(h) + '</span>';
-            });
-            cardContent += '</div>';
+                return '<span class="route-handler-badge ' + cls + '">' + esc(h) + '</span>';
+            }).join(' ');
 
+            let hostHtml = '';
             if (hosts.length) {
-                hosts.forEach(function(h) {
-                    cardContent += '<div class="route-row"><span class="route-row-label">host</span><span class="route-row-value">' + esc(h) + '</span></div>';
-                });
+                hostHtml = '<div class="route-host-val"><a href="https://' + esc(hosts[0]) + '" target="_blank" rel="noopener">' + esc(hosts[0]) + '</a></div>';
+                for (var i = 1; i < hosts.length; i++) {
+                    hostHtml += '<div class="route-host-val route-host-secondary"><a href="https://' + esc(hosts[i]) + '" target="_blank" rel="noopener">' + esc(hosts[i]) + '</a></div>';
+                }
             }
 
+            const isFileServer = handlerInfo.handlers.indexOf('file_server') !== -1;
+            let upstreamHtml = '';
             if (hasReverseProxy && handlerInfo.upstreams.length) {
-                cardContent += '<div class="route-row"><span class="route-row-label">up</span><span class="route-row-value">' + esc(handlerInfo.upstreams.join(', ')) + '</span></div>';
+                upstreamHtml = '<span class="route-upstream-val">' + esc(handlerInfo.upstreams.join(', ')) + '</span>';
+            } else if (isFileServer && handlerInfo.root) {
+                upstreamHtml = '<span class="route-upstream-val">' + esc(handlerInfo.root) + '</span>';
             }
 
+            let tlsHtml = '';
             if (tlsInfo.length) {
-                tlsInfo.forEach(function(t) {
-                    const issuer = t.issuer;
-                    let label = '';
-                    let cls = '';
-                    if (issuer) {
-                        if (issuer.module === 'internal' || issuer.module === 'caddy') { label = 'internal CA'; cls = 'tls-internal'; }
-                        else { label = issuer.module || 'acme'; cls = 'tls-external'; }
-                    } else { label = 'none'; cls = 'tls-internal'; }
-                    cardContent += '<div class="route-row"><span class="route-row-label">tls</span><span class="route-row-value"><span class="route-tls-badge ' + cls + '">' + esc(label) + '</span></span></div>';
-                });
+                var t = tlsInfo[0];
+                var issuer = t.issuer;
+                var label = '', cls = '';
+                if (issuer) {
+                    if (issuer.module === 'internal' || issuer.module === 'caddy') { label = 'internal CA'; cls = 'tls-internal'; }
+                    else { label = issuer.module || 'acme'; cls = 'tls-external'; }
+                } else { label = 'none'; cls = 'tls-internal'; }
+                tlsHtml = '<span class="route-tls-badge ' + cls + '">' + esc(label) + '</span>';
             }
 
+            let actionHtml = '';
             if (!isIndex && hosts.length) {
                 let containerId = '';
                 hosts.forEach(function(h) { if (!containerId) containerId = domainToCardId.get(h) || ''; });
                 if (containerId) {
-                    cardContent += '<a class="route-link" href="javascript:void(0)" onclick="jumpToContainer(\'' + esc(hosts[0]) + '\'); return false;">';
-                    cardContent += '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>';
-                    cardContent += 'Go to container';
-                    cardContent += '</a>';
+                    actionHtml = '<a class="route-link" href="javascript:void(0)" onclick="jumpToContainer(\'' + esc(hosts[0]) + '\'); return false;" title="Go to container">';
+                    actionHtml += '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>';
+                    actionHtml += '</a>';
                 }
             }
 
-            return '<div class="route-card" data-route-id="' + esc(id) + '" data-route-hosts="' + esc(hosts.join(' ')) + '">' + cardContent + '</div>';
+            return '<tr data-route-id="' + esc(id) + '" data-route-hosts="' + esc(hosts.join(' ')) + '">'
+                + '<td>' + handlerHtml + '</td>'
+                + '<td>' + hostHtml + '</td>'
+                + '<td>' + upstreamHtml + '</td>'
+                + '<td>' + tlsHtml + '</td>'
+                + '<td class="route-action-cell">' + actionHtml + '</td>'
+                + '</tr>';
         }).join('');
 
-        el.innerHTML = html;
+        el.innerHTML = '<table class="route-table">'
+            + '<thead><tr><th>Handler</th><th>Host</th><th>Upstream</th><th>TLS</th><th></th></tr></thead>'
+            + '<tbody>' + rows + '</tbody></table>';
         routesRendered = true;
 
         if (countBadge) {
@@ -682,6 +690,7 @@
     function extractHandlers(route) {
         const handlers = [];
         const upstreams = [];
+        let root = '';
         const chain = route.handle || [];
 
         chain.forEach(function(h) {
@@ -693,6 +702,9 @@
                             if (sh.upstreams) {
                                 sh.upstreams.forEach(function(u) { if (u.dial) upstreams.push(u.dial); });
                             }
+                            if (sh.root && !root) {
+                                root = sh.root;
+                            }
                         }
                     });
                 });
@@ -701,11 +713,14 @@
                 if (h.upstreams) {
                     h.upstreams.forEach(function(u) { if (u.dial) upstreams.push(u.dial); });
                 }
+                if (h.root && !root) {
+                    root = h.root;
+                }
             }
         });
 
         if (!handlers.length) handlers.push('(unknown)');
-        return { handlers: handlers, upstreams: upstreams };
+        return { handlers: handlers, upstreams: upstreams, root: root };
     }
 
     function jumpToContainer(domain) {
