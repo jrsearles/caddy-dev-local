@@ -1,6 +1,8 @@
 package generator
 
 import (
+	"encoding/json"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -539,5 +541,28 @@ func TestRenderConfigPanel(t *testing.T) {
 	}
 	if !strings.Contains(page, `&lt;/pre&gt;&lt;script&gt;alert(1)&lt;/script&gt;`) {
 		t.Error("config JSON not escaped properly in pre block")
+	}
+}
+
+func TestConfigJSONScriptTagParseable(t *testing.T) {
+	configJSON := `{"apps":{"http":{"servers":{"srv0":{"routes":[{"@id":"devlocal-route-foo","match":[{"host":["foo.dev.local"]}],"handle":[{"handler":"reverse_proxy","upstreams":[{"dial":"foo:8080"}]}]}]}}}}}`
+	page := GenerateIndexPage("dev.local", false, nil, configJSON, "", 0)
+
+	re := regexp.MustCompile(`<script type="application/json" id="config-json">([\s\S]*?)</script>`)
+	m := re.FindStringSubmatch(page)
+	if m == nil {
+		t.Fatal("config-json script element not found")
+	}
+	raw := m[1]
+
+	var cfg map[string]any
+	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
+		t.Fatalf("config-json content is not a valid JSON object: %v\ncontent: %s", err, raw)
+	}
+	servers, _ := cfg["apps"].(map[string]any)["http"].(map[string]any)["servers"].(map[string]any)
+	srv0, _ := servers["srv0"].(map[string]any)
+	routes, _ := srv0["routes"].([]any)
+	if len(routes) == 0 {
+		t.Error("routes array is empty — script-tag JSON was not parsed correctly as an object")
 	}
 }

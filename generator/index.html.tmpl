@@ -721,6 +721,12 @@
         .tab-btn:hover { color: var(--text-primary); }
         .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
 
+        .tab-count {
+            font-size: 0.68rem;
+            font-weight: 500;
+            color: var(--text-muted);
+        }
+
         /* ── Tab panels ──────────────────────────────────────────────── */
         .tab-panel { display: none; }
         .tab-panel.active { display: block; }
@@ -1039,6 +1045,136 @@
         }
 
 
+        /* ── Route cards ────────────────────────────────────────────── */
+        .route-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+            gap: 0.5rem;
+            margin-top: 0.75rem;
+        }
+
+        .route-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.75rem 0.9rem;
+            transition: border-color 0.15s;
+        }
+
+        .route-card:hover { border-color: var(--accent); }
+
+        .route-card-header {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .route-card-id {
+            flex: 1;
+            min-width: 0;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.72rem;
+            color: var(--text-secondary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .route-handler-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.1rem 0.4rem;
+            border-radius: 1rem;
+            font-size: 0.65rem;
+            font-weight: 600;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .route-handler-badge.handler-reverse_proxy {
+            background: rgba(63,185,80,0.15);
+            color: var(--green);
+        }
+
+        .route-handler-badge.handler-file_server {
+            background: var(--accent-dim);
+            color: var(--accent);
+        }
+
+        .route-handler-badge.handler-other {
+            background: var(--bg-elevated);
+            color: var(--text-secondary);
+        }
+
+        .route-row {
+            display: flex;
+            align-items: baseline;
+            gap: 0.4rem;
+            font-size: 0.72rem;
+            margin-bottom: 0.3rem;
+        }
+
+        .route-row-label {
+            color: var(--text-muted);
+            flex-shrink: 0;
+            width: 50px;
+            font-size: 0.68rem;
+        }
+
+        .route-row-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.72rem;
+            color: var(--text-secondary);
+            word-break: break-all;
+            flex: 1;
+        }
+
+        .route-tls-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.2rem;
+            padding: 0.1rem 0.4rem;
+            border-radius: 1rem;
+            font-size: 0.65rem;
+            font-weight: 600;
+        }
+
+        .route-tls-badge.tls-internal {
+            background: var(--accent-dim);
+            color: var(--accent);
+        }
+
+        .route-tls-badge.tls-external {
+            background: rgba(63,185,80,0.15);
+            color: var(--green);
+        }
+
+        .route-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            font-size: 0.7rem;
+            color: var(--accent);
+            text-decoration: none;
+            margin-top: 0.35rem;
+        }
+
+        .route-link:hover { text-decoration: underline; }
+
+        .route-link svg {
+            width: 11px;
+            height: 11px;
+            flex-shrink: 0;
+        }
+
+        .route-empty {
+            text-align: center;
+            padding: 3rem 1rem;
+            color: var(--text-muted);
+            font-size: 0.875rem;
+        }
+
         /* ── No-match state ──────────────────────────────────────────── */
         .no-match {
             text-align: center;
@@ -1091,6 +1227,7 @@
 
     <nav class="tab-nav">
         <button class="tab-btn active" data-tab="containers" onclick="switchTab('containers')">Containers</button>
+        {{if .ConfigJSON}}<button class="tab-btn" data-tab="routes" onclick="switchTab('routes')">Routes<span id="route-count-badge" class="tab-count" style="display:none"></span></button>{{end}}
         {{if .ConfigJSON}}<button class="tab-btn" data-tab="config" onclick="switchTab('config')">Caddy</button>{{end}}
     </nav>
 
@@ -1185,6 +1322,11 @@
 {{end}}
         </div>
 {{if .ConfigJSON}}
+        <div id="tab-routes" class="tab-panel">
+            <div class="section-label"><span>Registered Routes</span></div>
+            <div class="route-grid" id="routeGrid"></div>
+            <div class="route-empty" id="routeEmpty" hidden>No routes found.</div>
+        </div>
         <div id="tab-config" class="tab-panel">
             <div class="config-view">
                 <div class="config-toolbar">
@@ -1198,7 +1340,7 @@
                 <pre class="config-pre" id="config-raw">{{.ConfigJSON}}</pre>
                 <div class="config-pre" id="config-tree" hidden></div>
             </div>
-            <script type="application/json" id="config-json">{{.ConfigJSON}}</script>
+            <script type="application/json" id="config-json">{{.ConfigJSONRaw}}</script>
         </div>
 {{end}}
     </main>
@@ -1294,6 +1436,7 @@
         document.querySelectorAll('.tab-panel').forEach(function(panel) {
             panel.classList.toggle('active', panel.id === 'tab-' + name);
         });
+        if (name === 'routes') renderRoutes();
         if (name === 'config' && !configTree) renderConfigTree();
         try { sessionStorage.setItem('devlocal-tab', name); } catch (e) {}
         pushState();
@@ -1584,6 +1727,168 @@
 
     function esc(str) {
         return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    // ── Route grid ─────────────────────────────────────────────────
+    let routesRendered = false;
+
+    function renderRoutes() {
+        if (routesRendered) return;
+        const el = document.getElementById('routeGrid');
+        const emptyEl = document.getElementById('routeEmpty');
+        const countBadge = document.getElementById('route-count-badge');
+        if (!el) return;
+
+        const src = document.getElementById('config-json');
+        if (!src) { if (emptyEl) emptyEl.hidden = false; return; }
+
+        let config;
+        try { config = JSON.parse(src.textContent); } catch (e) { if (emptyEl) emptyEl.hidden = false; return; }
+
+        const servers = (((config.apps || {}).http || {}).servers || {});
+        let routes = [];
+        Object.keys(servers).forEach(function(serverKey) {
+            (servers[serverKey].routes || []).forEach(function(route) { routes.push(route); });
+        });
+
+        if (!routes.length) { el.innerHTML = ''; if (emptyEl) emptyEl.hidden = false; return; }
+        if (emptyEl) emptyEl.hidden = true;
+
+        const policies = ((config.apps || {}).tls || {}).automation || {};
+        const tlsPolicies = policies.policies || [];
+
+        const devlocalDomains = new Map();
+        tlsPolicies.forEach(function(pol) {
+            if (pol.subjects) {
+                pol.subjects.forEach(function(sub) {
+                    if (typeof sub === 'string') {
+                        devlocalDomains.set(sub, pol.issuers ? pol.issuers[0] : null);
+                    } else if (sub && sub.subject) {
+                        devlocalDomains.set(sub.subject, pol.issuers ? pol.issuers[0] : null);
+                    }
+                });
+            }
+        });
+
+        const containerCards = document.querySelectorAll('#tab-containers .card[data-domains]');
+        const domainToCardId = new Map();
+        containerCards.forEach(function(card) {
+            (card.dataset.domains || '').split(/\s+/).filter(Boolean).forEach(function(d) {
+                domainToCardId.set(d, card.dataset.id || '');
+            });
+        });
+
+        const html = routes.map(function(route) {
+            const id = route['@id'] || '(no id)';
+            const hosts = ((route.match || [])[0] || {}).host || [];
+            const tlsInfo = hosts.map(function(h) {
+                const issuer = devlocalDomains.get(h);
+                return { domain: h, issuer: issuer };
+            });
+            const handlerInfo = extractHandlers(route);
+            const hasReverseProxy = handlerInfo.handlers.indexOf('reverse_proxy') !== -1;
+            const isIndex = id.indexOf('devlocal-index') !== -1;
+
+            let cardContent = '';
+            cardContent += '<div class="route-card-header">';
+            cardContent += '<div class="route-card-id" title="' + esc(id) + '">' + esc(id) + '</div>';
+            const handlerTypes = handlerInfo.handlers;
+            handlerTypes.forEach(function(h) {
+                const cls = h === 'reverse_proxy' ? 'handler-reverse_proxy' : h === 'file_server' ? 'handler-file_server' : 'handler-other';
+                cardContent += '<span class="route-handler-badge ' + cls + '">' + esc(h) + '</span>';
+            });
+            cardContent += '</div>';
+
+            if (hosts.length) {
+                hosts.forEach(function(h) {
+                    cardContent += '<div class="route-row"><span class="route-row-label">host</span><span class="route-row-value">' + esc(h) + '</span></div>';
+                });
+            }
+
+            if (hasReverseProxy && handlerInfo.upstreams.length) {
+                cardContent += '<div class="route-row"><span class="route-row-label">up</span><span class="route-row-value">' + esc(handlerInfo.upstreams.join(', ')) + '</span></div>';
+            }
+
+            if (tlsInfo.length) {
+                tlsInfo.forEach(function(t) {
+                    const issuer = t.issuer;
+                    let label = '';
+                    let cls = '';
+                    if (issuer) {
+                        if (issuer.module === 'internal' || issuer.module === 'caddy') { label = 'internal CA'; cls = 'tls-internal'; }
+                        else { label = issuer.module || 'acme'; cls = 'tls-external'; }
+                    } else { label = 'none'; cls = 'tls-internal'; }
+                    cardContent += '<div class="route-row"><span class="route-row-label">tls</span><span class="route-row-value"><span class="route-tls-badge ' + cls + '">' + esc(label) + '</span></span></div>';
+                });
+            }
+
+            if (!isIndex && hosts.length) {
+                let containerId = '';
+                hosts.forEach(function(h) { if (!containerId) containerId = domainToCardId.get(h) || ''; });
+                if (containerId) {
+                    cardContent += '<a class="route-link" href="javascript:void(0)" onclick="jumpToContainer(\'' + esc(hosts[0]) + '\'); return false;">';
+                    cardContent += '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>';
+                    cardContent += 'Go to container';
+                    cardContent += '</a>';
+                }
+            }
+
+            return '<div class="route-card" data-route-id="' + esc(id) + '" data-route-hosts="' + esc(hosts.join(' ')) + '">' + cardContent + '</div>';
+        }).join('');
+
+        el.innerHTML = html;
+        routesRendered = true;
+
+        if (countBadge) {
+            const count = routes.length;
+            countBadge.textContent = ' (' + count + ')';
+            countBadge.style.display = '';
+        }
+    }
+
+    function extractHandlers(route) {
+        const handlers = [];
+        const upstreams = [];
+        const chain = route.handle || [];
+
+        chain.forEach(function(h) {
+            if (h.handler === 'subroute' && h.routes) {
+                h.routes.forEach(function(r) {
+                    (r.handle || []).forEach(function(sh) {
+                        if (sh.handler) {
+                            handlers.push(sh.handler);
+                            if (sh.upstreams) {
+                                sh.upstreams.forEach(function(u) { if (u.dial) upstreams.push(u.dial); });
+                            }
+                        }
+                    });
+                });
+            } else if (h.handler) {
+                handlers.push(h.handler);
+                if (h.upstreams) {
+                    h.upstreams.forEach(function(u) { if (u.dial) upstreams.push(u.dial); });
+                }
+            }
+        });
+
+        if (!handlers.length) handlers.push('(unknown)');
+        return { handlers: handlers, upstreams: upstreams };
+    }
+
+    function jumpToContainer(domain) {
+        switchTab('containers');
+        setTimeout(function() {
+            const cards = document.querySelectorAll('#tab-containers .card[data-domains]');
+            cards.forEach(function(card) {
+                const domains = (card.dataset.domains || '').split(/\s+/);
+                if (domains.indexOf(domain) !== -1) {
+                    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    card.style.transition = 'box-shadow 0.2s';
+                    card.style.boxShadow = '0 0 0 2px var(--accent)';
+                    setTimeout(function() { card.style.boxShadow = ''; }, 2000);
+                }
+            });
+        }, 50);
     }
 
     document.addEventListener('keydown', (e) => {

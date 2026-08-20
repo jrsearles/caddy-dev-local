@@ -96,6 +96,7 @@ type indexData struct {
 	RunningCount               int
 	StoppedCount               int
 	ConfigJSON                 string
+	ConfigJSONRaw              template.JS
 	StandaloneDockerDesktopURL template.URL
 	StandaloneDockerLabel      string
 	DiscoveryError             string
@@ -139,6 +140,22 @@ func sortDomainEntries(entries []domainEntry, httpPortStr string) {
 			}
 		}
 	}
+}
+
+func safeConfigJSONJS(configJSON string) template.JS {
+	if configJSON == "" {
+		return ""
+	}
+	var raw any
+	if err := json.Unmarshal([]byte(configJSON), &raw); err == nil {
+		if b, err := json.Marshal(raw); err == nil {
+			return template.JS(b) // #nosec G203
+		}
+	}
+	safe := strings.ReplaceAll(configJSON, "&", `\u0026`)
+	safe = strings.ReplaceAll(safe, "<", `\u003c`)
+	safe = strings.ReplaceAll(safe, ">", `\u003e`)
+	return template.JS(safe) // #nosec G203
 }
 
 func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo, configJSON string, discoveryError string, lastRefreshUnix int64) string {
@@ -361,6 +378,7 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo,
 		RunningCount:    running,
 		StoppedCount:    stopped,
 		ConfigJSON:      configJSON,
+		ConfigJSONRaw:   safeConfigJSONJS(configJSON),
 		DiscoveryError:  discoveryError,
 		LastRefreshUnix: lastRefreshUnix,
 	}
