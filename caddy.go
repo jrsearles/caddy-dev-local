@@ -307,6 +307,13 @@ func writeIndexArtifacts(indexDir, page, fingerprint string) error {
 		}
 	}
 
+	cssPath := filepath.Join(indexDir, "index.css")
+	if existing, err := os.ReadFile(cssPath); err != nil || string(existing) != generator.IndexCSS {
+		if err := os.WriteFile(cssPath, []byte(generator.IndexCSS), 0600); err != nil {
+			return err
+		}
+	}
+
 	type versionDoc struct {
 		V  string `json:"v"`
 		Ts int64  `json:"ts"`

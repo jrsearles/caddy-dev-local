@@ -12,6 +12,10 @@ import (
 
 //go:embed index.html.tmpl
 var indexTemplateHTML string
+
+//go:embed index.css
+var IndexCSS string
+
 var indexTemplate = template.Must(template.New("index").Parse(indexTemplateHTML))
 
 type portChip struct {

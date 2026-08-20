@@ -86,9 +86,7 @@ func TestRenderSanity(t *testing.T) {
 		`id="themeToggle"`,
 		`onclick="cycleTheme()"`,
 		`localStorage.getItem('devlocal-theme')`,
-		`data-theme="dark"`,
-		`data-theme="light"`,
-		`prefers-color-scheme: light`,
+		`<link rel="stylesheet" href="index.css">`,
 		`>2 running<`,
 		`>1 stopped<`,
 		`>1 project<`,
@@ -382,11 +380,11 @@ func TestRenderConfigToolbarAlignment(t *testing.T) {
 	configJSON := `{"apps":{}}`
 	page := GenerateIndexPage("dev.local", false, nil, configJSON, "", 0)
 
-	if !strings.Contains(page, `.config-toolbar .section-label`) {
-		t.Error("config toolbar section-label alignment fix missing")
+	if !strings.Contains(page, `class="config-toolbar"`) {
+		t.Error("config toolbar missing")
 	}
-	if !strings.Contains(page, "margin-bottom: 0") {
-		t.Error("config toolbar section-label margin reset missing")
+	if !strings.Contains(page, `class="section-label"`) {
+		t.Error("config toolbar section-label missing")
 	}
 }
 
