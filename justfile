@@ -25,6 +25,7 @@ xcaddy:
 # Build for linux-amd64
 build-linux-amd64: xcaddy
     mkdir -p {{artifacts}}/binaries/linux-amd64
+    rm -f {{artifacts}}/binaries/linux-amd64/caddy
     CGO_ENABLED=0 GOARCH=amd64 GOOS=linux \
         xcaddy build \
         --output {{artifacts}}/binaries/linux-amd64/caddy \
@@ -33,6 +34,7 @@ build-linux-amd64: xcaddy
 # Build for linux-arm64
 build-linux-arm64: xcaddy
     mkdir -p {{artifacts}}/binaries/linux-arm64
+    rm -f {{artifacts}}/binaries/linux-arm64/caddy
     CGO_ENABLED=0 GOARCH=arm64 GOOS=linux \
         xcaddy build \
         --output {{artifacts}}/binaries/linux-arm64/caddy \
@@ -41,6 +43,7 @@ build-linux-arm64: xcaddy
 # Build for windows-amd64
 build-windows-amd64: xcaddy
     mkdir -p {{artifacts}}/binaries/windows-amd64
+    rm -f {{artifacts}}/binaries/windows-amd64/caddy.exe
     CGO_ENABLED=0 GOARCH=amd64 GOOS=windows \
         xcaddy build \
         --output {{artifacts}}/binaries/windows-amd64/caddy.exe \
@@ -52,17 +55,20 @@ build-hosts: build-hosts-linux-amd64 build-hosts-linux-arm64 build-hosts-windows
 [private]
 build-hosts-linux-amd64:
     mkdir -p {{artifacts}}/binaries/linux-amd64
+    rm -f {{artifacts}}/binaries/linux-amd64/devlocal-hosts
     CGO_ENABLED=0 GOARCH=amd64 GOOS=linux \
         go build -o {{artifacts}}/binaries/linux-amd64/devlocal-hosts ./cmd/devlocal-hosts
 
 [private]
 build-hosts-linux-arm64:
     mkdir -p {{artifacts}}/binaries/linux-arm64
+    rm -f {{artifacts}}/binaries/linux-arm64/devlocal-hosts
     CGO_ENABLED=0 GOARCH=arm64 GOOS=linux \
         go build -o {{artifacts}}/binaries/linux-arm64/devlocal-hosts ./cmd/devlocal-hosts
 
 [private]
 build-hosts-windows-amd64:
     mkdir -p {{artifacts}}/binaries/windows-amd64
+    rm -f {{artifacts}}/binaries/windows-amd64/devlocal-hosts.exe
     CGO_ENABLED=0 GOARCH=amd64 GOOS=windows \
         go build -o {{artifacts}}/binaries/windows-amd64/devlocal-hosts.exe ./cmd/devlocal-hosts
