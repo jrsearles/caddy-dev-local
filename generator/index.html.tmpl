@@ -614,8 +614,10 @@
         });
 
         const rows = routes.map(function(route) {
-            const id = route['@id'] || '(no id)';
-            const hosts = ((route.match || [])[0] || {}).host || [];
+            const id = route['@id'] || '';
+            const match0 = (route.match || [])[0] || {};
+            const hosts = match0.host || [];
+            const paths = match0.path || [];
             const tlsInfo = hosts.map(function(h) {
                 const issuer = devlocalDomains.get(h);
                 return { domain: h, issuer: issuer };
@@ -627,13 +629,19 @@
             const handlerHtml = handlerInfo.handlers.map(function(h) {
                 const cls = h === 'reverse_proxy' ? 'handler-reverse_proxy' : h === 'file_server' ? 'handler-file_server' : 'handler-other';
                 return '<span class="route-handler-badge ' + cls + '">' + esc(h) + '</span>';
-            }).join(' ');
+            }).join(' ') + (id ? '<div class="route-id-val">@' + esc(id) + '</div>' : '');
 
             let hostHtml = '';
             if (hosts.length) {
-                hostHtml = '<div class="route-host-val"><a href="https://' + esc(hosts[0]) + '" target="_blank" rel="noopener">' + esc(hosts[0]) + '</a></div>';
+                var firstPath = paths.length ? paths[0] : '';
+                hostHtml = '<div class="route-host-val"><a href="https://' + esc(hosts[0]) + (firstPath ? esc(firstPath) : '') + '" target="_blank" rel="noopener">' + esc(hosts[0]) + '</a></div>';
                 for (var i = 1; i < hosts.length; i++) {
-                    hostHtml += '<div class="route-host-val route-host-secondary"><a href="https://' + esc(hosts[i]) + '" target="_blank" rel="noopener">' + esc(hosts[i]) + '</a></div>';
+                    hostHtml += '<div class="route-host-val route-host-secondary"><a href="https://' + esc(hosts[i]) + (firstPath ? esc(firstPath) : '') + '" target="_blank" rel="noopener">' + esc(hosts[i]) + '</a></div>';
+                }
+                if (paths.length) {
+                    paths.forEach(function(p) {
+                        hostHtml += '<div class="route-host-val route-host-path">↳ ' + esc(p) + '</div>';
+                    });
                 }
             }
 

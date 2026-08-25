@@ -262,7 +262,7 @@ body {
 /* ── Main content ────────────────────────────────────────────── */
 .content {
     padding: 1.5rem 1.75rem;
-    max-width: 960px;
+    max-width: 1400px;
     margin: 0 auto;
 }
 
@@ -1040,15 +1040,15 @@ body {
     font-size: 0.68rem;
     font-weight: 600;
     color: var(--text-muted);
-    padding: 0.4rem 0.6rem;
+    padding: 0.55rem 0.75rem;
     border-bottom: 1px solid var(--border);
     white-space: nowrap;
 }
 
 .route-table td {
-    padding: 0.4rem 0.6rem;
+    padding: 0.55rem 0.75rem;
     border-bottom: 1px solid var(--border-subtle);
-    vertical-align: middle;
+    vertical-align: top;
 }
 
 .route-table tbody tr:hover td {
@@ -1059,7 +1059,7 @@ body {
     font-family: 'JetBrains Mono', monospace;
     font-size: 0.72rem;
     color: var(--text-secondary);
-    white-space: nowrap;
+    overflow-wrap: anywhere;
 }
 
 .route-host-val a {
@@ -1077,11 +1077,17 @@ body {
     color: var(--text-muted);
 }
 
+.route-host-path {
+    font-size: 0.66rem;
+    color: var(--accent);
+    margin-top: 1px;
+}
+
 .route-upstream-val {
     font-family: 'JetBrains Mono', monospace;
     font-size: 0.72rem;
     color: var(--text-secondary);
-    white-space: nowrap;
+    overflow-wrap: anywhere;
 }
 
 .route-handler-badge {
@@ -1103,6 +1109,19 @@ body {
 .route-handler-badge.handler-file_server {
     background: var(--accent-dim);
     color: var(--accent);
+}
+
+.route-id-val {
+    display: inline-block;
+    margin-top: 5px;
+    padding: 0.1rem 0.35rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.62rem;
+    color: var(--text-muted);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius: 3px;
+    overflow-wrap: anywhere;
 }
 
 .route-handler-badge.handler-other {
@@ -1133,7 +1152,7 @@ body {
 .route-action-cell {
     width: 28px;
     text-align: center;
-    padding: 0.4rem 0.3rem;
+    padding: 0.55rem 0.3rem;
 }
 
 .route-link {
