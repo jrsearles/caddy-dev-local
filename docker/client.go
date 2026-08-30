@@ -18,7 +18,7 @@ type DockerClient struct {
 }
 
 func NewClient() (*DockerClient, error) {
-	apiClient, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation()) //nolint:govet,staticcheck // inline false positive from external package; deprecated but required
+	apiClient, err := client.New(client.FromEnv)
 	if err != nil {
 		return nil, err
 	}

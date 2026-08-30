@@ -101,48 +101,48 @@ func (c *Controller) watchEvents(ctx context.Context) {
 			Filters: f,
 		})
 
-		throttle := time.NewTimer(100 * time.Millisecond)
-		pending := false
+		c.streamEvents(ctx, msgCh, errCh)
 
-		streaming := true
-		for streaming {
-			select {
-			case <-ctx.Done():
-				throttle.Stop()
-				return
-			case event, ok := <-msgCh:
-				if !ok {
-					c.logger.Warn("event stream closed, reconnecting in 30s")
-					c.setError("Docker event stream closed, reconnecting")
-					throttle.Stop()
-					streaming = false
-				} else if shouldRefresh(&event) {
-					if !pending {
-						pending = true
-						throttle.Reset(100 * time.Millisecond)
-					}
-				}
-			case err, ok := <-errCh:
-				if !ok || err != nil {
-					c.logger.Error("event stream error, reconnecting in 30s", zap.Error(err))
-					c.setError("Docker event stream error: " + err.Error())
-					throttle.Stop()
-					streaming = false
-				}
-			case <-throttle.C:
-				if pending {
-					pending = false
-					c.runRefresh(ctx)
-					c.apply()
-				}
-			}
-		}
-
-		throttle.Stop()
 		select {
 		case <-ctx.Done():
 			return
 		case <-time.After(30 * time.Second):
+		}
+	}
+}
+
+func (c *Controller) streamEvents(ctx context.Context, msgCh <-chan events.Message, errCh <-chan error) {
+	throttle := time.NewTimer(100 * time.Millisecond)
+	defer throttle.Stop()
+
+	pending := false
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case event, ok := <-msgCh:
+			if !ok {
+				c.logger.Warn("event stream closed, reconnecting in 30s")
+				c.setError("Docker event stream closed, reconnecting")
+				return
+			} else if shouldRefresh(&event) {
+				if !pending {
+					pending = true
+					throttle.Reset(100 * time.Millisecond)
+				}
+			}
+		case err, ok := <-errCh:
+			if !ok || err != nil {
+				c.logger.Error("event stream error, reconnecting in 30s", zap.Error(err))
+				c.setError("Docker event stream error: " + err.Error())
+				return
+			}
+		case <-throttle.C:
+			if pending {
+				pending = false
+				c.runRefresh(ctx)
+				c.apply()
+			}
 		}
 	}
 }
