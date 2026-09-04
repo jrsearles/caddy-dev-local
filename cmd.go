@@ -14,11 +14,9 @@ import (
 	caddycmd "github.com/caddyserver/caddy/v2/cmd"
 	"go.uber.org/zap"
 
+	"github.com/jrsearles/caddy-dev-local/caddyapi"
 	"github.com/jrsearles/caddy-dev-local/config"
-	"github.com/jrsearles/caddy-dev-local/discovery"
-	"github.com/jrsearles/caddy-dev-local/docker"
-	"github.com/jrsearles/caddy-dev-local/generator"
-	"github.com/jrsearles/caddy-dev-local/hosts"
+	"github.com/jrsearles/caddy-dev-local/controller"
 )
 
 func init() {
@@ -37,6 +35,10 @@ func init() {
 
 			fs.Bool("no-tracing", false,
 				"Disable OpenTelemetry tracing on dynamic routes (env: DEVLOCAL_TRACING)")
+			fs.Bool("ui", true, "Generate and register the index UI")
+			fs.String("caddy-admin", "http://localhost:2019", "Caddy admin API URL")
+			fs.String("caddy-server", "srv0", "Caddy HTTP server name")
+			fs.String("index-dir", "", "Directory for generated UI files")
 
 			fs.String("config", "",
 				"Path to Caddyfile or config file (env: DEVLOCAL_CONFIG)")
@@ -49,7 +51,12 @@ func init() {
 		Name:  "devlocal-clean",
 		Func:  cleanFunc,
 		Usage: "",
-		Short: "Remove devlocal entries from the hosts file",
+		Short: "Remove generated UI files and hosts entries",
+		Flags: func() *flag.FlagSet {
+			fs := flag.NewFlagSet("devlocal-clean", flag.ExitOnError)
+			fs.String("index-dir", "", "Directory containing generated UI files")
+			return fs
+		}(),
 	})
 }
 
@@ -72,58 +79,39 @@ func cmdFunc(fs caddycmd.Flags) (int, error) {
 		zap.String("user_config", configPath),
 	)
 
-	hostsOK := true
-	if cfg.HostsFile {
-		if !hosts.CanWrite() {
-			logger.Warn("hosts file not writable, skipping hosts file updates")
-			hostsOK = false
-		}
-	}
-
-	dockerClient, err := docker.NewClient()
-	if err != nil {
-		return 1, fmt.Errorf("creating docker client: %w", err)
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	disc := discovery.New(cfg, dockerClient, logger)
-	disc.SetEnricher(generator.PortSelector(cfg, generator.ProbeHTTPPort))
-
 	cacheDir, err := os.UserCacheDir()
 	if err != nil {
 		return 1, fmt.Errorf("getting cache dir: %w", err)
 	}
-	indexDir := filepath.Join(cacheDir, "caddy-dev-local")
-	if err := os.MkdirAll(indexDir, 0755); err != nil {
-		return 1, fmt.Errorf("creating index dir: %w", err)
+	indexDir := fs.String("index-dir")
+	if indexDir == "" {
+		indexDir = filepath.Join(cacheDir, "caddy-dev-local")
 	}
 
-	if err := disc.Refresh(ctx); err != nil {
-		logger.Error("initial refresh failed", zap.Error(err))
+	httpPort, httpsPort, err := loadUserCaddyConfig(configPath)
+	if err != nil {
+		return 1, fmt.Errorf("loading initial Caddy config: %w", err)
 	}
-	logger.Info("discovered containers", zap.Int("count", len(disc.Snapshot())))
-
-	api := newAdminAPI()
-
-	if err := initCaddyConfig(cfg, indexDir, api, configPath, disc); err != nil {
-		return 1, fmt.Errorf("loading initial caddy config: %w", err)
+	api := caddyapi.New(caddyapi.Options{
+		BaseURL:           fs.String("caddy-admin"),
+		ServerName:        fs.String("caddy-server"),
+		AllowCreateServer: true,
+		HTTPPort:          httpPort,
+		HTTPSPort:         httpsPort,
+	})
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+	if err := controller.Run(ctx, controller.Options{
+		Config:      cfg,
+		AdminClient: api,
+		Logger:      logger,
+		IndexDir:    indexDir,
+		Caddy:       true,
+		UI:          fs.Bool("ui"),
+		Hosts:       cfg.HostsFile,
+	}); err != nil {
+		return 1, err
 	}
-
-	if err := syncHosts(cfg, hostsOK, disc); err != nil {
-		logger.Error("failed to update hosts file", zap.Error(err))
-	}
-
-	apply := func() { applyDevlocal(cfg, indexDir, api, hostsOK, disc) }
-	disc.Subscribe(func(discovery.Delta) { apply() })
-	disc.Run(ctx)
-
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-
-	<-sigCh
-	cancel()
 	return 0, nil
 }
 
@@ -141,41 +129,26 @@ func applyCommandFlags(cfg *config.Config, fs caddycmd.Flags) {
 	cfg.ApplyFlags(o)
 }
 
-func applyDevlocal(cfg *config.Config, indexDir string, api *adminAPI, hostsOK bool, disc *discovery.Discovery) {
-	logger := caddy.Log().Named(appName)
-	if !api.tryBeginApply() {
-		logger.Debug("apply in flight, skipping")
-		return
-	}
-	defer api.endApply()
-
-	applied, err := reloadCaddyConfig(cfg, indexDir, api, disc)
-	if err != nil {
-		logger.Error("failed to reload caddy config", zap.Error(err))
-	} else if applied {
-		logger.Info("reloaded config",
-			zap.Int("containers", len(disc.Snapshot())),
-			zap.Int("domains", len(generator.Domains(cfg, disc.Snapshot()))),
-		)
-	}
-	if err := syncHosts(cfg, hostsOK, disc); err != nil {
-		logger.Error("failed to update hosts file", zap.Error(err))
-	}
-}
-
-func syncHosts(cfg *config.Config, hostsOK bool, disc *discovery.Discovery) error {
-	if !cfg.HostsFile || !hostsOK {
-		return nil
-	}
-	return hosts.Sync(cfg.TLD, generator.Domains(cfg, disc.Snapshot()))
-}
-
 func cleanFunc(fs caddycmd.Flags) (int, error) {
 	logger := caddy.Log().Named(appName)
-	if err := hosts.Remove(); err != nil {
+	cacheDir, err := os.UserCacheDir()
+	if err != nil {
+		return 1, fmt.Errorf("getting cache dir: %w", err)
+	}
+	indexDir := fs.String("index-dir")
+	if indexDir == "" {
+		indexDir = filepath.Join(cacheDir, "caddy-dev-local")
+	}
+	if err := controller.Cleanup(context.Background(), controller.Options{
+		Config:   config.DefaultConfig(),
+		Logger:   logger,
+		IndexDir: indexDir,
+		UI:       true,
+		Hosts:    true,
+	}); err != nil {
 		return 1, err
 	}
-	logger.Info("hosts file entries removed")
+	logger.Info("devlocal artifacts removed")
 	return 0, nil
 }
 

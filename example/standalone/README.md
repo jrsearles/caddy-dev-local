@@ -1,6 +1,6 @@
 # Standalone Mode Example
 
-Run caddy-dev-local directly on your host while containers run in Docker. caddy-dev-local always runs standalone on the host and proxies to containers via `localhost` using their published (host-mapped) ports.
+Run the standalone devlocal controller on your host and attach it to a separate Caddy process on the same host.
 
 ## Setup
 
@@ -8,7 +8,7 @@ Build the binary:
 
 ```bash
 cd ../..
-./build.sh
+just build-all
 ```
 
 Start the containers:
@@ -18,13 +18,14 @@ cd example/standalone
 docker compose up -d
 ```
 
-Run the proxy on your host:
+Start Caddy, then run the controller in another terminal:
 
 ```bash
-sudo ../../artifacts/binaries/linux-amd64/caddy devlocal
+../../artifacts/binaries/linux-amd64/caddy run --config /dev/null
+sudo ../../artifacts/binaries/linux-amd64/devlocal
 ```
 
-> `sudo` is required to write to `/etc/hosts`. Use `--no-host-files` to skip hosts file management.
+> `sudo` is required to write to `/etc/hosts`. Use `--hosts-file=false` to skip hosts file management.
 
 ## Containers
 
@@ -51,5 +52,5 @@ sudo ../../artifacts/binaries/linux-amd64/caddy devlocal
 
 ```bash
 docker compose down
-sudo ../../artifacts/binaries/linux-amd64/caddy devlocal-clean
+sudo ../../artifacts/binaries/linux-amd64/devlocal clean
 ```

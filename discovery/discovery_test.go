@@ -2,9 +2,11 @@ package discovery
 
 import (
 	"context"
+	"errors"
 	"net/netip"
 	"reflect"
 	"slices"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -28,13 +30,20 @@ func cloneConfig(c *config.Config) *config.Config {
 
 type mockDocker struct {
 	containers []container.Summary
+	listErr    error
+	listFn     func(context.Context) ([]container.Summary, error)
+	eventCalls atomic.Int32
 }
 
 func (m *mockDocker) ContainerList(ctx context.Context, options client.ContainerListOptions) ([]container.Summary, error) {
-	return m.containers, nil
+	if m.listFn != nil {
+		return m.listFn(ctx)
+	}
+	return m.containers, m.listErr
 }
 
 func (m *mockDocker) Events(ctx context.Context, options client.EventsListOptions) (<-chan events.Message, <-chan error) {
+	m.eventCalls.Add(1)
 	ch := make(chan events.Message)
 	errCh := make(chan error)
 	return ch, errCh
@@ -508,6 +517,129 @@ func TestSubscriberDispatch(t *testing.T) {
 	}
 }
 
+func TestSnapshotsAndDispatchedDeltasAreDeepCloned(t *testing.T) {
+	labels := map[string]string{"dev.local.domains": "80:web.example.test", "source": "docker"}
+	mock := &mockDocker{containers: []container.Summary{
+		makeContainer("c1", "web", "", "", []container.PortSummary{{PrivatePort: 80, PublicPort: 8080}}, labels, "running"),
+	}}
+	d := testDiscovery(t, &config.Config{TLD: "dev.local", StaleTTL: time.Hour}, mock)
+	d.running.Store(true)
+
+	d.Subscribe(func(delta Delta) {
+		info := delta.Added[0]
+		info.ContainerName = "mutated"
+		info.Ports[0] = 999
+		info.PublishedPorts[80] = 999
+		info.Labels["source"] = "mutated"
+		info.CustomDomains[0].Domain = "mutated.test"
+		info.Networks[0] = "mutated"
+		delta.Snapshot[0].ContainerName = "mutated snapshot"
+	})
+
+	var received Delta
+	d.Subscribe(func(delta Delta) { received = delta })
+	if err := d.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	assertUnmutated := func(t *testing.T, info *ContainerInfo) {
+		t.Helper()
+		if info.ContainerName != "web" || info.Ports[0] != 80 || info.PublishedPorts[80] != 8080 ||
+			info.Labels["source"] != "docker" || info.CustomDomains[0].Domain != "web.example.test" || info.Networks[0] != "devlocal" {
+			t.Fatalf("container was mutated through a consumer copy: %+v", info)
+		}
+	}
+	assertUnmutated(t, received.Added[0])
+	assertUnmutated(t, received.Snapshot[0])
+
+	snapshot := d.Snapshot()
+	assertUnmutated(t, snapshot[0])
+	snapshot[0].Ports[0] = 123
+	snapshot[0].Labels["source"] = "snapshot mutation"
+	assertUnmutated(t, d.Snapshot()[0])
+}
+
+func TestListErrorDispatchesStatusAndRetainsSnapshot(t *testing.T) {
+	mock := &mockDocker{containers: []container.Summary{
+		makeContainer("c1", "web", "", "", []container.PortSummary{{PrivatePort: 80}}, nil, "running"),
+	}}
+	d := testDiscovery(t, &config.Config{TLD: "dev.local", StaleTTL: time.Hour}, mock)
+	if err := d.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	var received []Delta
+	d.Subscribe(func(delta Delta) { received = append(received, delta) })
+	d.running.Store(true)
+	mock.listErr = errors.New("docker unavailable")
+	if err := d.Refresh(context.Background()); err == nil {
+		t.Fatal("expected list error")
+	}
+
+	if len(received) != 1 {
+		t.Fatalf("expected one status delta, got %d", len(received))
+	}
+	if received[0].Status.LastError != "docker unavailable" || received[0].Status.LastErrorAt.IsZero() {
+		t.Errorf("unexpected error status: %+v", received[0].Status)
+	}
+	if len(received[0].Snapshot) != 1 || received[0].Snapshot[0].ContainerID != "c1" {
+		t.Errorf("error delta did not retain snapshot: %+v", received[0].Snapshot)
+	}
+	if len(d.Snapshot()) != 1 {
+		t.Fatal("list error cleared retained state")
+	}
+}
+
+func TestConcurrentRefreshesCommitAndDispatchInOrder(t *testing.T) {
+	firstEntered := make(chan struct{})
+	secondEntered := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	var listCalls atomic.Int32
+	mock := &mockDocker{}
+	mock.listFn = func(context.Context) ([]container.Summary, error) {
+		switch listCalls.Add(1) {
+		case 1:
+			close(firstEntered)
+			<-releaseFirst
+			return []container.Summary{makeContainer("c1", "first", "", "", nil, nil, "running")}, nil
+		case 2:
+			close(secondEntered)
+			return []container.Summary{makeContainer("c2", "second", "", "", nil, nil, "running")}, nil
+		default:
+			return nil, errors.New("unexpected list call")
+		}
+	}
+	d := testDiscovery(t, &config.Config{TLD: "dev.local", StaleTTL: time.Hour}, mock)
+	d.running.Store(true)
+	dispatched := make(chan string, 2)
+	d.Subscribe(func(delta Delta) { dispatched <- delta.Snapshot[0].ContainerID })
+
+	errs := make(chan error, 2)
+	go func() { errs <- d.Refresh(context.Background()) }()
+	<-firstEntered
+	secondStarted := make(chan struct{})
+	go func() {
+		close(secondStarted)
+		errs <- d.Refresh(context.Background())
+	}()
+	<-secondStarted
+
+	select {
+	case <-secondEntered:
+		t.Fatal("second refresh listed containers before first refresh completed")
+	case <-time.After(20 * time.Millisecond):
+	}
+	close(releaseFirst)
+	for range 2 {
+		if err := <-errs; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := []string{<-dispatched, <-dispatched}; !slices.Equal(got, []string{"c1", "c2"}) {
+		t.Errorf("dispatch order = %v, want [c1 c2]", got)
+	}
+}
+
 func TestSubscriberInOrder(t *testing.T) {
 	mock := &mockDocker{}
 	d := testDiscovery(t, &config.Config{TLD: "dev.local", StaleTTL: time.Hour}, mock)
@@ -557,6 +689,56 @@ func TestEnricherInvocation(t *testing.T) {
 		if !info.IsRunning && info.SelectedPort != 0 {
 			t.Errorf("stopped container should not be enriched, got SelectedPort %d", info.SelectedPort)
 		}
+	}
+}
+
+func TestEnrichersRunInRegistrationOrder(t *testing.T) {
+	mock := &mockDocker{containers: []container.Summary{
+		makeContainer("c1", "web", "", "", []container.PortSummary{{PrivatePort: 80}}, nil, "running"),
+	}}
+	d := testDiscovery(t, &config.Config{TLD: "dev.local", StaleTTL: time.Hour}, mock)
+	d.SetEnricher(func(info *ContainerInfo) { info.Networks = append(info.Networks, "first") })
+	d.AddEnricher(func(info *ContainerInfo) {
+		info.Networks = append(info.Networks, info.Networks[len(info.Networks)-1]+"-second")
+	})
+
+	if err := d.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := d.Snapshot()[0].Networks; !slices.Equal(got, []string{"devlocal", "first", "first-second"}) {
+		t.Errorf("enricher order = %v", got)
+	}
+}
+
+func TestRunIsIdempotentAndResetsAfterCancellation(t *testing.T) {
+	mock := &mockDocker{}
+	d := testDiscovery(t, &config.Config{TLD: "dev.local", StaleTTL: time.Hour}, mock)
+	ctx, cancel := context.WithCancel(context.Background())
+	d.Run(ctx)
+	d.Run(ctx)
+
+	waitFor(t, func() bool { return mock.eventCalls.Load() == 1 })
+	if got := mock.eventCalls.Load(); got != 1 {
+		t.Fatalf("Events called %d times after duplicate Run", got)
+	}
+
+	cancel()
+	waitFor(t, func() bool { return !d.running.Load() })
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	d.Run(ctx2)
+	waitFor(t, func() bool { return mock.eventCalls.Load() == 2 })
+	cancel2()
+	waitFor(t, func() bool { return !d.running.Load() })
+}
+
+func waitFor(t *testing.T, condition func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for !condition() {
+		if time.Now().After(deadline) {
+			t.Fatal("timed out waiting for condition")
+		}
+		time.Sleep(time.Millisecond)
 	}
 }
 

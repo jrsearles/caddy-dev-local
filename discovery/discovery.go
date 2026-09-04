@@ -65,11 +65,12 @@ type Subscriber func(Delta)
 // batched deltas to subscribers and supports a pluggable enricher (port probe)
 // that runs under the state lock during refresh. It is Caddy-free.
 type Discovery struct {
-	cfg      *config.Config
-	docker   docker.Client
-	logger   *zap.Logger
-	enricher func(*ContainerInfo)
+	cfg       *config.Config
+	docker    docker.Client
+	logger    *zap.Logger
+	enrichers []Enricher
 
+	refreshMu   sync.Mutex
 	mu          sync.RWMutex
 	containers  map[string]*ContainerInfo
 	status      Status
@@ -94,7 +95,20 @@ func New(cfg *config.Config, dockerClient docker.Client, logger *zap.Logger) *Di
 func (d *Discovery) SetEnricher(fn Enricher) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	d.enricher = fn
+	d.enrichers = nil
+	if fn != nil {
+		d.enrichers = append(d.enrichers, fn)
+	}
+}
+
+// AddEnricher appends an enricher to the ordered chain. Register before Run.
+func (d *Discovery) AddEnricher(fn Enricher) {
+	if fn == nil {
+		return
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.enrichers = append(d.enrichers, fn)
 }
 
 // Subscribe registers a delta subscriber. Register before Run.
@@ -113,10 +127,20 @@ func (d *Discovery) Refresh(ctx context.Context) error {
 }
 
 func (d *Discovery) refreshCycle(ctx context.Context) (Delta, error) {
+	d.refreshMu.Lock()
+	defer d.refreshMu.Unlock()
+
 	containers, err := d.docker.ContainerList(ctx, client.ContainerListOptions{All: true})
 	if err != nil {
-		d.setError(err.Error())
-		return Delta{}, fmt.Errorf("listing containers: %w", err)
+		d.mu.Lock()
+		d.status.LastError = err.Error()
+		d.status.LastErrorAt = time.Now()
+		delta := Delta{Snapshot: d.snapshotLocked(), Status: d.status}
+		d.mu.Unlock()
+		if d.running.Load() {
+			d.dispatch(&delta)
+		}
+		return delta, fmt.Errorf("listing containers: %w", err)
 	}
 
 	d.mu.Lock()
@@ -126,6 +150,7 @@ func (d *Discovery) refreshCycle(ctx context.Context) (Delta, error) {
 	d.status.LastErrorAt = time.Time{}
 	delta.Status = d.status
 	delta.Snapshot = d.snapshotLocked()
+	delta = CloneDelta(&delta)
 	d.mu.Unlock()
 
 	if d.running.Load() {
@@ -144,7 +169,7 @@ func (d *Discovery) Snapshot() []*ContainerInfo {
 func (d *Discovery) snapshotLocked() []*ContainerInfo {
 	result := make([]*ContainerInfo, 0, len(d.containers))
 	for _, info := range d.containers {
-		result = append(result, info)
+		result = append(result, cloneContainerInfo(info))
 	}
 	slices.SortFunc(result, func(a, b *ContainerInfo) int {
 		if a.ContainerName != b.ContainerName {
@@ -173,8 +198,55 @@ func (d *Discovery) dispatch(delta *Delta) {
 	subs := slices.Clone(d.subscribers)
 	d.mu.RUnlock()
 	for _, s := range subs {
-		s(*delta)
+		s(CloneDelta(delta))
 	}
+}
+
+func CloneDelta(delta *Delta) Delta {
+	if delta == nil {
+		return Delta{}
+	}
+	result := *delta
+	result.Added = cloneContainerInfos(delta.Added)
+	result.Updated = cloneContainerInfos(delta.Updated)
+	result.Removed = cloneContainerInfos(delta.Removed)
+	result.Snapshot = cloneContainerInfos(delta.Snapshot)
+	return result
+}
+
+func cloneContainerInfos(infos []*ContainerInfo) []*ContainerInfo {
+	if infos == nil {
+		return nil
+	}
+	result := make([]*ContainerInfo, len(infos))
+	for i, info := range infos {
+		result[i] = cloneContainerInfo(info)
+	}
+	return result
+}
+
+func cloneContainerInfo(info *ContainerInfo) *ContainerInfo {
+	if info == nil {
+		return nil
+	}
+	result := *info
+	result.Ports = slices.Clone(info.Ports)
+	result.PublishedPorts = cloneMap(info.PublishedPorts)
+	result.Labels = cloneMap(info.Labels)
+	result.CustomDomains = slices.Clone(info.CustomDomains)
+	result.Networks = slices.Clone(info.Networks)
+	return &result
+}
+
+func cloneMap[K comparable, V any](src map[K]V) map[K]V {
+	if src == nil {
+		return nil
+	}
+	result := make(map[K]V, len(src))
+	for key, value := range src {
+		result[key] = value
+	}
+	return result
 }
 
 func (d *Discovery) refreshLocked(containers []container.Summary) Delta {
@@ -217,8 +289,10 @@ func (d *Discovery) refreshLocked(containers []container.Summary) Delta {
 			}
 		}
 
-		if info.IsRunning && d.enricher != nil {
-			d.enricher(info)
+		if info.IsRunning {
+			for _, enricher := range d.enrichers {
+				enricher(info)
+			}
 		}
 
 		d.containers[info.ContainerID] = info
@@ -286,7 +360,7 @@ func (d *Discovery) buildContainerInfo(c *container.Summary) *ContainerInfo {
 		Networks:       networks,
 		IsCompose:      isCompose,
 		Created:        time.Unix(c.Created, 0),
-		Labels:         c.Labels,
+		Labels:         cloneMap(c.Labels),
 		CustomDomains:  parseCustomDomains(c.Labels),
 	}
 
@@ -361,12 +435,32 @@ func getLabel(labels map[string]string, key string) string {
 }
 
 func (d *Discovery) Run(ctx context.Context) {
-	d.running.Store(true)
-	go d.watchEvents(ctx)
-	go d.staleCleanup(ctx)
-	if d.cfg.PollInterval > 0 {
-		go d.pollLoop(ctx)
+	if !d.running.CompareAndSwap(false, true) {
+		return
 	}
+	go d.run(ctx)
+}
+
+func (d *Discovery) run(ctx context.Context) {
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		d.watchEvents(ctx)
+	}()
+	go func() {
+		defer wg.Done()
+		d.staleCleanup(ctx)
+	}()
+	if d.cfg.PollInterval > 0 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			d.pollLoop(ctx)
+		}()
+	}
+	wg.Wait()
+	d.running.Store(false)
 }
 
 func (d *Discovery) watchEvents(ctx context.Context) {

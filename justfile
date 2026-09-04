@@ -4,7 +4,7 @@ artifacts := env_var_or_default("ARTIFACTS", "./artifacts")
 plugin := "github.com/jrsearles/caddy-dev-local"
 
 # Build binaries for all platforms
-build-all: check build-linux-amd64 build-linux-arm64 build-windows-amd64 build-hosts
+build-all: check build-linux-amd64 build-linux-arm64 build-windows-amd64 build-devlocal
 
 # Run linter
 lint:
@@ -56,26 +56,26 @@ build-windows-amd64: xcaddy
         --output {{artifacts}}/binaries/windows-amd64/caddy.exe \
         --with {{plugin}}=$PWD
 
-# Build standalone devlocal-hosts binaries for all platforms
-build-hosts: build-hosts-linux-amd64 build-hosts-linux-arm64 build-hosts-windows-amd64
+# Build standalone devlocal controller binaries for all platforms
+build-devlocal: build-devlocal-linux-amd64 build-devlocal-linux-arm64 build-devlocal-windows-amd64
 
 [private]
-build-hosts-linux-amd64:
+build-devlocal-linux-amd64:
     mkdir -p {{artifacts}}/binaries/linux-amd64
-    rm -f {{artifacts}}/binaries/linux-amd64/devlocal-hosts
+    rm -f {{artifacts}}/binaries/linux-amd64/devlocal {{artifacts}}/binaries/linux-amd64/devlocal-hosts
     CGO_ENABLED=0 GOARCH=amd64 GOOS=linux \
-        go build -o {{artifacts}}/binaries/linux-amd64/devlocal-hosts ./cmd/devlocal-hosts
+        go build -o {{artifacts}}/binaries/linux-amd64/devlocal ./cmd/devlocal
 
 [private]
-build-hosts-linux-arm64:
+build-devlocal-linux-arm64:
     mkdir -p {{artifacts}}/binaries/linux-arm64
-    rm -f {{artifacts}}/binaries/linux-arm64/devlocal-hosts
+    rm -f {{artifacts}}/binaries/linux-arm64/devlocal {{artifacts}}/binaries/linux-arm64/devlocal-hosts
     CGO_ENABLED=0 GOARCH=arm64 GOOS=linux \
-        go build -o {{artifacts}}/binaries/linux-arm64/devlocal-hosts ./cmd/devlocal-hosts
+        go build -o {{artifacts}}/binaries/linux-arm64/devlocal ./cmd/devlocal
 
 [private]
-build-hosts-windows-amd64:
+build-devlocal-windows-amd64:
     mkdir -p {{artifacts}}/binaries/windows-amd64
-    rm -f {{artifacts}}/binaries/windows-amd64/devlocal-hosts.exe
+    rm -f {{artifacts}}/binaries/windows-amd64/devlocal.exe {{artifacts}}/binaries/windows-amd64/devlocal-hosts.exe
     CGO_ENABLED=0 GOARCH=amd64 GOOS=windows \
-        go build -o {{artifacts}}/binaries/windows-amd64/devlocal-hosts.exe ./cmd/devlocal-hosts
+        go build -o {{artifacts}}/binaries/windows-amd64/devlocal.exe ./cmd/devlocal

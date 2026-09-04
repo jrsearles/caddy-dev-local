@@ -1,6 +1,6 @@
 # caddy-dev-local
 
-A Caddy plugin that automatically registers `{project}.{service}.dev.local` domains for Docker containers, with HTTP port probing, self-signed TLS, and a built-in index page — inspired by OrbStack's container domain feature.
+A Docker discovery controller and Caddy plugin that automatically registers `{project}.{service}.dev.local` domains, with HTTP port probing, self-signed TLS, and a built-in index page — inspired by OrbStack's container domain feature.
 
 > **Warning**: This plugin is designed for local development environments only. It uses self-signed TLS, auto-manages hosts files, and assumes trusted networks. Do not use in production.
 
@@ -25,7 +25,8 @@ A Caddy plugin that automatically registers `{project}.{service}.dev.local` doma
   - **Theme** — defaults to system preference; header toggle cycles light → dark → system
 - **Stale cleanup** — Stopped containers stay listed on the index page (marked stopped) until the stale TTL expires, then their config is removed
 - **OpenTelemetry tracing** — Dynamic reverse proxy routes include Caddy's `tracing` handler for automatic span collection; opt out with `--no-tracing`
-- **Standalone hosts binary** — `devlocal-hosts` watches Docker and maintains hosts entries without running a proxy
+- **Composable plugins** — Caddy registration, UI rendering, and hosts-file updates consume the same discovery stream independently
+- **Standalone controller** — `devlocal` can attach to a separate Caddy process on the same host through its admin API
 
 ## Quick Start
 
@@ -103,7 +104,9 @@ services:
 | `--poll-interval` | `DEVLOCAL_POLL_INTERVAL` | `30s` | Periodic full refresh as a safety net for missed Docker events; `0` disables |
 | `--config` | `DEVLOCAL_CONFIG` | (auto-detect) | Path to a static Caddyfile loaded as-is |
 
-> **Note:** The periodic poll backstops any reloads skipped while another reload is in flight. Disabling it (`--poll-interval=0`) is not recommended when running with heavy container churn, since concurrent Docker events can then drop an apply with no scheduled re-check.
+The standalone `devlocal` command also supports `--caddy`, `--ui`, `--caddy-admin`, `--caddy-server`, `--allow-create-server`, and `--index-dir`. Caddy, UI, and hosts plugins are enabled by default.
+
+> **Note:** The periodic poll backstops missed Docker events and repairs Caddy configuration changed by another process. Plugin workers coalesce queued work to the newest complete snapshot.
 
 ## Custom Caddyfile
 
@@ -119,7 +122,7 @@ Requires [just](https://github.com/casey/just) and [golangci-lint](https://golan
 just install-lint           # Install golangci-lint (one-time)
 just build-linux-amd64      # Build for linux-amd64
 just build-all              # Build for all platforms
-just build-hosts            # Build the standalone devlocal-hosts binaries
+just build-devlocal         # Build the standalone controller binaries
 just lint                   # Run linter
 just check                  # Run linter + tests
 ```
@@ -136,16 +139,16 @@ docker build -t caddy-dev-local .
 
 The image runs `caddy devlocal`, so it expects the same mounts as the prebuilt image in the [Quick Start](#quick-start).
 
-## Standalone Mode
+## Standalone Controller
 
-caddy-dev-local always runs standalone directly on your host. It proxies to containers via `localhost` using their published (host-mapped) ports.
+The `devlocal` executable runs discovery and all built-in plugins without embedding Caddy. Start Caddy separately with its admin API enabled, then run:
 
 ```bash
-just build-linux-amd64
-sudo ./artifacts/binaries/linux-amd64/caddy devlocal
+just build-devlocal
+sudo ./artifacts/binaries/linux-amd64/devlocal
 ```
 
-Containers must publish a port to be reachable; unpublished containers are skipped.
+The default admin endpoint is `http://localhost:2019`. Use `--caddy-admin` and `--caddy-server` to select another same-host Caddy process and HTTP server. The initial implementation assumes Caddy and Docker-published ports are on the same host because generated upstreams use `localhost:{published_port}`.
 
 ```bash
 docker run -d --name my-app -p 8080:80 nginx:alpine
@@ -188,18 +191,20 @@ Non-HTTP services like `mssql` are also registered (see it on the index page); S
 3. Computes domains from container labels (Compose project/service or container name)
 4. Registers running containers that publish at least one port; unpublished containers are skipped
 5. For multi-port containers, probes `localhost:{published_port}` to find the HTTP server (common ports 80, 8080, 443, 8443 are checked first)
-6. Builds the devlocal config directly as JSON — one `reverse_proxy` route per domain, a single merged `tls internal` policy, and an index page route for the TLD
-7. Loads the user Caddyfile as-is with `caddy.Load`, then applies the devlocal routes and TLS policy through Caddy's [admin API](https://caddyserver.com/docs/api) using diff-based patching — only added, removed, or changed routes/policies are touched, so reloads are incremental with zero downtime
-8. Polls Docker every `--poll-interval` (default 30s) as a safety net for missed events; if nothing changed, the reload is skipped entirely via a fingerprint of the current domains
+6. Publishes each immutable discovery update to independent Caddy, UI, and hosts-file plugin workers
+7. Reconciles stable, owned route and TLS policy IDs against Caddy's actual configuration, preserving unrelated resources and adopting state after restarts
+8. Renders the UI files independently and registers their directory with Caddy's file server
+9. Polls Docker every `--poll-interval` (default 30s) as a safety net for missed events and external Caddy changes
 
 ## Generated Files
 
-caddy-dev-local writes two files to the user cache directory (`os.UserCacheDir()/caddy-dev-local`):
+caddy-dev-local writes three files to the user cache directory (`os.UserCacheDir()/caddy-dev-local`) by default. Use `--index-dir` with the standalone controller when Caddy runs as another OS user; files are written with read permissions for the Caddy process.
 
 | File | Purpose |
 |---|---|
 | `index.html` | Served at the TLD and its `.localhost` alias (e.g. `http://dev.local` / `http://dev.localhost`) as a status page listing discovered containers. Includes an expandable "Caddy Config" panel showing the effective running config (user config + devlocal routes/policies, fetched from the admin API after each reload) |
-| `devlocal.json` | The last successfully applied devlocal config (routes, TLS policy, index route) — useful for debugging; only rewritten when the config actually changes |
+| `index.css` | Styles for the generated index page |
+| `version.json` | Content fingerprint used by the page's live-refresh polling |
 
 ## Hosts File
 
@@ -233,13 +238,17 @@ DEVLOCAL_HOSTS_FILE=false caddy devlocal
 
 ### Cleanup
 
-Remove all devlocal entries from the hosts file:
+Remove all resources managed by the enabled plugins:
 
 ```bash
 caddy devlocal-clean
 # or
-devlocal-hosts clean
+devlocal clean
 ```
+
+`devlocal clean` runs cleanup for every enabled plugin: it removes owned Caddy routes and TLS policy, generated UI files, and the managed hosts block. It accepts the normal plugin and Caddy connection flags, such as `devlocal clean --caddy-admin http://localhost:2020`. Cleanup is explicit and does not run automatically when the controller stops.
+
+`caddy devlocal-clean --index-dir /custom/path` removes the local generated UI files and hosts block; embedded Caddy routes disappear with that Caddy process.
 
 ### Permissions
 
@@ -259,39 +268,17 @@ caddy devlocal --no-tracing
 DEVLOCAL_TRACING=false caddy devlocal
 ```
 
-## Standalone Hosts Binary
+## Plugin Composition
 
-`devlocal-hosts` is a standalone executable that watches Docker and maintains hosts file entries **without running Caddy or any proxy**. It shares the exact same discovery logic, labels, and domain conventions as the Caddy plugin, so the hostnames it registers always match what the proxy would serve. It's useful when you only want DNS resolution for your containers and don't need a reverse proxy.
-
-### Build
+The standalone controller enables all built-in plugins by default. Disable components independently with boolean flags:
 
 ```bash
-just build-hosts
-./artifacts/binaries/linux-amd64/devlocal-hosts
+devlocal --caddy=false --ui=false  # Hosts-file updates only
+devlocal --hosts-file=false        # Caddy registration and UI only
+devlocal --ui=false                # Caddy registration without the index route
 ```
 
-### Usage
-
-```bash
-devlocal-hosts            # Run in the foreground, watching Docker events
-devlocal-hosts clean      # Remove all devlocal entries from the hosts file
-devlocal-hosts --help
-```
-
-Flags mirror the Caddy plugin's shared options (same env vars, defaults, and precedence):
-
-| Flag | Env Var | Default | Description |
-|---|---|---|---|
-| `--tld` | `DEVLOCAL_TLD` | `dev.local` | Top-level domain |
-| `--stale-ttl` | `DEVLOCAL_STALE_TTL` | `1h` | Keep entries for stopped containers |
-| `--poll-interval` | `DEVLOCAL_POLL_INTERVAL` | `30s` | Periodic full refresh as a safety net for missed events; `0` disables |
-| `--probe-timeout` | `DEVLOCAL_PROBE_TIMEOUT` | `2s` | Accepted for flag parity; probing is skipped (see below) |
-
-Notes:
-
-- **No port probing** — the domain set is identical to the proxy's, but no HTTP requests are made; port probing only exists to pick a proxy target port.
-- **Permissions** — requires root to write `/etc/hosts`; exits with an error if the hosts file isn't writable (unlike the plugin, which warns and continues).
-- **Index page** — not generated; this binary only maintains the hosts file (the proxy's index page and its config panel require Caddy).
+Additional compile-time plugins implement `Name() string`, `Apply(context.Context, discovery.Delta) error`, and `Cleanup(context.Context) error`, then register with `plugin.Runtime`. Each plugin has an independent latest-update worker, so a slow or failed component does not block discovery or other plugins. Ordered dependencies can use `plugin.Sequence`; the default composition sequences Caddy before UI so the rendered config matches the reconciled update. Cleanup is invoked explicitly with `devlocal clean`.
 
 ## Acknowledgements
 
