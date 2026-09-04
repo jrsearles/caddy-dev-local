@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/jrsearles/caddy-dev-local/discovery"
 )
 
 func TestNormalizeImageName(t *testing.T) {
@@ -154,56 +156,56 @@ func TestGenerateIndexPageIcon(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		info     *ContainerInfo
+		info     *discovery.ContainerInfo
 		contains []string
 		absent   []string
 	}{
 		{
 			name: "known image renders icon",
-			info: &ContainerInfo{
+			info: &discovery.ContainerInfo{
 				ContainerName: "db",
 				Image:         "postgres:16",
 				Ports:         []uint16{5432},
-				TargetKind:    targetDNS,
-				IsRunning:     true,
-				Created:       now,
+
+				IsRunning: true,
+				Created:   now,
 			},
 			contains: []string{`class="container-icon"`, "https://cdn.simpleicons.org/postgresql", `onerror="this.style.display='none'"`},
 		},
 		{
 			name: "label icon renders",
-			info: &ContainerInfo{
+			info: &discovery.ContainerInfo{
 				ContainerName: "app",
 				Image:         "myapp:latest",
 				Ports:         []uint16{8080},
-				TargetKind:    targetDNS,
-				IsRunning:     true,
-				Created:       now,
-				Labels:        map[string]string{"com.docker.extension.icon": "https://example.com/icon.png"},
+
+				IsRunning: true,
+				Created:   now,
+				Labels:    map[string]string{"com.docker.extension.icon": "https://example.com/icon.png"},
 			},
 			contains: []string{`class="container-icon"`, "https://example.com/icon.png"},
 		},
 		{
 			name: "mssql renders icon",
-			info: &ContainerInfo{
+			info: &discovery.ContainerInfo{
 				ContainerName: "db",
 				Image:         "mcr.microsoft.com/mssql/server:2022-CU14-ubuntu-22.04",
 				Ports:         []uint16{1433},
-				TargetKind:    targetDNS,
-				IsRunning:     true,
-				Created:       now,
+
+				IsRunning: true,
+				Created:   now,
 			},
 			contains: []string{`class="container-icon"`, "https://upload.wikimedia.org/wikipedia/commons/4/41/Microsoft_SQL_Server_2025_icon.svg"},
 		},
 		{
 			name: "unknown image renders no icon",
-			info: &ContainerInfo{
+			info: &discovery.ContainerInfo{
 				ContainerName: "app",
 				Image:         "my-custom-app:latest",
 				Ports:         []uint16{8080},
-				TargetKind:    targetDNS,
-				IsRunning:     true,
-				Created:       now,
+
+				IsRunning: true,
+				Created:   now,
 			},
 			absent: []string{`class="container-icon"`},
 		},
@@ -211,7 +213,7 @@ func TestGenerateIndexPageIcon(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			page := GenerateIndexPage("dev.local", false, []*ContainerInfo{tt.info}, "", "", 0)
+			page := GenerateIndexPage("dev.local", []*discovery.ContainerInfo{tt.info}, "", "", 0)
 			for _, s := range tt.contains {
 				if !strings.Contains(page, s) {
 					t.Errorf("expected index page to contain %q", s)

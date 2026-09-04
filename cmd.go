@@ -65,16 +65,9 @@ func cmdFunc(fs caddycmd.Flags) (int, error) {
 		configPath = detectUserConfig()
 	}
 
-	config.ResolveStandalone(cfg)
-
 	logger := caddy.Log().Named(appName)
 
-	mode := "docker"
-	if cfg.Standalone {
-		mode = "standalone"
-	}
 	logger.Info("starting devlocal",
-		zap.String("mode", mode),
 		zap.String("tld", cfg.TLD),
 		zap.String("user_config", configPath),
 	)
@@ -95,7 +88,8 @@ func cmdFunc(fs caddycmd.Flags) (int, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	gen := generator.NewGenerator(cfg, dockerClient)
+	disc := discovery.New(cfg, dockerClient, logger)
+	disc.SetEnricher(generator.PortSelector(cfg, generator.ProbeHTTPPort))
 
 	cacheDir, err := os.UserCacheDir()
 	if err != nil {
@@ -106,26 +100,24 @@ func cmdFunc(fs caddycmd.Flags) (int, error) {
 		return 1, fmt.Errorf("creating index dir: %w", err)
 	}
 
-	if err := gen.RefreshAndSelect(ctx); err != nil {
+	if err := disc.Refresh(ctx); err != nil {
 		logger.Error("initial refresh failed", zap.Error(err))
 	}
-	logger.Info("discovered containers", zap.Int("count", len(gen.Containers())))
+	logger.Info("discovered containers", zap.Int("count", len(disc.Snapshot())))
 
 	api := newAdminAPI()
 
-	ctrl := discovery.New(cfg, dockerClient, gen, gen.RefreshAndSelect, nil, logger)
-
-	if err := initCaddyConfig(gen, cfg, indexDir, api, configPath, ctrl.Status); err != nil {
+	if err := initCaddyConfig(cfg, indexDir, api, configPath, disc); err != nil {
 		return 1, fmt.Errorf("loading initial caddy config: %w", err)
 	}
 
-	if err := syncHosts(gen, cfg, hostsOK); err != nil {
+	if err := syncHosts(cfg, hostsOK, disc); err != nil {
 		logger.Error("failed to update hosts file", zap.Error(err))
 	}
 
-	apply := func() { applyDevlocal(gen, cfg, indexDir, api, hostsOK, ctrl.Status) }
-	ctrl.SetApply(apply)
-	ctrl.Run(ctx)
+	apply := func() { applyDevlocal(cfg, indexDir, api, hostsOK, disc) }
+	disc.Subscribe(func(discovery.Delta) { apply() })
+	disc.Run(ctx)
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
@@ -149,7 +141,7 @@ func applyCommandFlags(cfg *config.Config, fs caddycmd.Flags) {
 	cfg.ApplyFlags(o)
 }
 
-func applyDevlocal(gen *generator.Generator, cfg *config.Config, indexDir string, api *adminAPI, hostsOK bool, statusFn func() discovery.Status) {
+func applyDevlocal(cfg *config.Config, indexDir string, api *adminAPI, hostsOK bool, disc *discovery.Discovery) {
 	logger := caddy.Log().Named(appName)
 	if !api.tryBeginApply() {
 		logger.Debug("apply in flight, skipping")
@@ -157,25 +149,25 @@ func applyDevlocal(gen *generator.Generator, cfg *config.Config, indexDir string
 	}
 	defer api.endApply()
 
-	applied, err := reloadCaddyConfig(gen, cfg, indexDir, api, statusFn)
+	applied, err := reloadCaddyConfig(cfg, indexDir, api, disc)
 	if err != nil {
 		logger.Error("failed to reload caddy config", zap.Error(err))
 	} else if applied {
 		logger.Info("reloaded config",
-			zap.Int("containers", len(gen.Containers())),
-			zap.Int("domains", len(gen.Domains())),
+			zap.Int("containers", len(disc.Snapshot())),
+			zap.Int("domains", len(generator.Domains(cfg, disc.Snapshot()))),
 		)
 	}
-	if err := syncHosts(gen, cfg, hostsOK); err != nil {
+	if err := syncHosts(cfg, hostsOK, disc); err != nil {
 		logger.Error("failed to update hosts file", zap.Error(err))
 	}
 }
 
-func syncHosts(gen *generator.Generator, cfg *config.Config, hostsOK bool) error {
+func syncHosts(cfg *config.Config, hostsOK bool, disc *discovery.Discovery) error {
 	if !cfg.HostsFile || !hostsOK {
 		return nil
 	}
-	return hosts.Sync(cfg.TLD, gen.Domains())
+	return hosts.Sync(cfg.TLD, generator.Domains(cfg, disc.Snapshot()))
 }
 
 func cleanFunc(fs caddycmd.Flags) (int, error) {

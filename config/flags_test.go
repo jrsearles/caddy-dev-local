@@ -94,11 +94,3 @@ func TestResolveDefaults(t *testing.T) {
 		t.Errorf("PollInterval = %v, want 30s", cfg.PollInterval)
 	}
 }
-
-func TestResolveStandaloneAutoDetect(t *testing.T) {
-	cfg := &Config{}
-	ResolveStandalone(cfg)
-	if want := DetectStandalone(); cfg.Standalone != want {
-		t.Errorf("Standalone = %v, want %v", cfg.Standalone, want)
-	}
-}

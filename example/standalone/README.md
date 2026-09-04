@@ -1,6 +1,6 @@
 # Standalone Mode Example
 
-Run caddy-dev-local directly on your host while containers run in Docker. The binary auto-detects standalone mode when `/.dockerenv` is absent.
+Run caddy-dev-local directly on your host while containers run in Docker. caddy-dev-local always runs standalone on the host and proxies to containers via `localhost` using their published (host-mapped) ports.
 
 ## Setup
 

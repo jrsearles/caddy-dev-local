@@ -63,28 +63,29 @@ func run() {
 		os.Exit(1)
 	}
 
-	gen := generator.NewGenerator(cfg, dockerClient)
+	disc := discovery.New(cfg, dockerClient, logger)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-
-	if err := gen.Refresh(ctx); err != nil {
-		logger.Error("initial refresh failed", zap.Error(err))
-	}
 
 	var applyMu sync.Mutex
 	apply := func() {
 		applyMu.Lock()
 		defer applyMu.Unlock()
-		if err := hosts.Sync(cfg.TLD, gen.Domains()); err != nil {
+		if err := hosts.Sync(cfg.TLD, generator.Domains(cfg, disc.Snapshot())); err != nil {
 			logger.Error("failed to update hosts file", zap.Error(err))
 		}
 	}
 
-	apply()
-	logger.Info("discovered containers", zap.Int("count", len(gen.Containers())))
+	disc.Subscribe(func(discovery.Delta) { apply() })
 
-	discovery.New(cfg, dockerClient, gen, gen.Refresh, apply, logger).Run(ctx)
+	if err := disc.Refresh(ctx); err != nil {
+		logger.Error("initial refresh failed", zap.Error(err))
+	}
+	apply()
+	logger.Info("discovered containers", zap.Int("count", len(disc.Snapshot())))
+
+	disc.Run(ctx)
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)

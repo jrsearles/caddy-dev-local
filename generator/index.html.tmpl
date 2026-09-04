@@ -77,7 +77,6 @@
          data-service="{{.ComposeService}}"
          data-domains="{{.DomainsFlat}}"
          data-id="{{.ContainerIDShort}}"
-         data-ip="{{.IPAddress}}"
          data-networks="{{range $i, $n := .Networks}}{{if $i}},{{end}}{{$n}}{{end}}"
          data-published="{{range $i, $p := .PublishedPortPairs}}{{if $i}},{{end}}{{$p.Private}}:{{$p.Public}}{{end}}"
          data-health="{{.Health}}"
@@ -88,7 +87,7 @@
                 <div class="container-name">
                     <span>{{.ContainerName}}</span>
                 </div>
-                <div class="container-meta">{{.Image}}{{if .IPAddress}} · {{.IPAddress}}{{end}}</div>
+                <div class="container-meta">{{.Image}}</div>
             </div>
             <div class="card-badges">
                 {{if .ComposeService}}<span class="badge badge-service">{{.ComposeService}}</span>{{end}}
@@ -492,7 +491,6 @@
         const name    = card.dataset.name    || '';
         const image   = card.dataset.image   || '';
         const id      = card.dataset.id      || '';
-        const ip      = card.dataset.ip      || '';
         const health  = card.dataset.health  || '';
         const networks = (card.dataset.networks || '').split(',').filter(Boolean);
 
@@ -510,7 +508,6 @@
         rows.push(section('Details',
             row('Image', image) +
             (id ? row('ID', id) : '') +
-            (ip ? row('IP', ip) : '') +
             (health && health !== 'none' ? row('Health', '<span class="health-badge health-' + esc(health) + '">' + esc(health) + '</span>') : '')
         ));
 
@@ -816,7 +813,7 @@
         updateThemeButton();
         setInterval(renderTimeAgo, 10000);
         check();
-        setInterval(check, 5000);
+        setInterval(check, 30000);
     })();
     </script>
     <div id="refreshToast" class="refresh-toast" hidden>Refreshing…</div>

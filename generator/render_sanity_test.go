@@ -6,22 +6,24 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/jrsearles/caddy-dev-local/discovery"
 )
 
 func TestRenderSanity(t *testing.T) {
 	now := time.Now()
-	containers := []*ContainerInfo{
+	containers := []*discovery.ContainerInfo{
 		{
 			ContainerName: "my-nginx",
 			ContainerID:   "abcdef123456789",
 			Image:         "nginx:latest",
 			Ports:         []uint16{80},
 			SelectedPort:  80,
-			TargetKind:    targetGateway,
-			IsRunning:     true,
-			Created:       now,
-			Networks:      []string{"bridge"},
-			Health:        "healthy",
+
+			IsRunning: true,
+			Created:   now,
+			Networks:  []string{"bridge"},
+			Health:    "healthy",
 		},
 		{
 			ContainerName: "web-1",
@@ -29,13 +31,13 @@ func TestRenderSanity(t *testing.T) {
 			Image:         "myapp:latest",
 			Ports:         []uint16{8080},
 			SelectedPort:  8080,
-			TargetKind:    targetDNS,
-			IsRunning:     true,
-			Created:       now,
-			IsCompose:     true,
-			Project:       "demo",
-			Service:       "web",
-			Networks:      []string{"demo_default"},
+
+			IsRunning: true,
+			Created:   now,
+			IsCompose: true,
+			Project:   "demo",
+			Service:   "web",
+			Networks:  []string{"demo_default"},
 		},
 		{
 			ContainerName: "db-1",
@@ -43,17 +45,17 @@ func TestRenderSanity(t *testing.T) {
 			Image:         "postgres:16",
 			Ports:         []uint16{5432},
 			SelectedPort:  5432,
-			TargetKind:    targetDNS,
-			IsRunning:     false,
-			Created:       now,
-			LastStopped:   now,
-			IsCompose:     true,
-			Project:       "demo",
-			Service:       "db",
+
+			IsRunning:   false,
+			Created:     now,
+			LastStopped: now,
+			IsCompose:   true,
+			Project:     "demo",
+			Service:     "db",
 		},
 	}
 
-	page := GenerateIndexPage("dev.local", false, containers, "", "", 0)
+	page := GenerateIndexPage("dev.local", containers, "", "", 0)
 
 	checks := []string{
 		`<title>devlocal — Container Index</title>`,
@@ -131,7 +133,7 @@ func TestRenderSanity(t *testing.T) {
 }
 
 func TestRenderDiscoveryErrorBanner(t *testing.T) {
-	page := GenerateIndexPage("dev.local", false, nil, "", "Docker socket unreachable", 1700000000)
+	page := GenerateIndexPage("dev.local", nil, "", "Docker socket unreachable", 1700000000)
 
 	if !strings.Contains(page, `id="errorBanner"`) {
 		t.Error("error banner missing when DiscoveryError is set")
@@ -145,7 +147,7 @@ func TestRenderDiscoveryErrorBanner(t *testing.T) {
 }
 
 func TestRenderDiscoveryErrorInEmptyState(t *testing.T) {
-	page := GenerateIndexPage("dev.local", false, nil, "", "connection refused", 0)
+	page := GenerateIndexPage("dev.local", nil, "", "connection refused", 0)
 
 	if !strings.Contains(page, "connection refused") {
 		t.Error("error message not present in empty state")
@@ -156,7 +158,7 @@ func TestRenderDiscoveryErrorInEmptyState(t *testing.T) {
 }
 
 func TestRenderEmptyStateHints(t *testing.T) {
-	page := GenerateIndexPage("dev.local", false, nil, "", "", 0)
+	page := GenerateIndexPage("dev.local", nil, "", "", 0)
 
 	hints := []string{
 		"No containers registered.",
@@ -173,17 +175,17 @@ func TestRenderEmptyStateHints(t *testing.T) {
 
 func TestRenderHealthBadge(t *testing.T) {
 	now := time.Now()
-	containers := []*ContainerInfo{
+	containers := []*discovery.ContainerInfo{
 		{
 			ContainerName: "healthy-svc",
 			ContainerID:   "aaa",
 			Image:         "app:1",
 			Ports:         []uint16{80},
 			SelectedPort:  80,
-			TargetKind:    targetDNS,
-			IsRunning:     true,
-			Created:       now,
-			Health:        "healthy",
+
+			IsRunning: true,
+			Created:   now,
+			Health:    "healthy",
 		},
 		{
 			ContainerName: "sick-svc",
@@ -191,10 +193,10 @@ func TestRenderHealthBadge(t *testing.T) {
 			Image:         "app:2",
 			Ports:         []uint16{80},
 			SelectedPort:  80,
-			TargetKind:    targetDNS,
-			IsRunning:     true,
-			Created:       now,
-			Health:        "unhealthy",
+
+			IsRunning: true,
+			Created:   now,
+			Health:    "unhealthy",
 		},
 		{
 			ContainerName: "starting-svc",
@@ -202,10 +204,10 @@ func TestRenderHealthBadge(t *testing.T) {
 			Image:         "app:3",
 			Ports:         []uint16{80},
 			SelectedPort:  80,
-			TargetKind:    targetDNS,
-			IsRunning:     true,
-			Created:       now,
-			Health:        "starting",
+
+			IsRunning: true,
+			Created:   now,
+			Health:    "starting",
 		},
 		{
 			ContainerName: "no-health-svc",
@@ -213,14 +215,14 @@ func TestRenderHealthBadge(t *testing.T) {
 			Image:         "app:4",
 			Ports:         []uint16{80},
 			SelectedPort:  80,
-			TargetKind:    targetDNS,
-			IsRunning:     true,
-			Created:       now,
-			Health:        "",
+
+			IsRunning: true,
+			Created:   now,
+			Health:    "",
 		},
 	}
 
-	page := GenerateIndexPage("dev.local", false, containers, "", "", 0)
+	page := GenerateIndexPage("dev.local", containers, "", "", 0)
 
 	if !strings.Contains(page, `health-badge health-healthy`) {
 		t.Error("healthy badge missing")
@@ -244,22 +246,22 @@ func TestRenderHealthBadge(t *testing.T) {
 
 func TestRenderHealthBadgeNotShownWhenStopped(t *testing.T) {
 	now := time.Now()
-	containers := []*ContainerInfo{
+	containers := []*discovery.ContainerInfo{
 		{
 			ContainerName: "stopped-svc",
 			ContainerID:   "aaa",
 			Image:         "app:1",
 			Ports:         []uint16{80},
 			SelectedPort:  80,
-			TargetKind:    targetDNS,
-			IsRunning:     false,
-			Created:       now,
-			LastStopped:   now,
-			Health:        "unhealthy",
+
+			IsRunning:   false,
+			Created:     now,
+			LastStopped: now,
+			Health:      "unhealthy",
 		},
 	}
 
-	page := GenerateIndexPage("dev.local", false, containers, "", "", 0)
+	page := GenerateIndexPage("dev.local", containers, "", "", 0)
 
 	if strings.Contains(page, `class="health-badge health-unhealthy"`) {
 		t.Error("health badge should not render for stopped containers")
@@ -268,14 +270,14 @@ func TestRenderHealthBadgeNotShownWhenStopped(t *testing.T) {
 
 func TestRenderDrawerDataAttrs(t *testing.T) {
 	now := time.Now()
-	containers := []*ContainerInfo{
+	containers := []*discovery.ContainerInfo{
 		{
-			ContainerName:  "myapp",
-			ContainerID:    "deadbeef1234",
-			Image:          "myapp:latest",
-			Ports:          []uint16{8080},
-			SelectedPort:   8080,
-			TargetKind:     targetDNS,
+			ContainerName: "myapp",
+			ContainerID:   "deadbeef1234",
+			Image:         "myapp:latest",
+			Ports:         []uint16{8080},
+			SelectedPort:  8080,
+
 			IsRunning:      true,
 			Created:        now,
 			Networks:       []string{"backend", "frontend"},
@@ -291,14 +293,13 @@ func TestRenderDrawerDataAttrs(t *testing.T) {
 		},
 	}
 
-	page := GenerateIndexPage("dev.local", false, containers, "", "", 0)
+	page := GenerateIndexPage("dev.local", containers, "", "", 0)
 
 	checks := []string{
 		`data-id="deadbeef1234"`,
 		`data-networks="backend,frontend"`,
 		`data-published="8080:32000"`,
 		`data-health="healthy"`,
-		`data-ip=`,
 		`dev.local.domains`,
 		`com.docker.compose.project`,
 		`org.opencontainers.image.url`,
@@ -315,23 +316,23 @@ func TestRenderDrawerDataAttrs(t *testing.T) {
 
 func TestRenderSearchAttrs(t *testing.T) {
 	now := time.Now()
-	containers := []*ContainerInfo{
+	containers := []*discovery.ContainerInfo{
 		{
 			ContainerName: "nginx-proxy",
 			ContainerID:   "aaa",
 			Image:         "nginx:latest",
 			Ports:         []uint16{80},
 			SelectedPort:  80,
-			TargetKind:    targetGateway,
-			IsRunning:     true,
-			Created:       now,
-			IsCompose:     true,
-			Project:       "infra",
-			Service:       "proxy",
+
+			IsRunning: true,
+			Created:   now,
+			IsCompose: true,
+			Project:   "infra",
+			Service:   "proxy",
 		},
 	}
 
-	page := GenerateIndexPage("dev.local", false, containers, "", "", 0)
+	page := GenerateIndexPage("dev.local", containers, "", "", 0)
 
 	if !strings.Contains(page, `data-domains=`) {
 		t.Error("data-domains attribute missing")
@@ -349,23 +350,23 @@ func TestRenderSearchAttrs(t *testing.T) {
 
 func TestNoExpandCollapseAll(t *testing.T) {
 	now := time.Now()
-	containers := []*ContainerInfo{
+	containers := []*discovery.ContainerInfo{
 		{
 			ContainerName: "web-1",
 			ContainerID:   "aaa",
 			Image:         "myapp:latest",
 			Ports:         []uint16{8080},
 			SelectedPort:  8080,
-			TargetKind:    targetDNS,
-			IsRunning:     true,
-			Created:       now,
-			IsCompose:     true,
-			Project:       "demo",
-			Service:       "web",
+
+			IsRunning: true,
+			Created:   now,
+			IsCompose: true,
+			Project:   "demo",
+			Service:   "web",
 		},
 	}
 
-	page := GenerateIndexPage("dev.local", false, containers, "", "", 0)
+	page := GenerateIndexPage("dev.local", containers, "", "", 0)
 
 	for _, s := range []string{"expandAllProjects", "collapseAllProjects", "Expand all", "Collapse all", "section-btn", "section-actions"} {
 		if strings.Contains(page, s) {
@@ -376,7 +377,7 @@ func TestNoExpandCollapseAll(t *testing.T) {
 
 func TestRenderConfigToolbarAlignment(t *testing.T) {
 	configJSON := `{"apps":{}}`
-	page := GenerateIndexPage("dev.local", false, nil, configJSON, "", 0)
+	page := GenerateIndexPage("dev.local", nil, configJSON, "", 0)
 
 	if !strings.Contains(page, `class="config-toolbar"`) {
 		t.Error("config toolbar missing")
@@ -387,7 +388,7 @@ func TestRenderConfigToolbarAlignment(t *testing.T) {
 }
 
 func TestRenderVersionPoll(t *testing.T) {
-	page := GenerateIndexPage("dev.local", false, nil, "", "", 0)
+	page := GenerateIndexPage("dev.local", nil, "", "", 0)
 
 	if !strings.Contains(page, `fetch('/version.json'`) {
 		t.Error("version.json poll missing")
@@ -398,7 +399,7 @@ func TestRenderVersionPoll(t *testing.T) {
 }
 
 func TestRenderScrollPreserve(t *testing.T) {
-	page := GenerateIndexPage("dev.local", false, nil, "", "", 0)
+	page := GenerateIndexPage("dev.local", nil, "", "", 0)
 
 	if !strings.Contains(page, `sessionStorage.setItem('devlocal-scroll'`) {
 		t.Error("scroll position save missing")
@@ -410,16 +411,16 @@ func TestRenderScrollPreserve(t *testing.T) {
 
 func TestRenderPortlessContainer(t *testing.T) {
 	now := time.Now()
-	containers := []*ContainerInfo{
+	containers := []*discovery.ContainerInfo{
 		{
 			ContainerName: "no-ports-svc",
 			ContainerID:   "porterless123",
 			Image:         "redis:7",
 			Ports:         nil,
-			TargetKind:    targetDNS,
-			IsRunning:     true,
-			Created:       now,
-			Networks:      []string{"backend"},
+
+			IsRunning: true,
+			Created:   now,
+			Networks:  []string{"backend"},
 		},
 		{
 			ContainerName: "has-ports-svc",
@@ -427,14 +428,14 @@ func TestRenderPortlessContainer(t *testing.T) {
 			Image:         "nginx:latest",
 			Ports:         []uint16{80},
 			SelectedPort:  80,
-			TargetKind:    targetDNS,
-			IsRunning:     true,
-			Created:       now,
-			Networks:      []string{"backend"},
+
+			IsRunning: true,
+			Created:   now,
+			Networks:  []string{"backend"},
 		},
 	}
 
-	page := GenerateIndexPage("dev.local", false, containers, "", "", 0)
+	page := GenerateIndexPage("dev.local", containers, "", "", 0)
 
 	if !strings.Contains(page, `data-name="no-ports-svc"`) {
 		t.Error("portless container card missing")
@@ -455,23 +456,23 @@ func TestRenderPortlessContainer(t *testing.T) {
 
 func TestRenderPortlessComposeContainer(t *testing.T) {
 	now := time.Now()
-	containers := []*ContainerInfo{
+	containers := []*discovery.ContainerInfo{
 		{
 			ContainerName: "worker-1",
 			ContainerID:   "workerid12345",
 			Image:         "myapp:latest",
 			Ports:         nil,
-			TargetKind:    targetDNS,
-			IsRunning:     true,
-			Created:       now,
-			IsCompose:     true,
-			Project:       "myapp",
-			Service:       "worker",
-			Networks:      []string{"myapp_default"},
+
+			IsRunning: true,
+			Created:   now,
+			IsCompose: true,
+			Project:   "myapp",
+			Service:   "worker",
+			Networks:  []string{"myapp_default"},
 		},
 	}
 
-	page := GenerateIndexPage("dev.local", false, containers, "", "", 0)
+	page := GenerateIndexPage("dev.local", containers, "", "", 0)
 
 	if !strings.Contains(page, `data-name="worker-1"`) {
 		t.Error("portless compose container card missing")
@@ -496,7 +497,7 @@ func TestRenderConfigPanel(t *testing.T) {
     }
   }
 }`
-	page := GenerateIndexPage("dev.local", false, nil, configJSON, "", 0)
+	page := GenerateIndexPage("dev.local", nil, configJSON, "", 0)
 
 	checks := []string{
 		`id="tab-config"`,
@@ -542,7 +543,7 @@ func TestRenderConfigPanel(t *testing.T) {
 
 func TestConfigJSONScriptTagParseable(t *testing.T) {
 	configJSON := `{"apps":{"http":{"servers":{"srv0":{"routes":[{"@id":"devlocal-route-foo","match":[{"host":["foo.dev.local"]}],"handle":[{"handler":"reverse_proxy","upstreams":[{"dial":"foo:8080"}]}]}]}}}}}`
-	page := GenerateIndexPage("dev.local", false, nil, configJSON, "", 0)
+	page := GenerateIndexPage("dev.local", nil, configJSON, "", 0)
 
 	re := regexp.MustCompile(`<script type="application/json" id="config-json">([\s\S]*?)</script>`)
 	m := re.FindStringSubmatch(page)

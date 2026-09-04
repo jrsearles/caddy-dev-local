@@ -6,20 +6,20 @@ A Caddy plugin that automatically registers `{project}.{service}.dev.local` doma
 
 ## Features
 
-- **Automatic domain registration** — Any container the proxy can reach gets `*.dev.local` domains. Containers on a network shared with the proxy are reached by container name via Docker DNS; containers on other networks are discovered too and proxied via their published ports through the host gateway
+- **Automatic domain registration** — Any running container that publishes at least one port gets `*.dev.local` domains, proxied via `localhost` using its published (host-mapped) ports.
 - **Compose-aware** — Uses `{project}.{service}.dev.local` for Compose services, `{container-name}.dev.local` for standalone containers
 - **HTTP port probing** — For containers with multiple ports, automatically detects the HTTP port, preferring common ports (80, 8080, 443, 8443)
 - **Self-signed TLS** — Zero-config HTTPS using Caddy's internal CA
 - **Custom domains** — Override auto-registration with `dev.local.domains` label
 - **Hosts file integration** — Automatically adds entries to `/etc/hosts` for local DNS resolution
 - **Index page** — Visit `dev.local` (or `dev.localhost`) to see all registered containers, with the following features:
-  - **Cards** show each container's icon, image, IP, health badge (`healthy`/`starting`/`unhealthy`), and running/stopped status with live relative timestamps ("since 3m ago")
+  - **Cards** show each container's icon, image, health badge (`healthy`/`starting`/`unhealthy`), and running/stopped status with live relative timestamps ("since 3m ago")
   - **Search** — filter across name, image, project, service, and domains using the header search box; filter terms are space-separated (all must match); query is synced to the URL as `?q=` for bookmarking; matching project sections auto-expand while filtering and collapse back when the filter is cleared
   - **Compose groups** — services grouped under collapsible project sections with up/down counts; expansion state and active tab are preserved across live reloads via `sessionStorage` and reflected in the URL (`?open=`, `?tab=`)
-  - **Detail drawer** — click any container card header to slide open a side panel with full image, short container ID, IP, networks, published port table, health status, and filtered labels (`dev.local.*`, `com.docker.compose.*`, `org.opencontainers.image.*`); includes an "Open in Docker Desktop" button
+  - **Detail drawer** — click any container card header to slide open a side panel with full image, short container ID, networks, published port table, health status, and filtered labels (`dev.local.*`, `com.docker.compose.*`, `org.opencontainers.image.*`); includes an "Open in Docker Desktop" button
   - **Domain rows** — copy button per domain copies `host:port`; a globe icon links directly to the service in the browser
   - **Docker Desktop links** — each container card has an icon that opens Docker Desktop's Logs view filtered to that container (`docker-desktop://dashboard/logs?containerIds={id}`); the icon next to "Containers" opens the dashboard (`docker-desktop://dashboard/open`); each Compose project section header links to that project's view (`docker-desktop://dashboard/apps/{project}`)
-  - **Live refresh** — polls a lightweight `/version.json` endpoint every 5 seconds and reloads only on change; scroll position is preserved across reloads; falls back to full-page hash polling if `version.json` is unavailable
+  - **Live refresh** — polls a lightweight `/version.json` endpoint every 30 seconds and reloads only on change; scroll position is preserved across reloads; falls back to full-page hash polling if `version.json` is unavailable
   - **Discovery banner** — a dismissible error banner appears at the top when Docker event streaming fails, showing the last error and time of last successful refresh
   - **Caddy config tab** — shows the effective running Caddy config as a collapsible JSON tree (via [json-view](https://github.com/pgrabovets/json-view)) with expand/collapse-all; toggle to raw JSON; only appears if a config is available
   - **Theme** — defaults to system preference; header toggle cycles light → dark → system
@@ -29,130 +29,46 @@ A Caddy plugin that automatically registers `{project}.{service}.dev.local` doma
 
 ## Quick Start
 
-### 1. Create the Docker network
+### 1. Run the proxy
+
+caddy-dev-local runs **directly on your host** (not inside Docker). It discovers containers via the Docker socket and proxies to them via `localhost` using their published ports.
 
 ```bash
-docker network create devlocal
+just build-linux-amd64
+sudo ./artifacts/binaries/linux-amd64/caddy devlocal
 ```
 
-### 2. Run the proxy
+> `sudo` is required so the proxy can write to your system hosts file (`/etc/hosts`). Pass `--hosts-file=false` to skip hosts file management.
 
-Beyond the basics, the container needs a few extra mounts to work well from your host:
+### 2. Start your containers
 
-- **Docker socket** (`/var/run/docker.sock`, read-only) — so it can watch and discover containers.
-- **Your Caddyfile** (`/etc/caddy/Caddyfile`, read-only) — loaded as-is on top of the auto-generated container routes. Point the proxy at it with `DEVLOCAL_CONFIG=/etc/caddy/Caddyfile`. Omit the mount if you have no Caddyfile.
-- **Hosts file** — in Docker mode the proxy runs inside a container and can't write your host's hosts file (see the note below); run the [standalone hosts binary](#standalone-hosts-binary) on your host if you need `*.dev.local` to resolve there. Pass `--hosts-file=false` if you don't want the proxy managing hosts entries at all.
-- **Host network access** — containers on other networks are reached via the host gateway. On Linux add `--add-host host.docker.internal:host-gateway`; Docker Desktop for Windows/macOS provides `host.docker.internal` automatically.
-
-#### Linux
+Start any Docker container that publishes a port:
 
 ```bash
-docker run -d \
-  --name devlocal \
-  -p 80:80 \
-  -p 443:443 \
-  -p 2019:2019 \
-  -e DEVLOCAL_CONFIG=/etc/caddy/Caddyfile \
-  -v /var/run/docker.sock:/var/run/docker.sock:ro \
-  -v caddy_data:/data \
-  -v "$PWD/Caddyfile":/etc/caddy/Caddyfile:ro \
-  --add-host host.docker.internal:host-gateway \
-  --network devlocal \
-  ghcr.io/jsearles/caddy-dev-local:latest
+docker run -d --name my-app -p 8080:80 nginx:alpine
 ```
 
-#### Windows (Docker Desktop, PowerShell)
+Visit `https://my-app.dev.local` (hosts entry written automatically) or `https://my-app.localhost` (no hosts entry needed).
 
-```powershell
-docker run -d `
-  --name devlocal `
-  -p 80:80 `
-  -p 443:443 `
-  -p 2019:2019 `
-  -e DEVLOCAL_CONFIG=/etc/caddy/Caddyfile `
-  -v "//var/run/docker.sock:/var/run/docker.sock:ro" `
-  -v caddy_data:/data `
-  -v "${PWD}\Caddyfile:/etc/caddy/Caddyfile:ro" `
-  --network devlocal `
-  ghcr.io/jsearles/caddy-dev-local:latest
-```
-
-Notes:
-
-- The `2019:2019` mapping publishes Caddy's [admin API](https://caddyserver.com/docs/api) so you can inspect the live config from your machine (e.g., `curl http://localhost:2019/config/`). Caddy's admin endpoint binds to `localhost:2019` inside the container by default, so the published port only works when your Caddyfile points it at a reachable address in its global options:
-
-```caddyfile
-{
-	admin 0.0.0.0:2019
-}
-```
-
-  The admin API is unauthenticated, so keep that in mind on shared networks; omit the mapping if you don't need it.
-- In **Docker mode** the proxy runs inside a container, so any hosts entries it writes land in the container's own `/etc/hosts` and don't affect your host machine. For host-side DNS resolution run the [standalone hosts binary](#standalone-hosts-binary) on your host, or pass `--hosts-file=false` if you don't want the proxy touching its container hosts file at all.
-- In **Git Bash** for Windows, keep the `//` prefix on the socket path and use forward slashes (MSYS would otherwise rewrite `/var/run/docker.sock`).
-- Running from **WSL2**? Run the [standalone hosts binary](#standalone-hosts-binary) inside your WSL distro — it writes to the distro's `/etc/hosts`, which WSL keeps in sync with the Windows hosts file.
-
-### 3. Start your containers
-
-Containers are discovered across **all** Docker networks. Two routing modes:
-
-- **Shared network (preferred)** — attach the container to the `devlocal` network so the proxy reaches it by name over Docker DNS:
-
-```bash
-docker run -d \
-  --name my-app \
-  --network devlocal \
-  nginx:alpine
-```
-
-- **Other networks** — containers on *any* other network are still discovered and registered. If the container publishes a port, the proxy routes to it via the host gateway (`{gateway}:{published_port}`):
-
-```bash
-docker run -d \
-  --name my-app \
-  -p 8080:80 \
-  nginx:alpine
-```
-
-Visit `https://my-app.dev.local`
+Containers must publish a port to be reachable — unpublished containers are listed on the index page but not proxied.
 
 ## Docker Compose
 
+Just run your Compose app with published ports; no special devlocal service is needed.
+
 ```yaml
 services:
-  devlocal:
-    image: ghcr.io/jsearles/caddy-devlocal:latest
-    ports:
-      - "80:80"
-      - "443:443"
-      - "2019:2019"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - caddy_data:/data
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-    environment:
-      - DEVLOCAL_CONFIG=/etc/caddy/Caddyfile
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    networks:
-      - devlocal
-    restart: unless-stopped
-
   my-app:
     image: nginx:alpine
-    networks:
-      - devlocal
-
-networks:
-  devlocal:
-    name: devlocal
-    driver: bridge
-
-volumes:
-  caddy_data:
+    ports:
+      - "8080:80"
 ```
 
-The `extra_hosts` entry is a no-op on Docker Desktop (which already resolves `host.docker.internal`) but required on Linux for host-network reachability.
+Start it and caddy-dev-local registers `{project}.{service}.dev.local` automatically:
+
+```bash
+docker compose up -d
+```
 
 ## Labels
 
@@ -222,38 +138,20 @@ The image runs `caddy devlocal`, so it expects the same mounts as the prebuilt i
 
 ## Standalone Mode
 
-When running the binary directly on your host (not inside Docker), caddy-dev-local auto-detects standalone mode and proxies to containers via `localhost` using their published (host-mapped) ports instead of Docker DNS names.
-
-### Quick Start
+caddy-dev-local always runs standalone directly on your host. It proxies to containers via `localhost` using their published (host-mapped) ports.
 
 ```bash
 just build-linux-amd64
-./artifacts/binaries/linux-amd64/caddy devlocal
+sudo ./artifacts/binaries/linux-amd64/caddy devlocal
 ```
 
-Containers must publish ports to be reachable in standalone mode; unpublished containers are skipped.
+Containers must publish a port to be reachable; unpublished containers are skipped.
 
 ```bash
 docker run -d --name my-app -p 8080:80 nginx:alpine
 # Available at https://my-app.dev.local → localhost:8080
 # Also available at https://my-app.localhost → localhost:8080
 ```
-
-### How Detection Works
-
-- **Inside Docker** (`/.dockerenv` present) — Docker mode: containers on a shared network are reached by Docker DNS name, others via published ports through the host gateway. The proxy identifies its own container via the `HOSTNAME` environment variable to compute shared networks.
-- **On the host** (`/.dockerenv` absent) — standalone mode: proxies to containers via `localhost` using their published ports.
-
-### Standalone vs Docker Mode
-
-| | Docker Mode | Standalone Mode |
-|---|---|---|
-| Proxy target | `{container}:{private_port}` (shared network) or `{gateway}:{published_port}` (other networks) | `localhost:{published_port}` |
-| Port selection | Private ports (shared network) or published ports (other networks) | Published (host-mapped) ports |
-| Unpublished containers | Included only when reachable by Docker DNS | Skipped |
-| Detection | `/.dockerenv` present | `/.dockerenv` absent |
-
-Both modes register `.localhost` domain variants (see below).
 
 ### `.localhost` Domains
 
@@ -262,7 +160,7 @@ Each container also gets a `.localhost` domain in addition to the configured TLD
 - Compose services: `{project}.{service}.localhost`
 - Other containers: `{container-name}.localhost`
 
-In standalone mode the proxy runs on the host, so `.localhost` reaches the published ports directly. In Docker mode `.localhost` resolves to the client machine's own loopback, so browsing from the host reaches the proxy's published ports just like the `{tld}` domains — without needing a hosts entry.
+Since the proxy runs on the host, `.localhost` reaches the published ports directly — no hosts entry required.
 
 These domains are not generated when custom `dev.local.domains` labels are set.
 
@@ -285,11 +183,11 @@ Non-HTTP services like `mssql` are also registered (see it on the index page); S
 
 ## How It Works
 
-1. Watches Docker events for container lifecycle and network connect/disconnect changes across all networks
-2. Lists all containers via the Docker API; identifies the proxy's own container (via `HOSTNAME`) and its network memberships, then excludes itself
+1. Watches Docker events for container lifecycle changes across all networks
+2. Lists all containers via the Docker API
 3. Computes domains from container labels (Compose project/service or container name)
-4. Classifies each container by reachability: shared network → Docker DNS; no shared network but published ports → host gateway; otherwise skipped
-5. For multi-port containers, probes ports to find the HTTP server (common ports 80, 8080, 443, 8443 are checked first) — via the container name on shared networks, via the host gateway over published ports otherwise
+4. Registers running containers that publish at least one port; unpublished containers are skipped
+5. For multi-port containers, probes `localhost:{published_port}` to find the HTTP server (common ports 80, 8080, 443, 8443 are checked first)
 6. Builds the devlocal config directly as JSON — one `reverse_proxy` route per domain, a single merged `tls internal` policy, and an index page route for the TLD
 7. Loads the user Caddyfile as-is with `caddy.Load`, then applies the devlocal routes and TLS policy through Caddy's [admin API](https://caddyserver.com/docs/api) using diff-based patching — only added, removed, or changed routes/policies are touched, so reloads are incremental with zero downtime
 8. Polls Docker every `--poll-interval` (default 30s) as a safety net for missed events; if nothing changed, the reload is skipped entirely via a fingerprint of the current domains
@@ -305,7 +203,7 @@ caddy-dev-local writes two files to the user cache directory (`os.UserCacheDir()
 
 ## Hosts File
 
-caddy-dev-local automatically manages entries in your system hosts file (`/etc/hosts` on Linux, `C:\Windows\System32\drivers\etc\hosts` on Windows) so domains resolve locally without configuring DNS. When running in Docker mode the proxy can't write your host's hosts file from inside the container — use the [standalone hosts binary](#standalone-hosts-binary) on your host instead.
+caddy-dev-local automatically manages entries in your system hosts file (`/etc/hosts` on Linux, `C:\Windows\System32\drivers\etc\hosts` on Windows) so domains resolve locally without configuring DNS. Since the proxy runs on your host, it can write the hosts file directly.
 
 Entries are written inside a managed block with searchable markers:
 
@@ -392,7 +290,6 @@ Flags mirror the Caddy plugin's shared options (same env vars, defaults, and pre
 Notes:
 
 - **No port probing** — the domain set is identical to the proxy's, but no HTTP requests are made; port probing only exists to pick a proxy target port.
-- **Standalone detection** — auto-detected exactly like the plugin (`/.dockerenv` absent → standalone mode, routing via `localhost` instead of Docker DNS).
 - **Permissions** — requires root to write `/etc/hosts`; exits with an error if the hosts file isn't writable (unlike the plugin, which warns and continues).
 - **Index page** — not generated; this binary only maintains the hosts file (the proxy's index page and its config panel require Caddy).
 

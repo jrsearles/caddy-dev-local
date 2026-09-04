@@ -9,15 +9,9 @@ type Config struct {
 	TLD          string
 	StaleTTL     time.Duration
 	ProbeTimeout time.Duration
-	Standalone   bool
 	HostsFile    bool
 	Tracing      bool
 	PollInterval time.Duration
-}
-
-func DetectStandalone() bool {
-	_, err := os.Stat("/.dockerenv")
-	return os.IsNotExist(err)
 }
 
 func DefaultConfig() *Config {

@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/jrsearles/caddy-dev-local/discovery"
 )
 
 //go:embed index.html.tmpl
@@ -42,7 +44,6 @@ type indexRow struct {
 	ContainerIDShort   string
 	Image              string
 	Icon               string
-	IPAddress          string
 	ComposeProject     string
 	ComposeService     string
 	IsRunning          bool
@@ -162,7 +163,7 @@ func safeConfigJSONJS(configJSON string) template.JS {
 	return template.JS(safe) // #nosec G203
 }
 
-func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo, configJSON string, discoveryError string, lastRefreshUnix int64) string {
+func GenerateIndexPage(tld string, containers []*discovery.ContainerInfo, configJSON string, discoveryError string, lastRefreshUnix int64) string {
 	rows := make([]indexRow, 0, len(containers))
 
 	for _, info := range containers {
@@ -178,11 +179,6 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo,
 		if !info.IsRunning && !info.LastStopped.IsZero() {
 			stoppedAt = info.LastStopped.Format("2006-01-02 15:04")
 			stoppedUnix = info.LastStopped.Unix()
-		}
-
-		ipAddress := ""
-		if !standalone {
-			ipAddress = info.IPAddress
 		}
 
 		httpPortStr := ""
@@ -279,7 +275,6 @@ func GenerateIndexPage(tld string, standalone bool, containers []*ContainerInfo,
 			ContainerIDShort:   shortID,
 			Image:              info.Image,
 			Icon:               iconForContainer(info.Image, info.Labels),
-			IPAddress:          ipAddress,
 			ComposeProject:     composeProject,
 			ComposeService:     composeService,
 			IsRunning:          info.IsRunning,

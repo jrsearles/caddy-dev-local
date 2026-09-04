@@ -94,16 +94,9 @@ func ApplySharedFlags(cfg *Config, fs *pflag.FlagSet) {
 	cfg.ApplyFlags(SharedOverrides(fs))
 }
 
-// ResolveStandalone detects standalone mode based on the environment.
-func ResolveStandalone(cfg *Config) {
-	cfg.Standalone = DetectStandalone()
-}
-
-// Resolve builds a Config from defaults, explicitly-set shared flags, and
-// standalone detection.
+// Resolve builds a Config from defaults and explicitly-set shared flags.
 func Resolve(fs *pflag.FlagSet) *Config {
 	cfg := DefaultConfig()
 	ApplySharedFlags(cfg, fs)
-	ResolveStandalone(cfg)
 	return cfg
 }

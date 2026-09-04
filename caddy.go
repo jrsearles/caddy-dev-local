@@ -26,7 +26,7 @@ import (
 	"github.com/jrsearles/caddy-dev-local/generator"
 )
 
-func initCaddyConfig(gen *generator.Generator, cfg *config.Config, indexDir string, api *adminAPI, userConfigPath string, statusFn func() discovery.Status) error {
+func initCaddyConfig(cfg *config.Config, indexDir string, api *adminAPI, userConfigPath string, disc *discovery.Discovery) error {
 	logger := caddy.Log().Named(appName)
 
 	httpPort, httpsPort := 80, 443
@@ -61,7 +61,9 @@ func initCaddyConfig(gen *generator.Generator, cfg *config.Config, indexDir stri
 		return fmt.Errorf("injecting listen ports: %w", err)
 	}
 
-	devlocal, err := buildDevlocalConfig(cfg.TLD, indexDir, gen.DomainTargets(), cfg.Tracing)
+	domains := generator.DomainTargets(cfg, disc.Snapshot())
+
+	devlocal, err := buildDevlocalConfig(cfg.TLD, indexDir, domains, cfg.Tracing)
 	if err != nil {
 		return fmt.Errorf("building devlocal config: %w", err)
 	}
@@ -74,9 +76,9 @@ func initCaddyConfig(gen *generator.Generator, cfg *config.Config, indexDir stri
 		return fmt.Errorf("applying devlocal config: %w", err)
 	}
 
-	st := statusFn()
-	fp := fingerprintState(gen.DomainTargets(), gen.Containers(), st.LastError)
-	indexPage := generator.GenerateIndexPage(cfg.TLD, cfg.Standalone, gen.Containers(), fetchRunningConfig(api), st.LastError, unixOrZero(st.LastRefresh))
+	st := disc.Status()
+	fp := fingerprintState(domains, disc.Snapshot(), st.LastError)
+	indexPage := generator.GenerateIndexPage(cfg.TLD, disc.Snapshot(), fetchRunningConfig(api), st.LastError, unixOrZero(st.LastRefresh))
 	if err := writeIndexArtifacts(indexDir, indexPage, fp); err != nil {
 		return fmt.Errorf("writing index page: %w", err)
 	}
@@ -84,7 +86,7 @@ func initCaddyConfig(gen *generator.Generator, cfg *config.Config, indexDir stri
 	api.setFingerprint(fp)
 	writeDevlocalAutosave(indexDir, devlocal)
 
-	logger.Info("loaded initial config", zap.Int("domains", len(gen.Domains())))
+	logger.Info("loaded initial config", zap.Int("domains", len(generator.Domains(cfg, disc.Snapshot()))))
 	return nil
 }
 
@@ -189,12 +191,12 @@ func postDevlocalViaAPI(api *adminAPI, devlocal *devlocalConfig) error {
 	return api.reconcileDevlocal(devlocal.routes, devlocal.policies)
 }
 
-func reloadCaddyConfig(gen *generator.Generator, cfg *config.Config, indexDir string, api *adminAPI, statusFn func() discovery.Status) (bool, error) {
+func reloadCaddyConfig(cfg *config.Config, indexDir string, api *adminAPI, disc *discovery.Discovery) (bool, error) {
 	logger := caddy.Log().Named(appName)
 
-	domains := gen.DomainTargets()
-	st := statusFn()
-	fp := fingerprintState(domains, gen.Containers(), st.LastError)
+	domains := generator.DomainTargets(cfg, disc.Snapshot())
+	st := disc.Status()
+	fp := fingerprintState(domains, disc.Snapshot(), st.LastError)
 	if fp == api.fingerprint() {
 		logger.Debug("no changes to apply")
 		return false, nil
@@ -206,14 +208,14 @@ func reloadCaddyConfig(gen *generator.Generator, cfg *config.Config, indexDir st
 	}
 
 	if err := api.reconcileDevlocal(devlocal.routes, devlocal.policies); err != nil {
-		indexPage := generator.GenerateIndexPage(cfg.TLD, cfg.Standalone, gen.Containers(), fetchRunningConfig(api), st.LastError, unixOrZero(st.LastRefresh))
+		indexPage := generator.GenerateIndexPage(cfg.TLD, disc.Snapshot(), fetchRunningConfig(api), st.LastError, unixOrZero(st.LastRefresh))
 		if werr := writeIndexArtifacts(indexDir, indexPage, fp); werr != nil {
 			return false, fmt.Errorf("writing index page: %w", werr)
 		}
 		return false, err
 	}
 
-	indexPage := generator.GenerateIndexPage(cfg.TLD, cfg.Standalone, gen.Containers(), fetchRunningConfig(api), st.LastError, unixOrZero(st.LastRefresh))
+	indexPage := generator.GenerateIndexPage(cfg.TLD, disc.Snapshot(), fetchRunningConfig(api), st.LastError, unixOrZero(st.LastRefresh))
 	if err := writeIndexArtifacts(indexDir, indexPage, fp); err != nil {
 		return false, fmt.Errorf("writing index page: %w", err)
 	}
@@ -223,9 +225,9 @@ func reloadCaddyConfig(gen *generator.Generator, cfg *config.Config, indexDir st
 	return true, nil
 }
 
-func fingerprintState(domains map[string][]string, containers []*generator.ContainerInfo, discoveryError string) string {
+func fingerprintState(domains map[string][]string, containers []*discovery.ContainerInfo, discoveryError string) string {
 	sorted := slices.Clone(containers)
-	slices.SortFunc(sorted, func(a, b *generator.ContainerInfo) int {
+	slices.SortFunc(sorted, func(a, b *discovery.ContainerInfo) int {
 		return cmp.Compare(a.ContainerID, b.ContainerID)
 	})
 

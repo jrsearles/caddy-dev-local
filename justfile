@@ -14,6 +14,13 @@ lint:
 check: lint
     go test -race ./...
 
+# Run tests with coverage and generate HTML report (includes integration tests)
+coverage:
+    mkdir -p {{artifacts}}
+    go test -tags=integration -count=1 -coverpkg=./... -coverprofile={{artifacts}}/coverage.out ./...
+    go tool cover -html={{artifacts}}/coverage.out -o={{artifacts}}/coverage.html
+    go tool cover -func={{artifacts}}/coverage.out | tail -1
+
 [private]
 install-lint:
     curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.12.2
