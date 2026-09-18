@@ -3,6 +3,10 @@ package discovery
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net"
+	"net/http"
+	"net/http/httptest"
 	"net/netip"
 	"reflect"
 	"slices"
@@ -32,6 +36,7 @@ type mockDocker struct {
 	containers []container.Summary
 	listErr    error
 	listFn     func(context.Context) ([]container.Summary, error)
+	eventsFn   func()
 	eventCalls atomic.Int32
 }
 
@@ -44,6 +49,9 @@ func (m *mockDocker) ContainerList(ctx context.Context, options client.Container
 
 func (m *mockDocker) Events(ctx context.Context, options client.EventsListOptions) (<-chan events.Message, <-chan error) {
 	m.eventCalls.Add(1)
+	if m.eventsFn != nil {
+		m.eventsFn()
+	}
 	ch := make(chan events.Message)
 	errCh := make(chan error)
 	return ch, errCh
@@ -81,6 +89,12 @@ func testDiscovery(t *testing.T, cfg *config.Config, mock *mockDocker) *Discover
 	t.Helper()
 	cfg = cloneConfig(cfg)
 	return New(cfg, mock, zap.NewNop())
+}
+
+func testDiscoveryWithProbe(t *testing.T, cfg *config.Config, mock *mockDocker, probe PortProbe) *Discovery {
+	t.Helper()
+	cfg = cloneConfig(cfg)
+	return New(cfg, mock, zap.NewNop(), WithPortProbe(probe))
 }
 
 func TestStatusInitial(t *testing.T) {
@@ -147,84 +161,6 @@ func TestRefreshExtractsContainers(t *testing.T) {
 	}
 }
 
-func TestRefreshDeltaAdded(t *testing.T) {
-	mock := &mockDocker{containers: []container.Summary{
-		makeContainer("c1", "web", "myapp", "web", []container.PortSummary{{PrivatePort: 80, PublicPort: 0}}, nil, "running"),
-	}}
-	d := testDiscovery(t, &config.Config{TLD: "dev.local", StaleTTL: time.Hour}, mock)
-
-	delta, err := d.refreshCycle(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(delta.Added) != 1 {
-		t.Fatalf("expected 1 added, got %d", len(delta.Added))
-	}
-	if delta.Added[0].ContainerID != "c1" {
-		t.Errorf("added id = %q, want c1", delta.Added[0].ContainerID)
-	}
-	if len(delta.Updated) != 0 || len(delta.Removed) != 0 {
-		t.Errorf("expected no updated/removed, got updated=%d removed=%d", len(delta.Updated), len(delta.Removed))
-	}
-}
-
-func TestRefreshDeltaUpdatedAndRemoved(t *testing.T) {
-	mock := &mockDocker{}
-	d := testDiscovery(t, &config.Config{TLD: "dev.local", StaleTTL: time.Hour}, mock)
-
-	mock.containers = []container.Summary{
-		makeContainer("c1", "web", "myapp", "web", []container.PortSummary{{PrivatePort: 80, PublicPort: 0}}, nil, "running"),
-	}
-	if _, err := d.refreshCycle(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-
-	mock.containers = []container.Summary{
-		makeContainer("c1", "web", "myapp", "web", []container.PortSummary{{PrivatePort: 81, PublicPort: 0}}, nil, "running"),
-		makeContainer("c2", "api", "myapp", "api", []container.PortSummary{{PrivatePort: 3000, PublicPort: 0}}, nil, "running"),
-	}
-	delta, err := d.refreshCycle(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(delta.Updated) != 1 || delta.Updated[0].ContainerID != "c1" {
-		t.Errorf("expected c1 updated, got %+v", delta.Updated)
-	}
-	if len(delta.Added) != 1 || delta.Added[0].ContainerID != "c2" {
-		t.Errorf("expected c2 added, got %+v", delta.Added)
-	}
-
-	mock.containers = []container.Summary{
-		makeContainer("c2", "api", "myapp", "api", []container.PortSummary{{PrivatePort: 3000, PublicPort: 0}}, nil, "running"),
-	}
-	delta, err = d.refreshCycle(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(delta.Removed) != 1 || delta.Removed[0].ContainerID != "c1" {
-		t.Errorf("expected c1 removed, got %+v", delta.Removed)
-	}
-}
-
-func TestRefreshDeltaNoChange(t *testing.T) {
-	mock := &mockDocker{}
-	d := testDiscovery(t, &config.Config{TLD: "dev.local", StaleTTL: time.Hour}, mock)
-
-	mock.containers = []container.Summary{
-		makeContainer("c1", "web", "myapp", "web", []container.PortSummary{{PrivatePort: 80, PublicPort: 0}}, nil, "running"),
-	}
-	if _, err := d.refreshCycle(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	delta, err := d.refreshCycle(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(delta.Added) != 0 || len(delta.Updated) != 0 || len(delta.Removed) != 0 {
-		t.Errorf("expected no changes on stable state, got added=%d updated=%d removed=%d", len(delta.Added), len(delta.Updated), len(delta.Removed))
-	}
-}
-
 func TestCustomDomainsOverride(t *testing.T) {
 	containers := []container.Summary{
 		makeContainer("c1", "web", "myapp", "web",
@@ -237,37 +173,176 @@ func TestCustomDomainsOverride(t *testing.T) {
 	cfg := &config.Config{TLD: "dev.local", StaleTTL: time.Hour}
 
 	d := testDiscovery(t, cfg, mock)
-	d.SetEnricher(zeroEnricher())
 	if err := d.Refresh(context.Background()); err != nil {
 		t.Fatalf("Refresh() error = %v", err)
 	}
 
 	for _, info := range d.Snapshot() {
 		if info.ContainerID == "c1" && (info.SelectedPort != 0 || len(info.CustomDomains) != 1) {
-			t.Errorf("expected custom domain to suppress port selection and carry domain, got %+v", info)
+			t.Errorf("expected custom domain present and SelectedPort zero, got %+v", info)
 		}
 	}
 }
 
-func TestSinglePortSelection(t *testing.T) {
-	containers := []container.Summary{
-		makeContainer("c1", "nginx", "", "",
-			[]container.PortSummary{{PrivatePort: 80, PublicPort: 0}},
-			nil, "running"),
+func TestRefreshProbesOnlyPublishedPorts(t *testing.T) {
+	mock := &mockDocker{containers: []container.Summary{
+		makeContainer("c1", "web", "", "", []container.PortSummary{
+			{PrivatePort: 80, PublicPort: 32080},
+			{PrivatePort: 3000},
+			{PrivatePort: 8080, PublicPort: 32080},
+		}, nil, "running"),
+	}}
+	var probed []uint16
+	probe := func(_ context.Context, host string, ports []uint16, timeout time.Duration) (uint16, error) {
+		if host != "localhost" {
+			t.Errorf("host = %q, want localhost", host)
+		}
+		probed = slices.Clone(ports)
+		return ports[0], nil
 	}
-
-	mock := &mockDocker{containers: containers}
-	cfg := &config.Config{TLD: "dev.local", StaleTTL: time.Hour}
-
-	d := testDiscovery(t, cfg, mock)
-	d.SetEnricher(firstPortEnricher())
+	d := testDiscoveryWithProbe(t, &config.Config{StaleTTL: time.Hour, ProbeTimeout: time.Second}, mock, probe)
 	if err := d.Refresh(context.Background()); err != nil {
-		t.Fatalf("Refresh() error = %v", err)
+		t.Fatal(err)
 	}
 
-	info := d.Snapshot()[0]
-	if info.SelectedPort != 80 {
-		t.Errorf("expected selected port 80, got %d", info.SelectedPort)
+	if !slices.Equal(probed, []uint16{32080}) {
+		t.Fatalf("probed ports = %v, want only published host port 32080", probed)
+	}
+	if got := d.Snapshot()[0].SelectedPort; got != 32080 {
+		t.Fatalf("SelectedPort = %d, want 32080", got)
+	}
+}
+
+func TestRefreshSkipsProbeWithoutPublishedPorts(t *testing.T) {
+	mock := &mockDocker{containers: []container.Summary{
+		makeContainer("c1", "web", "", "", []container.PortSummary{{PrivatePort: 80}}, nil, "running"),
+	}}
+	calls := 0
+	d := testDiscoveryWithProbe(t, &config.Config{StaleTTL: time.Hour}, mock, func(context.Context, string, []uint16, time.Duration) (uint16, error) {
+		calls++
+		return 0, nil
+	})
+	if err := d.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 0 {
+		t.Fatalf("probe called %d times, want 0", calls)
+	}
+}
+
+func TestRefreshRetainsSelectedPortForStoppedContainer(t *testing.T) {
+	mock := &mockDocker{containers: []container.Summary{
+		makeContainer("c1", "web", "", "", []container.PortSummary{{PrivatePort: 80, PublicPort: 32080}}, nil, "running"),
+	}}
+	probeErr := false
+	d := testDiscoveryWithProbe(t, &config.Config{StaleTTL: time.Hour}, mock, func(_ context.Context, _ string, ports []uint16, _ time.Duration) (uint16, error) {
+		if probeErr {
+			return 0, errors.New("not HTTP")
+		}
+		return ports[0], nil
+	})
+	ctx := context.Background()
+	if err := d.Refresh(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	probeErr = true
+	if err := d.Refresh(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := d.Snapshot()[0].SelectedPort; got != 0 {
+		t.Fatalf("SelectedPort after failed running probe = %d, want 0", got)
+	}
+
+	mock.containers = []container.Summary{
+		makeContainer("c1", "web", "", "", nil, nil, "exited"),
+	}
+	if err := d.Refresh(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := d.Snapshot()[0].SelectedPort; got != 32080 {
+		t.Fatalf("stopped SelectedPort = %d, want cached 32080", got)
+	}
+}
+
+func TestRefreshEvictsSelectedPortWhenContainerDisappears(t *testing.T) {
+	mock := &mockDocker{containers: []container.Summary{
+		makeContainer("c1", "web", "", "", []container.PortSummary{{PrivatePort: 80, PublicPort: 32080}}, nil, "running"),
+	}}
+	d := testDiscoveryWithProbe(t, &config.Config{StaleTTL: time.Hour}, mock, func(_ context.Context, _ string, ports []uint16, _ time.Duration) (uint16, error) {
+		return ports[0], nil
+	})
+	if err := d.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	mock.containers = nil
+	if err := d.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := d.selectedPorts["c1"]; ok {
+		t.Fatal("selected port cache retained a disappeared container")
+	}
+}
+
+func TestRefreshCommitsEnrichedSnapshotAtomically(t *testing.T) {
+	mock := &mockDocker{containers: []container.Summary{
+		makeContainer("c1", "web", "", "", []container.PortSummary{{PrivatePort: 80, PublicPort: 32080}}, nil, "running"),
+	}}
+	probeStarted := make(chan struct{})
+	releaseProbe := make(chan struct{})
+	calls := 0
+	d := testDiscoveryWithProbe(t, &config.Config{StaleTTL: time.Hour}, mock, func(_ context.Context, _ string, ports []uint16, _ time.Duration) (uint16, error) {
+		calls++
+		if calls == 2 {
+			close(probeStarted)
+			<-releaseProbe
+		}
+		return ports[0], nil
+	})
+	if err := d.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	mock.containers = []container.Summary{
+		makeContainer("c1", "web", "", "", []container.PortSummary{{PrivatePort: 80, PublicPort: 32081}}, nil, "running"),
+	}
+	refreshDone := make(chan error, 1)
+	go func() {
+		refreshDone <- d.Refresh(context.Background())
+	}()
+	<-probeStarted
+
+	during := d.Snapshot()[0]
+	if during.SelectedPort != 32080 || during.PublishedPorts[80] != 32080 {
+		t.Fatalf("snapshot changed before enrichment completed: %+v", during)
+	}
+	close(releaseProbe)
+	if err := <-refreshDone; err != nil {
+		t.Fatal(err)
+	}
+	after := d.Snapshot()[0]
+	if after.SelectedPort != 32081 || after.PublishedPorts[80] != 32081 {
+		t.Fatalf("enriched snapshot was not committed: %+v", after)
+	}
+}
+
+func TestRefreshSkipsCustomDomainProbe(t *testing.T) {
+	mock := &mockDocker{containers: []container.Summary{
+		makeContainer("c1", "web", "", "", []container.PortSummary{{PrivatePort: 80, PublicPort: 32080}}, map[string]string{
+			"dev.local.domains": "80:web.example.test",
+		}, "running"),
+	}}
+	calls := 0
+	d := testDiscoveryWithProbe(t, &config.Config{StaleTTL: time.Hour}, mock, func(context.Context, string, []uint16, time.Duration) (uint16, error) {
+		calls++
+		return 0, nil
+	})
+	if err := d.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 0 {
+		t.Fatalf("probe called %d times, want 0", calls)
 	}
 }
 
@@ -311,7 +386,6 @@ func TestStoppedContainerRetainedUntilStaleTTL(t *testing.T) {
 	mock := &mockDocker{}
 	cfg := &config.Config{TLD: "dev.local", StaleTTL: time.Hour}
 	d := testDiscovery(t, cfg, mock)
-	d.SetEnricher(firstPortEnricher())
 	ctx := context.Background()
 
 	mock.containers = []container.Summary{
@@ -324,9 +398,6 @@ func TestStoppedContainerRetainedUntilStaleTTL(t *testing.T) {
 	infos := d.Snapshot()
 	if len(infos) != 1 || !infos[0].IsRunning {
 		t.Fatalf("expected 1 running container, got %+v", infos)
-	}
-	if infos[0].SelectedPort != 80 {
-		t.Fatalf("expected selected port 80, got %d", infos[0].SelectedPort)
 	}
 
 	mock.containers = []container.Summary{
@@ -350,11 +421,11 @@ func TestStoppedContainerRetainedUntilStaleTTL(t *testing.T) {
 	if len(info.Ports) != 1 || info.Ports[0] != 80 {
 		t.Errorf("expected ports to be preserved, got %v", info.Ports)
 	}
-	if info.SelectedPort != 80 {
-		t.Errorf("expected SelectedPort to be preserved, got %d", info.SelectedPort)
+	if info.SelectedPort != 0 {
+		t.Errorf("expected SelectedPort to be 0 without enrichment, got %d", info.SelectedPort)
 	}
 
-	if _, err := d.refreshCycle(context.Background()); err != nil {
+	if err := d.refreshCycle(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if len(d.Snapshot()) != 1 {
@@ -491,56 +562,112 @@ func TestHealthEmptyWhenNoHealthcheck(t *testing.T) {
 	}
 }
 
-func TestSubscriberDispatch(t *testing.T) {
+func TestRunSubscribesToEventsBeforeInitialRefresh(t *testing.T) {
+	var listed atomic.Bool
+	var eventBeforeList atomic.Bool
 	mock := &mockDocker{}
+	mock.listFn = func(context.Context) ([]container.Summary, error) {
+		listed.Store(true)
+		return []container.Summary{
+			makeContainer("c1", "web", "", "", []container.PortSummary{{PrivatePort: 80}}, nil, "running"),
+		}, nil
+	}
+	mock.eventsFn = func() {
+		if !listed.Load() {
+			eventBeforeList.Store(true)
+		}
+	}
 	d := testDiscovery(t, &config.Config{TLD: "dev.local", StaleTTL: time.Hour}, mock)
+	ctx, cancel := context.WithCancel(context.Background())
+	d.Run(ctx)
 
-	var received []Delta
-	d.Subscribe(func(delta Delta) { received = append(received, delta) })
-	d.running.Store(true)
+	update := receiveUpdate(t, d.Updates())
+	if len(update.Snapshot) != 1 || update.Snapshot[0].ContainerID != "c1" || update.Status.LastRefresh.IsZero() {
+		t.Fatalf("unexpected initial update: %+v", update)
+	}
+	waitFor(t, func() bool { return mock.eventCalls.Load() == 1 })
+	if !eventBeforeList.Load() {
+		t.Fatal("event subscription started after initial container list")
+	}
+	cancel()
+	waitForClosed(t, d.Updates())
+}
 
-	mock.containers = []container.Summary{
-		makeContainer("c1", "web", "myapp", "web", []container.PortSummary{{PrivatePort: 80, PublicPort: 0}}, nil, "running"),
-	}
-	if err := d.Refresh(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+func TestProbeHTTPPort(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer ts.Close()
 
-	if len(received) != 1 {
-		t.Fatalf("expected 1 dispatched delta, got %d", len(received))
+	_, portStr, _ := net.SplitHostPort(ts.Listener.Addr().String())
+	var port uint16
+	fmt.Sscanf(portStr, "%d", &port) //nolint:errcheck // test helper, value validated below
+
+	got, err := ProbeHTTPPort(context.Background(), "localhost", []uint16{port}, 2*time.Second)
+	if err != nil {
+		t.Fatalf("ProbeHTTPPort() error = %v", err)
 	}
-	if len(received[0].Added) != 1 || received[0].Added[0].ContainerID != "c1" {
-		t.Errorf("expected c1 added in delta, got %+v", received[0].Added)
-	}
-	if len(received[0].Snapshot) != 1 {
-		t.Errorf("expected snapshot of size 1, got %d", len(received[0].Snapshot))
+	if got != port {
+		t.Errorf("ProbeHTTPPort() = %v, want %v", got, port)
 	}
 }
 
-func TestSnapshotsAndDispatchedDeltasAreDeepCloned(t *testing.T) {
+func TestProbeHTTPPortNoHTTP(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+
+	go func() {
+		conn, acceptErr := ln.Accept()
+		if acceptErr != nil {
+			return
+		}
+		conn.Write([]byte("not http")) //nolint:errcheck // test helper
+		conn.Close()
+	}()
+
+	_, portStr, _ := net.SplitHostPort(ln.Addr().String())
+	var port uint16
+	fmt.Sscanf(portStr, "%d", &port) //nolint:errcheck // test helper, value validated below
+
+	_, err = ProbeHTTPPort(context.Background(), "localhost", []uint16{port}, 500*time.Millisecond)
+	if err == nil {
+		t.Fatal("ProbeHTTPPort() should have returned error for non-HTTP server")
+	}
+}
+
+func TestProbeHTTPPortCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := ProbeHTTPPort(ctx, "localhost", []uint16{1}, time.Second)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("ProbeHTTPPort() error = %v, want context canceled", err)
+	}
+}
+
+func TestUpdatesLatestWins(t *testing.T) {
+	d := testDiscovery(t, &config.Config{}, &mockDocker{})
+	for _, id := range []string{"c1", "c2", "c3"} {
+		d.publish(Update{Snapshot: []*ContainerInfo{{ContainerID: id}}})
+	}
+
+	update := receiveUpdate(t, d.Updates())
+	if got := update.Snapshot[0].ContainerID; got != "c3" {
+		t.Fatalf("latest update id = %q, want c3", got)
+	}
+}
+
+func TestSnapshotsAndUpdatesAreDeepCloned(t *testing.T) {
 	labels := map[string]string{"dev.local.domains": "80:web.example.test", "source": "docker"}
 	mock := &mockDocker{containers: []container.Summary{
 		makeContainer("c1", "web", "", "", []container.PortSummary{{PrivatePort: 80, PublicPort: 8080}}, labels, "running"),
 	}}
 	d := testDiscovery(t, &config.Config{TLD: "dev.local", StaleTTL: time.Hour}, mock)
-	d.running.Store(true)
-
-	d.Subscribe(func(delta Delta) {
-		info := delta.Added[0]
-		info.ContainerName = "mutated"
-		info.Ports[0] = 999
-		info.PublishedPorts[80] = 999
-		info.Labels["source"] = "mutated"
-		info.CustomDomains[0].Domain = "mutated.test"
-		info.Networks[0] = "mutated"
-		delta.Snapshot[0].ContainerName = "mutated snapshot"
-	})
-
-	var received Delta
-	d.Subscribe(func(delta Delta) { received = delta })
-	if err := d.Refresh(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	ctx, cancel := context.WithCancel(context.Background())
+	d.Run(ctx)
+	received := receiveUpdate(t, d.Updates())
 
 	assertUnmutated := func(t *testing.T, info *ContainerInfo) {
 		t.Helper()
@@ -549,51 +676,55 @@ func TestSnapshotsAndDispatchedDeltasAreDeepCloned(t *testing.T) {
 			t.Fatalf("container was mutated through a consumer copy: %+v", info)
 		}
 	}
-	assertUnmutated(t, received.Added[0])
 	assertUnmutated(t, received.Snapshot[0])
+	received.Snapshot[0].ContainerName = "mutated"
+	received.Snapshot[0].Ports[0] = 999
+	received.Snapshot[0].PublishedPorts[80] = 999
+	received.Snapshot[0].Labels["source"] = "mutated"
+	received.Snapshot[0].CustomDomains[0].Domain = "mutated.test"
+	received.Snapshot[0].Networks[0] = "mutated"
 
 	snapshot := d.Snapshot()
 	assertUnmutated(t, snapshot[0])
 	snapshot[0].Ports[0] = 123
 	snapshot[0].Labels["source"] = "snapshot mutation"
 	assertUnmutated(t, d.Snapshot()[0])
+	cancel()
+	waitForClosed(t, d.Updates())
 }
 
-func TestListErrorDispatchesStatusAndRetainsSnapshot(t *testing.T) {
+func TestListErrorPublishesStatusAndRetainsSnapshot(t *testing.T) {
 	mock := &mockDocker{containers: []container.Summary{
 		makeContainer("c1", "web", "", "", []container.PortSummary{{PrivatePort: 80}}, nil, "running"),
 	}}
 	d := testDiscovery(t, &config.Config{TLD: "dev.local", StaleTTL: time.Hour}, mock)
-	if err := d.Refresh(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-
-	var received []Delta
-	d.Subscribe(func(delta Delta) { received = append(received, delta) })
-	d.running.Store(true)
+	ctx, cancel := context.WithCancel(context.Background())
+	d.Run(ctx)
+	receiveUpdate(t, d.Updates())
 	mock.listErr = errors.New("docker unavailable")
 	if err := d.Refresh(context.Background()); err == nil {
 		t.Fatal("expected list error")
 	}
 
-	if len(received) != 1 {
-		t.Fatalf("expected one status delta, got %d", len(received))
+	update := receiveUpdate(t, d.Updates())
+	if update.Status.LastError != "docker unavailable" || update.Status.LastErrorAt.IsZero() {
+		t.Errorf("unexpected error status: %+v", update.Status)
 	}
-	if received[0].Status.LastError != "docker unavailable" || received[0].Status.LastErrorAt.IsZero() {
-		t.Errorf("unexpected error status: %+v", received[0].Status)
-	}
-	if len(received[0].Snapshot) != 1 || received[0].Snapshot[0].ContainerID != "c1" {
-		t.Errorf("error delta did not retain snapshot: %+v", received[0].Snapshot)
+	if len(update.Snapshot) != 1 || update.Snapshot[0].ContainerID != "c1" {
+		t.Errorf("error update did not retain snapshot: %+v", update.Snapshot)
 	}
 	if len(d.Snapshot()) != 1 {
 		t.Fatal("list error cleared retained state")
 	}
+	cancel()
+	waitForClosed(t, d.Updates())
 }
 
-func TestConcurrentRefreshesCommitAndDispatchInOrder(t *testing.T) {
+func TestConcurrentRefreshesCommitAndPublishInOrder(t *testing.T) {
 	firstEntered := make(chan struct{})
 	secondEntered := make(chan struct{})
 	releaseFirst := make(chan struct{})
+	releaseSecond := make(chan struct{})
 	var listCalls atomic.Int32
 	mock := &mockDocker{}
 	mock.listFn = func(context.Context) ([]container.Summary, error) {
@@ -604,6 +735,7 @@ func TestConcurrentRefreshesCommitAndDispatchInOrder(t *testing.T) {
 			return []container.Summary{makeContainer("c1", "first", "", "", nil, nil, "running")}, nil
 		case 2:
 			close(secondEntered)
+			<-releaseSecond
 			return []container.Summary{makeContainer("c2", "second", "", "", nil, nil, "running")}, nil
 		default:
 			return nil, errors.New("unexpected list call")
@@ -611,8 +743,6 @@ func TestConcurrentRefreshesCommitAndDispatchInOrder(t *testing.T) {
 	}
 	d := testDiscovery(t, &config.Config{TLD: "dev.local", StaleTTL: time.Hour}, mock)
 	d.running.Store(true)
-	dispatched := make(chan string, 2)
-	d.Subscribe(func(delta Delta) { dispatched <- delta.Snapshot[0].ContainerID })
 
 	errs := make(chan error, 2)
 	go func() { errs <- d.Refresh(context.Background()) }()
@@ -630,105 +760,48 @@ func TestConcurrentRefreshesCommitAndDispatchInOrder(t *testing.T) {
 	case <-time.After(20 * time.Millisecond):
 	}
 	close(releaseFirst)
+	<-secondEntered
+	first := receiveUpdate(t, d.Updates())
+	if got := first.Snapshot[0].ContainerID; got != "c1" {
+		t.Fatalf("first update id = %q, want c1", got)
+	}
+	close(releaseSecond)
 	for range 2 {
 		if err := <-errs; err != nil {
 			t.Fatal(err)
 		}
 	}
-	if got := []string{<-dispatched, <-dispatched}; !slices.Equal(got, []string{"c1", "c2"}) {
-		t.Errorf("dispatch order = %v, want [c1 c2]", got)
+	second := receiveUpdate(t, d.Updates())
+	if got := second.Snapshot[0].ContainerID; got != "c2" {
+		t.Fatalf("second update id = %q, want c2", got)
 	}
 }
 
-func TestSubscriberInOrder(t *testing.T) {
-	mock := &mockDocker{}
-	d := testDiscovery(t, &config.Config{TLD: "dev.local", StaleTTL: time.Hour}, mock)
-	d.running.Store(true)
-
-	var order []string
-	d.Subscribe(func(Delta) { order = append(order, "first") })
-	d.Subscribe(func(Delta) { order = append(order, "second") })
-
-	mock.containers = []container.Summary{
-		makeContainer("c1", "web", "", "", []container.PortSummary{{PrivatePort: 80, PublicPort: 0}}, nil, "running"),
-	}
-	if err := d.Refresh(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-
-	if !slices.Equal(order, []string{"first", "second"}) {
-		t.Errorf("subscribers not dispatched in order: %v", order)
-	}
-}
-
-func TestEnricherInvocation(t *testing.T) {
-	mock := &mockDocker{}
-	d := testDiscovery(t, &config.Config{TLD: "dev.local", StaleTTL: time.Hour}, mock)
-
-	calls := 0
-	d.SetEnricher(func(info *ContainerInfo) {
-		calls++
-		info.SelectedPort = info.Ports[0]
-	})
-
-	mock.containers = []container.Summary{
-		makeContainer("c1", "web", "", "", []container.PortSummary{{PrivatePort: 80, PublicPort: 0}}, nil, "running"),
-		makeContainer("c2", "stopped", "", "", []container.PortSummary{{PrivatePort: 90, PublicPort: 0}}, nil, "exited"),
-	}
-	if err := d.Refresh(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-
-	if calls != 1 {
-		t.Errorf("enricher invoked %d times, want 1 (running only)", calls)
-	}
-	for _, info := range d.Snapshot() {
-		if info.IsRunning && info.SelectedPort != 80 {
-			t.Errorf("running container SelectedPort = %d, want 80", info.SelectedPort)
-		}
-		if !info.IsRunning && info.SelectedPort != 0 {
-			t.Errorf("stopped container should not be enriched, got SelectedPort %d", info.SelectedPort)
-		}
-	}
-}
-
-func TestEnrichersRunInRegistrationOrder(t *testing.T) {
-	mock := &mockDocker{containers: []container.Summary{
-		makeContainer("c1", "web", "", "", []container.PortSummary{{PrivatePort: 80}}, nil, "running"),
-	}}
-	d := testDiscovery(t, &config.Config{TLD: "dev.local", StaleTTL: time.Hour}, mock)
-	d.SetEnricher(func(info *ContainerInfo) { info.Networks = append(info.Networks, "first") })
-	d.AddEnricher(func(info *ContainerInfo) {
-		info.Networks = append(info.Networks, info.Networks[len(info.Networks)-1]+"-second")
-	})
-
-	if err := d.Refresh(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if got := d.Snapshot()[0].Networks; !slices.Equal(got, []string{"devlocal", "first", "first-second"}) {
-		t.Errorf("enricher order = %v", got)
-	}
-}
-
-func TestRunIsIdempotentAndResetsAfterCancellation(t *testing.T) {
+func TestRunIsOneShotAndClosesUpdates(t *testing.T) {
 	mock := &mockDocker{}
 	d := testDiscovery(t, &config.Config{TLD: "dev.local", StaleTTL: time.Hour}, mock)
 	ctx, cancel := context.WithCancel(context.Background())
 	d.Run(ctx)
 	d.Run(ctx)
 
+	receiveUpdate(t, d.Updates())
 	waitFor(t, func() bool { return mock.eventCalls.Load() == 1 })
 	if got := mock.eventCalls.Load(); got != 1 {
 		t.Fatalf("Events called %d times after duplicate Run", got)
 	}
 
 	cancel()
-	waitFor(t, func() bool { return !d.running.Load() })
+	waitForClosed(t, d.Updates())
 	ctx2, cancel2 := context.WithCancel(context.Background())
+	defer cancel2()
 	d.Run(ctx2)
-	waitFor(t, func() bool { return mock.eventCalls.Load() == 2 })
-	cancel2()
-	waitFor(t, func() bool { return !d.running.Load() })
+	if err := d.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(20 * time.Millisecond)
+	if got := mock.eventCalls.Load(); got != 1 {
+		t.Fatalf("Events called %d times after second Run, want 1", got)
+	}
 }
 
 func waitFor(t *testing.T, condition func() bool) {
@@ -742,12 +815,9 @@ func waitFor(t *testing.T, condition func() bool) {
 	}
 }
 
-func TestRefreshBeforeRunNoDispatch(t *testing.T) {
+func TestRefreshBeforeRunDoesNotPublish(t *testing.T) {
 	mock := &mockDocker{}
 	d := testDiscovery(t, &config.Config{TLD: "dev.local", StaleTTL: time.Hour}, mock)
-
-	calls := 0
-	d.Subscribe(func(Delta) { calls++ })
 
 	mock.containers = []container.Summary{
 		makeContainer("c1", "web", "", "", []container.PortSummary{{PrivatePort: 80, PublicPort: 0}}, nil, "running"),
@@ -755,21 +825,41 @@ func TestRefreshBeforeRunNoDispatch(t *testing.T) {
 	if err := d.Refresh(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if calls != 0 {
-		t.Errorf("subscriber dispatched before Run, calls=%d", calls)
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	select {
+	case <-d.Updates():
+		t.Fatal("unexpected update before Run")
+	case <-ctx.Done():
 	}
 }
 
-func firstPortEnricher() Enricher {
-	return func(info *ContainerInfo) {
-		if len(info.Ports) > 0 {
-			info.SelectedPort = info.Ports[0]
+func receiveUpdate(t *testing.T, updates <-chan Update) Update {
+	t.Helper()
+	select {
+	case update, ok := <-updates:
+		if !ok {
+			t.Fatal("updates channel closed while waiting for update")
 		}
+		return update
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for update")
 	}
+	return Update{}
 }
 
-func zeroEnricher() Enricher {
-	return func(info *ContainerInfo) {
-		info.SelectedPort = 0
+func waitForClosed(t *testing.T, updates <-chan Update) {
+	t.Helper()
+	timer := time.NewTimer(time.Second)
+	defer timer.Stop()
+	for {
+		select {
+		case _, ok := <-updates:
+			if !ok {
+				return
+			}
+		case <-timer.C:
+			t.Fatal("timed out waiting for updates channel to close")
+		}
 	}
 }

@@ -19,11 +19,11 @@ func TestApplyReconcilesSnapshotDomains(t *testing.T) {
 		return nil
 	}
 
-	delta := discovery.Delta{Snapshot: []*discovery.ContainerInfo{
+	update := discovery.Update{Snapshot: []*discovery.ContainerInfo{
 		{ContainerName: "web", IsRunning: true, Ports: []uint16{80}, PublishedPorts: map[uint16]uint16{80: 8080}},
 		{ContainerName: "stopped", IsRunning: false, Ports: []uint16{80}},
 	}}
-	if err := p.Apply(context.Background(), delta); err != nil {
+	if err := p.Apply(context.Background(), update); err != nil {
 		t.Fatal(err)
 	}
 
@@ -40,7 +40,7 @@ func TestApplySkipsDisabledOrUnwritable(t *testing.T) {
 			t.Fatal("sync called")
 			return nil
 		}
-		if err := p.Apply(context.Background(), discovery.Delta{}); err != nil {
+		if err := p.Apply(context.Background(), discovery.Update{}); err != nil {
 			t.Fatal(err)
 		}
 	}

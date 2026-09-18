@@ -857,7 +857,7 @@ body {
     right: 0;
     bottom: 0;
     z-index: 201;
-    width: min(420px, 100vw);
+    width: min(640px, 100vw);
     background: var(--bg-card);
     border-left: 1px solid var(--border);
     transform: translateX(100%);

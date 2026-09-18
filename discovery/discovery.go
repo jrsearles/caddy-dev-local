@@ -4,7 +4,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
-	"reflect"
+	"maps"
 	"slices"
 	"strings"
 	"sync"
@@ -50,83 +50,65 @@ type ContainerInfo struct {
 	Networks       []string
 }
 
-// Delta describes the batched changes for a single refresh cycle. It is
-// dispatched synchronously to all subscribers in registration order.
-type Delta struct {
-	Added, Updated, Removed []*ContainerInfo
-	Snapshot                []*ContainerInfo
-	Status                  Status
+type Update struct {
+	Snapshot []*ContainerInfo
+	Status   Status
 }
 
-// Subscriber receives a Delta for every refresh cycle once Discovery is running.
-type Subscriber func(Delta)
-
-// Discovery owns container state and drives the diff loop. It publishes
-// batched deltas to subscribers and supports a pluggable enricher (port probe)
-// that runs under the state lock during refresh. It is Caddy-free.
+// Discovery owns container state and drives the refresh loop. It publishes the
+// latest complete state on each refresh.
 type Discovery struct {
-	cfg       *config.Config
-	docker    docker.Client
-	logger    *zap.Logger
-	enrichers []Enricher
+	cfg    *config.Config
+	docker docker.Client
+	logger *zap.Logger
+	probe  PortProbe
 
-	refreshMu   sync.Mutex
-	mu          sync.RWMutex
-	containers  map[string]*ContainerInfo
-	status      Status
-	subscribers []Subscriber
-	running     atomic.Bool
+	refreshMu     sync.Mutex
+	mu            sync.RWMutex
+	containers    map[string]*ContainerInfo
+	selectedPorts map[string]uint16
+	status        Status
+	updates       chan Update
+	started       atomic.Bool
+	running       atomic.Bool
 }
 
-// Enricher augments a freshly built ContainerInfo under the state lock. The
-// caddy entry point injects the HTTP port probe; the hosts binary injects none.
-type Enricher func(*ContainerInfo)
+type Option func(*Discovery)
 
-func New(cfg *config.Config, dockerClient docker.Client, logger *zap.Logger) *Discovery {
-	return &Discovery{
-		cfg:        cfg,
-		docker:     dockerClient,
-		logger:     logger,
-		containers: make(map[string]*ContainerInfo),
+func WithPortProbe(probe PortProbe) Option {
+	return func(d *Discovery) {
+		d.probe = probe
 	}
 }
 
-// SetEnricher injects the optional port-probe enricher. Register before Run.
-func (d *Discovery) SetEnricher(fn Enricher) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	d.enrichers = nil
-	if fn != nil {
-		d.enrichers = append(d.enrichers, fn)
+func New(cfg *config.Config, dockerClient docker.Client, logger *zap.Logger, options ...Option) *Discovery {
+	d := &Discovery{
+		cfg:           cfg,
+		docker:        dockerClient,
+		logger:        logger,
+		containers:    make(map[string]*ContainerInfo),
+		selectedPorts: make(map[string]uint16),
+		updates:       make(chan Update, 1),
 	}
-}
-
-// AddEnricher appends an enricher to the ordered chain. Register before Run.
-func (d *Discovery) AddEnricher(fn Enricher) {
-	if fn == nil {
-		return
+	for _, option := range options {
+		option(d)
 	}
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	d.enrichers = append(d.enrichers, fn)
+	return d
 }
 
-// Subscribe registers a delta subscriber. Register before Run.
-func (d *Discovery) Subscribe(fn Subscriber) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	d.subscribers = append(d.subscribers, fn)
+// Updates returns the latest authoritative states. Run closes the channel after
+// its workers and any in-flight refresh have stopped.
+func (d *Discovery) Updates() <-chan Update {
+	return d.updates
 }
 
-// Refresh lists containers, diffs the stored state, runs the enricher, and
-// returns the resulting Delta. Once Run has been called the Delta is also
-// dispatched to subscribers.
+// Refresh lists containers, replaces the stored state, and publishes an update.
+// Once Run has been called, it also publishes an update while Run is active.
 func (d *Discovery) Refresh(ctx context.Context) error {
-	_, err := d.refreshCycle(ctx)
-	return err
+	return d.refreshCycle(ctx)
 }
 
-func (d *Discovery) refreshCycle(ctx context.Context) (Delta, error) {
+func (d *Discovery) refreshCycle(ctx context.Context) error {
 	d.refreshMu.Lock()
 	defer d.refreshMu.Unlock()
 
@@ -135,28 +117,37 @@ func (d *Discovery) refreshCycle(ctx context.Context) (Delta, error) {
 		d.mu.Lock()
 		d.status.LastError = err.Error()
 		d.status.LastErrorAt = time.Now()
-		delta := Delta{Snapshot: d.snapshotLocked(), Status: d.status}
+		update := Update{Snapshot: d.snapshotLocked(), Status: d.status}
 		d.mu.Unlock()
 		if d.running.Load() {
-			d.dispatch(&delta)
+			d.publish(update)
 		}
-		return delta, fmt.Errorf("listing containers: %w", err)
+		return fmt.Errorf("listing containers: %w", err)
+	}
+
+	d.mu.RLock()
+	previous := cloneContainerMap(d.containers)
+	selectedPorts := cloneMap(d.selectedPorts)
+	d.mu.RUnlock()
+
+	next := d.refreshContainers(previous, containers)
+	if err := d.selectPorts(ctx, next, selectedPorts); err != nil {
+		return err
 	}
 
 	d.mu.Lock()
-	delta := d.refreshLocked(containers)
+	d.containers = next
+	d.selectedPorts = selectedPorts
 	d.status.LastRefresh = time.Now()
 	d.status.LastError = ""
 	d.status.LastErrorAt = time.Time{}
-	delta.Status = d.status
-	delta.Snapshot = d.snapshotLocked()
-	delta = CloneDelta(&delta)
+	update := Update{Snapshot: d.snapshotLocked(), Status: d.status}
 	d.mu.Unlock()
 
 	if d.running.Load() {
-		d.dispatch(&delta)
+		d.publish(update)
 	}
-	return delta, nil
+	return nil
 }
 
 // Snapshot returns a sorted copy of the current container state.
@@ -193,34 +184,20 @@ func (d *Discovery) setError(msg string) {
 	d.mu.Unlock()
 }
 
-func (d *Discovery) dispatch(delta *Delta) {
-	d.mu.RLock()
-	subs := slices.Clone(d.subscribers)
-	d.mu.RUnlock()
-	for _, s := range subs {
-		s(CloneDelta(delta))
+func (d *Discovery) publish(update Update) { //nolint:gocritic
+	// Updates are complete snapshots, so discard a buffered stale update rather
+	// than making discovery wait for the consumer.
+	select {
+	case d.updates <- update:
+	case <-d.updates:
+		d.updates <- update
 	}
 }
 
-func CloneDelta(delta *Delta) Delta {
-	if delta == nil {
-		return Delta{}
-	}
-	result := *delta
-	result.Added = cloneContainerInfos(delta.Added)
-	result.Updated = cloneContainerInfos(delta.Updated)
-	result.Removed = cloneContainerInfos(delta.Removed)
-	result.Snapshot = cloneContainerInfos(delta.Snapshot)
-	return result
-}
-
-func cloneContainerInfos(infos []*ContainerInfo) []*ContainerInfo {
-	if infos == nil {
-		return nil
-	}
-	result := make([]*ContainerInfo, len(infos))
-	for i, info := range infos {
-		result[i] = cloneContainerInfo(info)
+func cloneContainerMap(infos map[string]*ContainerInfo) map[string]*ContainerInfo {
+	result := make(map[string]*ContainerInfo, len(infos))
+	for id, info := range infos {
+		result[id] = cloneContainerInfo(info)
 	}
 	return result
 }
@@ -243,17 +220,13 @@ func cloneMap[K comparable, V any](src map[K]V) map[K]V {
 		return nil
 	}
 	result := make(map[K]V, len(src))
-	for key, value := range src {
-		result[key] = value
-	}
+	maps.Copy(result, src)
 	return result
 }
 
-func (d *Discovery) refreshLocked(containers []container.Summary) Delta {
+func (d *Discovery) refreshContainers(current map[string]*ContainerInfo, containers []container.Summary) map[string]*ContainerInfo {
 	seen := make(map[string]bool)
 	now := time.Now()
-
-	var added, updated, removed []*ContainerInfo
 
 	for i := range containers {
 		c := &containers[i]
@@ -268,7 +241,7 @@ func (d *Discovery) refreshLocked(containers []container.Summary) Delta {
 
 		seen[info.ContainerID] = true
 
-		prev, existed := d.containers[info.ContainerID]
+		prev, existed := current[info.ContainerID]
 
 		if containers[i].State == "running" {
 			info.IsRunning = true
@@ -278,7 +251,6 @@ func (d *Discovery) refreshLocked(containers []container.Summary) Delta {
 			if existed {
 				info.Ports = prev.Ports
 				info.PublishedPorts = prev.PublishedPorts
-				info.SelectedPort = prev.SelectedPort
 				if prev.IsRunning {
 					info.LastStopped = now
 				} else {
@@ -289,35 +261,20 @@ func (d *Discovery) refreshLocked(containers []container.Summary) Delta {
 			}
 		}
 
-		if info.IsRunning {
-			for _, enricher := range d.enrichers {
-				enricher(info)
-			}
-		}
-
-		d.containers[info.ContainerID] = info
-
-		if !existed {
-			added = append(added, info)
-		} else if !reflect.DeepEqual(prev, info) {
-			updated = append(updated, info)
-		}
+		current[info.ContainerID] = info
 	}
 
-	for id, info := range d.containers {
+	for id, info := range current {
 		if seen[id] {
 			continue
 		}
 		if info.IsRunning {
-			delete(d.containers, id)
-			removed = append(removed, info)
+			delete(current, id)
 		} else if !info.LastStopped.IsZero() && now.Sub(info.LastStopped) > d.cfg.StaleTTL {
-			delete(d.containers, id)
-			removed = append(removed, info)
+			delete(current, id)
 		}
 	}
-
-	return Delta{Added: added, Updated: updated, Removed: removed}
+	return current
 }
 
 func (d *Discovery) buildContainerInfo(c *container.Summary) *ContainerInfo {
@@ -435,18 +392,22 @@ func getLabel(labels map[string]string, key string) string {
 }
 
 func (d *Discovery) Run(ctx context.Context) {
-	if !d.running.CompareAndSwap(false, true) {
+	if !d.started.CompareAndSwap(false, true) {
 		return
 	}
+	d.running.Store(true)
 	go d.run(ctx)
 }
 
 func (d *Discovery) run(ctx context.Context) {
+	msgCh, errCh := d.dockerEvents(ctx)
+	_ = d.Refresh(ctx)
+
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		d.watchEvents(ctx)
+		d.watchEvents(ctx, msgCh, errCh)
 	}()
 	go func() {
 		defer wg.Done()
@@ -461,9 +422,19 @@ func (d *Discovery) run(ctx context.Context) {
 	}
 	wg.Wait()
 	d.running.Store(false)
+	d.refreshMu.Lock()
+	close(d.updates)
+	d.refreshMu.Unlock()
 }
 
-func (d *Discovery) watchEvents(ctx context.Context) {
+func (d *Discovery) dockerEvents(ctx context.Context) (<-chan events.Message, <-chan error) {
+	f := client.Filters{}
+	f.Add("type", "container")
+	f.Add("type", "network")
+	return d.docker.Events(ctx, client.EventsListOptions{Filters: f})
+}
+
+func (d *Discovery) watchEvents(ctx context.Context, msgCh <-chan events.Message, errCh <-chan error) {
 	d.logger.Info("watching docker events")
 	for {
 		select {
@@ -472,14 +443,6 @@ func (d *Discovery) watchEvents(ctx context.Context) {
 		default:
 		}
 
-		f := client.Filters{}
-		f.Add("type", "container")
-		f.Add("type", "network")
-
-		msgCh, errCh := d.docker.Events(ctx, client.EventsListOptions{
-			Filters: f,
-		})
-
 		d.streamEvents(ctx, msgCh, errCh)
 
 		select {
@@ -487,6 +450,7 @@ func (d *Discovery) watchEvents(ctx context.Context) {
 			return
 		case <-time.After(30 * time.Second):
 		}
+		msgCh, errCh = d.dockerEvents(ctx)
 	}
 }
 

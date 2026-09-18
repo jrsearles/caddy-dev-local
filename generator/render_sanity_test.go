@@ -409,6 +409,23 @@ func TestRenderScrollPreserve(t *testing.T) {
 	}
 }
 
+func TestRenderConfigStatePreserve(t *testing.T) {
+	page := GenerateIndexPage("dev.local", nil, `{"apps":{"http":{}}}`, "", 0)
+
+	checks := []string{
+		`sessionStorage.setItem('devlocal-config-expanded'`,
+		`sessionStorage.getItem('devlocal-config-expanded')`,
+		`sessionStorage.setItem('devlocal-config-raw'`,
+		`sessionStorage.getItem('devlocal-config-raw')`,
+		`function configNodePath(node)`,
+	}
+	for _, check := range checks {
+		if !strings.Contains(page, check) {
+			t.Errorf("config reload state missing %q", check)
+		}
+	}
+}
+
 func TestRenderPortlessContainer(t *testing.T) {
 	now := time.Now()
 	containers := []*discovery.ContainerInfo{

@@ -1,13 +1,8 @@
 package generator
 
 import (
-	"fmt"
-	"net"
-	"net/http"
-	"net/http/httptest"
 	"slices"
 	"testing"
-	"time"
 
 	"github.com/jrsearles/caddy-dev-local/config"
 	"github.com/jrsearles/caddy-dev-local/discovery"
@@ -67,109 +62,6 @@ func TestDomainComputationLocalhost(t *testing.T) {
 				t.Errorf("domainForContainerLocalhost() = %q, want %q", got, tt.expected)
 			}
 		})
-	}
-}
-
-func TestProbeHTTPPort(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer ts.Close()
-
-	_, portStr, _ := net.SplitHostPort(ts.Listener.Addr().String())
-	var port uint16
-	fmt.Sscanf(portStr, "%d", &port) //nolint:errcheck // test helper, value validated below
-
-	got, err := ProbeHTTPPort("localhost", []uint16{port}, 2*time.Second)
-	if err != nil {
-		t.Fatalf("ProbeHTTPPort() error = %v", err)
-	}
-	if got != port {
-		t.Errorf("ProbeHTTPPort() = %v, want %v", got, port)
-	}
-}
-
-func TestProbeHTTPPortNoHTTP(t *testing.T) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ln.Close()
-
-	go func() {
-		conn, acceptErr := ln.Accept()
-		if acceptErr != nil {
-			return
-		}
-		conn.Write([]byte("not http")) //nolint:errcheck // test helper
-		conn.Close()
-	}()
-
-	_, portStr, _ := net.SplitHostPort(ln.Addr().String())
-	var port uint16
-	fmt.Sscanf(portStr, "%d", &port) //nolint:errcheck // test helper, value validated below
-
-	_, err = ProbeHTTPPort("localhost", []uint16{port}, 500*time.Millisecond)
-	if err == nil {
-		t.Fatal("ProbeHTTPPort() should have returned error for non-HTTP server")
-	}
-}
-
-func TestPortSelectorSelectsPort(t *testing.T) {
-	cfg := &config.Config{ProbeTimeout: time.Second}
-	calls := 0
-	sel := PortSelector(cfg, func(host string, ports []uint16, timeout time.Duration) (uint16, error) {
-		calls++
-		if host != "localhost" {
-			t.Errorf("host = %q, want localhost", host)
-		}
-		return ports[0], nil
-	})
-
-	i := &discovery.ContainerInfo{
-		IsRunning:     true,
-		ContainerName: "web",
-		Ports:         []uint16{80, 8080},
-	}
-	sel(i)
-	if i.SelectedPort != 80 {
-		t.Errorf("SelectedPort = %d, want 80", i.SelectedPort)
-	}
-	if calls != 1 {
-		t.Errorf("probe called %d times, want 1", calls)
-	}
-}
-
-func TestPortSelectorSkipsStopped(t *testing.T) {
-	cfg := &config.Config{ProbeTimeout: time.Second}
-	calls := 0
-	sel := PortSelector(cfg, func(host string, ports []uint16, timeout time.Duration) (uint16, error) {
-		calls++
-		return ports[0], nil
-	})
-	i := &discovery.ContainerInfo{IsRunning: false, Ports: []uint16{80}}
-	sel(i)
-	if calls != 0 {
-		t.Errorf("probe called %d times, want 0 for stopped container", calls)
-	}
-}
-
-func TestPortSelectorSkipsCustomDomains(t *testing.T) {
-	cfg := &config.Config{ProbeTimeout: time.Second}
-	calls := 0
-	sel := PortSelector(cfg, func(host string, ports []uint16, timeout time.Duration) (uint16, error) {
-		calls++
-		return ports[0], nil
-	})
-	i := &discovery.ContainerInfo{
-		IsRunning:     true,
-		Ports:         []uint16{80},
-		Labels:        map[string]string{"dev.local.domains": "80:api.custom.local"},
-		CustomDomains: []discovery.CustomDomain{{Port: 80, Domain: "api.custom.local"}},
-	}
-	sel(i)
-	if calls != 0 {
-		t.Errorf("probe called %d times, want 0 for custom-domain container", calls)
 	}
 }
 

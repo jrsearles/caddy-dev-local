@@ -27,7 +27,7 @@ type ConfigSource interface {
 	RunningConfig(context.Context) (string, error)
 }
 
-type Plugin struct {
+type Hook struct {
 	tld       string
 	outputDir string
 	source    ConfigSource
@@ -36,20 +36,20 @@ type Plugin struct {
 	cachedConfig string
 }
 
-func New(tld, outputDir string, source ConfigSource) *Plugin {
-	return &Plugin{tld: tld, outputDir: outputDir, source: source}
+func New(tld, outputDir string, source ConfigSource) *Hook {
+	return &Hook{tld: tld, outputDir: outputDir, source: source}
 }
 
-func (p *Plugin) Name() string {
+func (p *Hook) Name() string {
 	return "ui"
 }
 
-func (p *Plugin) Apply(ctx context.Context, delta discovery.Delta) error { //nolint:gocritic
+func (p *Hook) Apply(ctx context.Context, update discovery.Update) error { //nolint:gocritic
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	if p.outputDir == "" {
-		return fmt.Errorf("ui plugin: output directory is empty")
+		return fmt.Errorf("ui hook: output directory is empty")
 	}
 	if p.source != nil {
 		if runningConfig, err := p.source.RunningConfig(ctx); err == nil {
@@ -57,12 +57,12 @@ func (p *Plugin) Apply(ctx context.Context, delta discovery.Delta) error { //nol
 		}
 	}
 
-	snapshot := canonicalSnapshot(delta.Snapshot)
+	snapshot := canonicalSnapshot(update.Snapshot)
 	lastRefresh := int64(0)
-	if !delta.Status.LastRefresh.IsZero() {
-		lastRefresh = delta.Status.LastRefresh.Unix()
+	if !update.Status.LastRefresh.IsZero() {
+		lastRefresh = update.Status.LastRefresh.Unix()
 	}
-	page := generator.GenerateIndexPage(p.tld, snapshot, p.cachedConfig, delta.Status.LastError, lastRefresh)
+	page := generator.GenerateIndexPage(p.tld, snapshot, p.cachedConfig, update.Status.LastError, lastRefresh)
 	fingerprint := fingerprint(page, generator.IndexCSS)
 
 	if err := os.MkdirAll(p.outputDir, 0755); err != nil {
@@ -89,11 +89,11 @@ func (p *Plugin) Apply(ctx context.Context, delta discovery.Delta) error { //nol
 	return nil
 }
 
-func (p *Plugin) Cleanup(context.Context) error {
+func (p *Hook) Cleanup(context.Context) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.outputDir == "" {
-		return fmt.Errorf("ui plugin: output directory is empty")
+		return fmt.Errorf("ui hook: output directory is empty")
 	}
 
 	var cleanupErrors []error

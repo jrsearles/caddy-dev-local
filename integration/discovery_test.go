@@ -9,14 +9,11 @@ import (
 
 func TestEventFlowAdded(t *testing.T) {
 	d := newDiscovery(t)
-	collector := collectDeltas()
-	d.Subscribe(collector.handler)
 
 	name := "it-added"
 	startTarget(t, targetOpts{name: name})
 
 	waitForContainers(t, d, name)
-	waitForAdded(t, collector, name)
 
 	if infoByName(d, name) == nil {
 		t.Fatalf("container %s missing from snapshot", name)
@@ -25,35 +22,28 @@ func TestEventFlowAdded(t *testing.T) {
 
 func TestEventFlowUpdated(t *testing.T) {
 	d := newDiscovery(t)
-	collector := collectDeltas()
-	d.Subscribe(collector.handler)
 
 	name := "it-updated"
 	tg := startTarget(t, targetOpts{name: name})
 
 	waitForContainers(t, d, name)
-	waitForAdded(t, collector, name)
 
 	tg.stop(t)
-	waitForDeltaField(t, collector, name, "updated")
+	waitForStopped(t, d, name)
 }
 
 func TestEventFlowRemovedRunning(t *testing.T) {
 	cfg := *sharedConfig
 	cfg.PollInterval = 500 * time.Millisecond
 	d := newDiscoveryWithConfig(t, &cfg)
-	collector := collectDeltas()
-	d.Subscribe(collector.handler)
 
 	name := "it-removed"
 	tg := startTarget(t, targetOpts{name: name})
 
 	waitForContainers(t, d, name)
-	waitForAdded(t, collector, name)
 
 	tg.forceRemove(t)
 
-	waitForRemoved(t, collector, name)
 	waitForAbsent(t, d, name)
 }
 
@@ -61,19 +51,15 @@ func TestEventFlowRemovedStale(t *testing.T) {
 	cfg := *sharedConfig
 	cfg.PollInterval = 500 * time.Millisecond
 	d := newDiscoveryWithConfig(t, &cfg)
-	collector := collectDeltas()
-	d.Subscribe(collector.handler)
 
 	name := "it-stale"
 	tg := startTarget(t, targetOpts{name: name})
 
 	waitForContainers(t, d, name)
-	waitForAdded(t, collector, name)
 
 	tg.stop(t)
 	tg.remove(t)
 
-	waitForRemoved(t, collector, name)
 	waitForAbsent(t, d, name)
 }
 

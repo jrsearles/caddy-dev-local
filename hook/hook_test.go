@@ -1,4 +1,4 @@
-package plugin
+package hook
 
 import (
 	"context"
@@ -14,18 +14,18 @@ import (
 	"github.com/jrsearles/caddy-dev-local/discovery"
 )
 
-func delta(id string) discovery.Delta {
-	return discovery.Delta{Snapshot: []*discovery.ContainerInfo{{ContainerID: id}}}
+func update(id string) discovery.Update {
+	return discovery.Update{Snapshot: []*discovery.ContainerInfo{{ContainerID: id}}}
 }
 
-func deltaID(d discovery.Delta) string { //nolint:gocritic
-	if len(d.Snapshot) == 0 {
+func updateID(update discovery.Update) string { //nolint:gocritic
+	if len(update.Snapshot) == 0 {
 		return ""
 	}
-	return d.Snapshot[0].ContainerID
+	return update.Snapshot[0].ContainerID
 }
 
-func runRuntime(t *testing.T, r *Runtime, initial discovery.Delta) context.CancelFunc { //nolint:gocritic
+func runRuntime(t *testing.T, r *Runtime, initial discovery.Update) context.CancelFunc { //nolint:gocritic
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
@@ -50,7 +50,7 @@ func receive(t *testing.T, ch <-chan string) string {
 	case value := <-ch:
 		return value
 	case <-time.After(time.Second):
-		t.Fatal("timed out waiting for plugin")
+		t.Fatal("timed out waiting for hook")
 		return ""
 	}
 }
@@ -58,44 +58,44 @@ func receive(t *testing.T, ch <-chan string) string {
 func TestInitialApply(t *testing.T) {
 	applied := make(chan string, 1)
 	r := NewRuntime(nil)
-	if err := r.Register(Func{PluginName: "initial", ApplyFunc: func(_ context.Context, d discovery.Delta) error {
-		applied <- deltaID(d)
+	if err := r.Register(Func{HookName: "initial", ApplyFunc: func(_ context.Context, update discovery.Update) error {
+		applied <- updateID(update)
 		return nil
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	runRuntime(t, r, delta("initial"))
+	runRuntime(t, r, update("initial"))
 
 	if got := receive(t, applied); got != "initial" {
-		t.Fatalf("initial delta = %q", got)
+		t.Fatalf("initial update = %q", got)
 	}
 }
 
 func TestInitialApplyFailureStopsStartup(t *testing.T) {
 	wantErr := errors.New("initial failure")
 	r := NewRuntime(nil)
-	if err := r.Register(Func{PluginName: "broken", ApplyFunc: func(context.Context, discovery.Delta) error {
+	if err := r.Register(Func{HookName: "broken", ApplyFunc: func(context.Context, discovery.Update) error {
 		return wantErr
 	}}); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if err := r.Start(ctx, delta("initial")); !errors.Is(err, wantErr) {
+	if err := r.Start(ctx, update("initial")); !errors.Is(err, wantErr) {
 		t.Fatalf("Start error = %v, want %v", err, wantErr)
 	}
 }
 
-func TestCleanupAttemptsEveryPlugin(t *testing.T) {
+func TestCleanupAttemptsEveryHook(t *testing.T) {
 	var cleaned []string
 	wantErr := errors.New("cleanup failure")
 	r := NewRuntime(nil)
 	for _, p := range []Func{
-		{PluginName: "first", CleanupFunc: func(context.Context) error {
+		{HookName: "first", CleanupFunc: func(context.Context) error {
 			cleaned = append(cleaned, "first")
 			return wantErr
 		}},
-		{PluginName: "second", CleanupFunc: func(context.Context) error {
+		{HookName: "second", CleanupFunc: func(context.Context) error {
 			cleaned = append(cleaned, "second")
 			return nil
 		}},
@@ -112,13 +112,13 @@ func TestCleanupAttemptsEveryPlugin(t *testing.T) {
 	}
 }
 
-func TestPluginIsolation(t *testing.T) {
+func TestHookIsolation(t *testing.T) {
 	slowStarted := make(chan struct{})
 	releaseSlow := make(chan struct{})
 	fast := make(chan string, 2)
 	r := NewRuntime(nil)
-	if err := r.Register(Func{PluginName: "slow", ApplyFunc: func(_ context.Context, d discovery.Delta) error {
-		if deltaID(d) == "update" {
+	if err := r.Register(Func{HookName: "slow", ApplyFunc: func(_ context.Context, update discovery.Update) error {
+		if updateID(update) == "update" {
 			close(slowStarted)
 			<-releaseSlow
 		}
@@ -126,25 +126,25 @@ func TestPluginIsolation(t *testing.T) {
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.Register(Func{PluginName: "fast", ApplyFunc: func(_ context.Context, d discovery.Delta) error {
-		fast <- deltaID(d)
+	if err := r.Register(Func{HookName: "fast", ApplyFunc: func(_ context.Context, update discovery.Update) error {
+		fast <- updateID(update)
 		return nil
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	runRuntime(t, r, delta("initial"))
+	runRuntime(t, r, update("initial"))
 	if got := receive(t, fast); got != "initial" {
-		t.Fatalf("initial delta = %q", got)
+		t.Fatalf("initial update = %q", got)
 	}
 
-	r.Submit(delta("update"))
+	r.Submit(update("update"))
 	select {
 	case <-slowStarted:
 	case <-time.After(time.Second):
-		t.Fatal("slow plugin did not start")
+		t.Fatal("slow hook did not start")
 	}
 	if got := receive(t, fast); got != "update" {
-		t.Fatalf("fast plugin delta = %q", got)
+		t.Fatalf("fast hook update = %q", got)
 	}
 	close(releaseSlow)
 }
@@ -154,8 +154,8 @@ func TestLatestWinsCoalescing(t *testing.T) {
 	block := make(chan struct{})
 	started := make(chan struct{})
 	r := NewRuntime(nil)
-	if err := r.Register(Func{PluginName: "coalesce", ApplyFunc: func(_ context.Context, d discovery.Delta) error {
-		id := deltaID(d)
+	if err := r.Register(Func{HookName: "coalesce", ApplyFunc: func(_ context.Context, update discovery.Update) error {
+		id := updateID(update)
 		applied <- id
 		if id == "one" {
 			close(started)
@@ -165,19 +165,19 @@ func TestLatestWinsCoalescing(t *testing.T) {
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	runRuntime(t, r, delta("initial"))
+	runRuntime(t, r, update("initial"))
 	if got := receive(t, applied); got != "initial" {
-		t.Fatalf("initial delta = %q", got)
+		t.Fatalf("initial update = %q", got)
 	}
 
-	r.Submit(delta("one"))
+	r.Submit(update("one"))
 	select {
 	case <-started:
 	case <-time.After(time.Second):
-		t.Fatal("plugin did not start update")
+		t.Fatal("hook did not start update")
 	}
-	r.Submit(delta("two"))
-	r.Submit(delta("three"))
+	r.Submit(update("two"))
+	r.Submit(update("three"))
 	close(block)
 	if got := receive(t, applied); got != "one" {
 		t.Fatalf("first update = %q", got)
@@ -191,27 +191,27 @@ func TestErrorIsolation(t *testing.T) {
 	core, logs := observer.New(zap.ErrorLevel)
 	r := NewRuntime(zap.New(core))
 	good := make(chan string, 2)
-	if err := r.Register(Func{PluginName: "bad", ApplyFunc: func(_ context.Context, d discovery.Delta) error {
-		if deltaID(d) == "initial" {
+	if err := r.Register(Func{HookName: "bad", ApplyFunc: func(_ context.Context, update discovery.Update) error {
+		if updateID(update) == "initial" {
 			return nil
 		}
 		return errors.New("broken")
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.Register(Func{PluginName: "good", ApplyFunc: func(_ context.Context, d discovery.Delta) error {
-		good <- deltaID(d)
+	if err := r.Register(Func{HookName: "good", ApplyFunc: func(_ context.Context, update discovery.Update) error {
+		good <- updateID(update)
 		return nil
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	runRuntime(t, r, delta("initial"))
+	runRuntime(t, r, update("initial"))
 	if got := receive(t, good); got != "initial" {
-		t.Fatalf("initial delta = %q", got)
+		t.Fatalf("initial update = %q", got)
 	}
-	r.Submit(delta("update"))
+	r.Submit(update("update"))
 	if got := receive(t, good); got != "update" {
-		t.Fatalf("update delta = %q", got)
+		t.Fatalf("update = %q", got)
 	}
 
 	deadline := time.Now().Add(time.Second)
@@ -221,8 +221,8 @@ func TestErrorIsolation(t *testing.T) {
 	if logs.Len() != 1 {
 		t.Fatalf("error logs = %d, want 1", logs.Len())
 	}
-	if got := logs.All()[0].ContextMap()["plugin"]; got != "bad" {
-		t.Fatalf("logged plugin = %v", got)
+	if got := logs.All()[0].ContextMap()["hook"]; got != "bad" {
+		t.Fatalf("logged hook = %v", got)
 	}
 }
 
@@ -232,8 +232,8 @@ func TestCancellation(t *testing.T) {
 	stopped := make(chan struct{})
 	var once sync.Once
 	r := NewRuntime(nil)
-	if err := r.Register(Func{PluginName: "cancel", ApplyFunc: func(ctx context.Context, d discovery.Delta) error {
-		if deltaID(d) == "initial" {
+	if err := r.Register(Func{HookName: "cancel", ApplyFunc: func(ctx context.Context, update discovery.Update) error {
+		if updateID(update) == "initial" {
 			close(initialApplied)
 			return nil
 		}
@@ -244,18 +244,18 @@ func TestCancellation(t *testing.T) {
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	cancel := runRuntime(t, r, delta("initial"))
+	cancel := runRuntime(t, r, update("initial"))
 	<-initialApplied
-	r.Submit(delta("update"))
+	r.Submit(update("update"))
 	select {
 	case <-started:
 	case <-time.After(time.Second):
-		t.Fatal("plugin did not start")
+		t.Fatal("hook did not start")
 	}
 	cancel()
 	select {
 	case <-stopped:
 	case <-time.After(time.Second):
-		t.Fatal("plugin did not receive cancellation")
+		t.Fatal("hook did not receive cancellation")
 	}
 }

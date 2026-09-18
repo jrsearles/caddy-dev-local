@@ -10,12 +10,11 @@ import (
 	"github.com/jrsearles/caddy-dev-local/config"
 	"github.com/jrsearles/caddy-dev-local/discovery"
 	dockerclient "github.com/jrsearles/caddy-dev-local/docker"
-	"github.com/jrsearles/caddy-dev-local/generator"
+	"github.com/jrsearles/caddy-dev-local/hook"
+	caddyhook "github.com/jrsearles/caddy-dev-local/hooks/caddy"
+	hostshook "github.com/jrsearles/caddy-dev-local/hooks/hosts"
+	uihook "github.com/jrsearles/caddy-dev-local/hooks/ui"
 	"github.com/jrsearles/caddy-dev-local/hosts"
-	"github.com/jrsearles/caddy-dev-local/plugin"
-	caddyplugin "github.com/jrsearles/caddy-dev-local/plugins/caddy"
-	hostsplugin "github.com/jrsearles/caddy-dev-local/plugins/hosts"
-	uiplugin "github.com/jrsearles/caddy-dev-local/plugins/ui"
 )
 
 type Options struct {
@@ -47,26 +46,45 @@ func Run(ctx context.Context, options Options) error {
 		options.DockerClient = client
 	}
 
-	disc := discovery.New(options.Config, options.DockerClient, options.Logger)
+	var discoveryOptions []discovery.Option
 	if options.Caddy || options.UI {
-		disc.AddEnricher(generator.PortSelector(options.Config, generator.ProbeHTTPPort))
+		discoveryOptions = append(discoveryOptions, discovery.WithPortProbe(discovery.ProbeHTTPPort))
 	}
+	disc := discovery.New(options.Config, options.DockerClient, options.Logger, discoveryOptions...)
 
 	runtime, err := newRuntime(options)
 	if err != nil {
 		return err
 	}
 
-	if err := disc.Refresh(ctx); err != nil {
-		options.Logger.Error("initial discovery refresh failed", zap.Error(err))
+	disc.Run(ctx)
+	updates := disc.Updates()
+	var initial discovery.Update
+	var ok bool
+	select {
+	case initial, ok = <-updates:
+	case <-ctx.Done():
 	}
-	initial := discovery.Delta{Snapshot: disc.Snapshot(), Status: disc.Status()}
+	if !ok {
+		return fmt.Errorf("discovery stopped before publishing initial state")
+	}
 	if err := runtime.Start(ctx, initial); err != nil {
 		return err
 	}
-	disc.Subscribe(runtime.Submit)
-	disc.Run(ctx)
 	options.Logger.Info("discovery started", zap.Int("containers", len(initial.Snapshot)))
+	go func() {
+		for {
+			select {
+			case update, open := <-updates:
+				if !open {
+					return
+				}
+				runtime.Submit(update)
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
 
 	<-ctx.Done()
 	return runtime.Wait()
@@ -89,30 +107,30 @@ func Cleanup(ctx context.Context, options Options) error {
 	return runtime.Cleanup(ctx)
 }
 
-func newRuntime(options Options) (*plugin.Runtime, error) {
-	runtime := plugin.NewRuntime(options.Logger)
+func newRuntime(options Options) (*hook.Runtime, error) {
+	runtime := hook.NewRuntime(options.Logger)
 	switch {
 	case options.Caddy && options.UI:
-		caddy := caddyplugin.New(options.Config, options.IndexDir, options.AdminClient)
-		ui := uiplugin.New(options.Config.TLD, options.IndexDir, options.AdminClient)
-		if err := runtime.Register(plugin.NewSequence("caddy-ui", caddy, ui)); err != nil {
+		caddy := caddyhook.New(options.Config, options.IndexDir, options.AdminClient)
+		ui := uihook.New(options.Config.TLD, options.IndexDir, options.AdminClient)
+		if err := runtime.Register(hook.NewSequence("caddy-ui", caddy, ui)); err != nil {
 			return nil, err
 		}
 	case options.Caddy:
-		if err := runtime.Register(caddyplugin.New(options.Config, "", options.AdminClient)); err != nil {
+		if err := runtime.Register(caddyhook.New(options.Config, "", options.AdminClient)); err != nil {
 			return nil, err
 		}
 	case options.UI:
-		if err := runtime.Register(uiplugin.New(options.Config.TLD, options.IndexDir, options.AdminClient)); err != nil {
+		if err := runtime.Register(uihook.New(options.Config.TLD, options.IndexDir, options.AdminClient)); err != nil {
 			return nil, err
 		}
 	}
 	if options.Hosts {
 		writable := hosts.CanWrite()
 		if !writable {
-			options.Logger.Warn("hosts file not writable, skipping hosts plugin")
+			options.Logger.Warn("hosts file not writable, skipping hosts hook")
 		}
-		if err := runtime.Register(hostsplugin.New(options.Config, true, writable)); err != nil {
+		if err := runtime.Register(hostshook.New(options.Config, true, writable)); err != nil {
 			return nil, err
 		}
 	}

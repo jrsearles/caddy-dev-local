@@ -5,7 +5,6 @@ import (
 	"slices"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/jrsearles/caddy-dev-local/config"
 	"github.com/jrsearles/caddy-dev-local/discovery"
@@ -15,8 +14,6 @@ const (
 	localhostName   = "localhost"
 	localhostSuffix = ".localhost"
 )
-
-type probeFunc func(host string, ports []uint16, timeout time.Duration) (uint16, error)
 
 // DomainTargets computes the domain -> upstream-target map for all running
 // containers, merging duplicate domains and registering the TLD and .localhost
@@ -96,38 +93,6 @@ func Domains(cfg *config.Config, containers []*discovery.ContainerInfo) []string
 
 	sort.Strings(domains)
 	return domains
-}
-
-// PortSelector builds the discovery enricher that probes a running container's
-// ports to select its HTTP port. The hosts binary does not register an
-// enricher; the caddy entry point injects ProbeHTTPPort.
-func PortSelector(cfg *config.Config, probeFn probeFunc) discovery.Enricher {
-	return func(info *discovery.ContainerInfo) {
-		if !info.IsRunning {
-			return
-		}
-
-		if getLabel(info.Labels, "dev.local.domains") != "" {
-			return
-		}
-
-		host, ports := probeTarget(info)
-		if len(ports) == 0 {
-			return
-		}
-		port, err := probeFn(host, ports, cfg.ProbeTimeout)
-		if err == nil {
-			info.SelectedPort = port
-		}
-	}
-}
-
-func probeTarget(info *discovery.ContainerInfo) (string, []uint16) {
-	ports := make([]uint16, 0, len(info.Ports))
-	for _, p := range info.Ports {
-		ports = append(ports, effectivePort(info, p))
-	}
-	return hostFor(info), ports
 }
 
 func effectivePort(info *discovery.ContainerInfo, private uint16) uint16 {

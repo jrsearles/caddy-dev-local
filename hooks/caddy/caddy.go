@@ -21,31 +21,31 @@ const (
 	keyHandler   = "handler"
 )
 
-type Plugin struct {
+type Hook struct {
 	cfg      *config.Config
 	indexDir string
 	client   *caddyapi.Client
 }
 
-func New(cfg *config.Config, indexDir string, client *caddyapi.Client) *Plugin {
-	return &Plugin{cfg: cfg, indexDir: indexDir, client: client}
+func New(cfg *config.Config, indexDir string, client *caddyapi.Client) *Hook {
+	return &Hook{cfg: cfg, indexDir: indexDir, client: client}
 }
 
-func (p *Plugin) Name() string {
+func (p *Hook) Name() string {
 	return "caddy"
 }
 
-func (p *Plugin) Apply(ctx context.Context, delta discovery.Delta) error { //nolint:gocritic
+func (p *Hook) Apply(ctx context.Context, update discovery.Update) error { //nolint:gocritic
 	if p.cfg == nil {
-		return fmt.Errorf("caddy plugin: config is nil")
+		return fmt.Errorf("caddy hook: config is nil")
 	}
 	if p.client == nil {
-		return fmt.Errorf("caddy plugin: API client is nil")
+		return fmt.Errorf("caddy hook: API client is nil")
 	}
-	if delta.Status.LastRefresh.IsZero() && delta.Status.LastError != "" {
+	if update.Status.LastRefresh.IsZero() && update.Status.LastError != "" {
 		return nil
 	}
-	targets := generator.DomainTargets(p.cfg, delta.Snapshot)
+	targets := generator.DomainTargets(p.cfg, update.Snapshot)
 	routes, policies, err := buildConfig(p.cfg, p.indexDir, targets)
 	if err != nil {
 		return err
@@ -53,9 +53,9 @@ func (p *Plugin) Apply(ctx context.Context, delta discovery.Delta) error { //nol
 	return p.client.Reconcile(ctx, routes, policies)
 }
 
-func (p *Plugin) Cleanup(ctx context.Context) error {
+func (p *Hook) Cleanup(ctx context.Context) error {
 	if p.client == nil {
-		return fmt.Errorf("caddy plugin: API client is nil")
+		return fmt.Errorf("caddy hook: API client is nil")
 	}
 	return p.client.Cleanup(ctx)
 }

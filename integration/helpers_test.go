@@ -111,18 +111,6 @@ func (tg target) forceRemove(t *testing.T) {
 	}
 }
 
-type deltaCollector struct {
-	ch chan discovery.Delta
-}
-
-func collectDeltas() *deltaCollector {
-	return &deltaCollector{ch: make(chan discovery.Delta, 256)}
-}
-
-func (c *deltaCollector) handler(d discovery.Delta) {
-	c.ch <- d
-}
-
 // namesInSnapshot returns the set of container names currently discovered.
 func namesInSnapshot(d *discovery.Discovery) map[string]bool {
 	names := make(map[string]bool)
@@ -201,42 +189,16 @@ func waitForAbsent(t *testing.T, d *discovery.Discovery, name string) {
 	t.Fatalf("timed out waiting for %q to leave snapshot; got %v", name, namesInSnapshot(d))
 }
 
-// waitForDelta returns the first Delta whose Removed contains a container with
-// the given name, scanning up to the timeout.
-func waitForRemoved(t *testing.T, c *deltaCollector, name string) discovery.Delta {
+func waitForStopped(t *testing.T, d *discovery.Discovery, name string) {
 	t.Helper()
-	return waitForDeltaField(t, c, name, "removed")
-}
-
-func waitForAdded(t *testing.T, c *deltaCollector, name string) discovery.Delta {
-	t.Helper()
-	return waitForDeltaField(t, c, name, "added")
-}
-
-func waitForDeltaField(t *testing.T, c *deltaCollector, name, field string) discovery.Delta {
-	t.Helper()
-	deadline := time.After(30 * time.Second)
-	for {
-		select {
-		case d := <-c.ch:
-			var list []*discovery.ContainerInfo
-			switch field {
-			case "added":
-				list = d.Added
-			case "updated":
-				list = d.Updated
-			case "removed":
-				list = d.Removed
-			}
-			for _, info := range list {
-				if info.ContainerName == name {
-					return d
-				}
-			}
-		case <-deadline:
-			t.Fatalf("timed out waiting for %s delta for %s", field, name)
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		if info := infoByName(d, name); info != nil && !info.IsRunning {
+			return
 		}
+		time.Sleep(150 * time.Millisecond)
 	}
+	t.Fatalf("timed out waiting for %q to stop", name)
 }
 
 func labels(kv ...string) map[string]string {

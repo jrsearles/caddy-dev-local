@@ -27,20 +27,20 @@ func TestApplyWritesReadableArtifactsAndStableVersion(t *testing.T) {
 	p := New("dev.local", dir, configSourceFunc(func(context.Context) (string, error) {
 		return `{"apps":{"http":{}}}`, nil
 	}))
-	delta := discovery.Delta{
+	update := discovery.Update{
 		Snapshot: []*discovery.ContainerInfo{
 			{ContainerID: "b", ContainerName: "api", IsRunning: true, Ports: []uint16{443, 80}, SelectedPort: 80},
 			{ContainerID: "a", ContainerName: "web", IsRunning: true, Ports: []uint16{80}, SelectedPort: 80},
 		},
 		Status: discovery.Status{LastRefresh: time.Unix(1700000000, 0)},
 	}
-	if err := p.Apply(context.Background(), delta); err != nil {
+	if err := p.Apply(context.Background(), update); err != nil {
 		t.Fatal(err)
 	}
 	firstVersion := readVersion(t, dir)
 
-	delta.Snapshot[0], delta.Snapshot[1] = delta.Snapshot[1], delta.Snapshot[0]
-	if err := p.Apply(context.Background(), delta); err != nil {
+	update.Snapshot[0], update.Snapshot[1] = update.Snapshot[1], update.Snapshot[0]
+	if err := p.Apply(context.Background(), update); err != nil {
 		t.Fatal(err)
 	}
 	if secondVersion := readVersion(t, dir); secondVersion != firstVersion {
@@ -49,7 +49,7 @@ func TestApplyWritesReadableArtifactsAndStableVersion(t *testing.T) {
 	if err := os.Chmod(filepath.Join(dir, "index.css"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := p.Apply(context.Background(), delta); err != nil {
+	if err := p.Apply(context.Background(), update); err != nil {
 		t.Fatal(err)
 	}
 
@@ -88,10 +88,10 @@ func TestApplyCachesConfigAcrossSourceFailure(t *testing.T) {
 		return "", errors.New("caddy unavailable")
 	}))
 
-	if err := p.Apply(context.Background(), discovery.Delta{}); err != nil {
+	if err := p.Apply(context.Background(), discovery.Update{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := p.Apply(context.Background(), discovery.Delta{}); err != nil {
+	if err := p.Apply(context.Background(), discovery.Update{}); err != nil {
 		t.Fatal(err)
 	}
 	page, err := os.ReadFile(filepath.Join(p.outputDir, "index.html"))
@@ -105,13 +105,13 @@ func TestApplyCachesConfigAcrossSourceFailure(t *testing.T) {
 
 func TestVersionChangesWithRenderedState(t *testing.T) {
 	p := New("dev.local", t.TempDir(), nil)
-	delta := discovery.Delta{Snapshot: []*discovery.ContainerInfo{{ContainerID: "a", ContainerName: "web", IsRunning: true, Ports: []uint16{80}}}}
-	if err := p.Apply(context.Background(), delta); err != nil {
+	update := discovery.Update{Snapshot: []*discovery.ContainerInfo{{ContainerID: "a", ContainerName: "web", IsRunning: true, Ports: []uint16{80}}}}
+	if err := p.Apply(context.Background(), update); err != nil {
 		t.Fatal(err)
 	}
 	before := readVersion(t, p.outputDir)
-	delta.Status.LastError = "Docker unavailable"
-	if err := p.Apply(context.Background(), delta); err != nil {
+	update.Status.LastError = "Docker unavailable"
+	if err := p.Apply(context.Background(), update); err != nil {
 		t.Fatal(err)
 	}
 	if after := readVersion(t, p.outputDir); after == before {
@@ -122,7 +122,7 @@ func TestVersionChangesWithRenderedState(t *testing.T) {
 func TestCleanupRemovesOnlyGeneratedArtifacts(t *testing.T) {
 	dir := t.TempDir()
 	p := New("dev.local", dir, nil)
-	if err := p.Apply(context.Background(), discovery.Delta{}); err != nil {
+	if err := p.Apply(context.Background(), discovery.Update{}); err != nil {
 		t.Fatal(err)
 	}
 	unrelated := filepath.Join(dir, "keep.txt")

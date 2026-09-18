@@ -43,16 +43,16 @@ func (a *capturedAPI) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func TestPluginBuildsRouteIndexAndTLSJSON(t *testing.T) {
+func TestHookBuildsRouteIndexAndTLSJSON(t *testing.T) {
 	api := &capturedAPI{}
 	server := httptest.NewServer(http.HandlerFunc(api.serveHTTP))
 	defer server.Close()
 	cfg := &config.Config{TLD: "dev.local", Tracing: true}
-	plugin := New(cfg, "/tmp/devlocal-index", caddyapi.New(caddyapi.Options{BaseURL: server.URL}))
-	delta := discovery.Delta{Snapshot: []*discovery.ContainerInfo{{
+	hook := New(cfg, "/tmp/devlocal-index", caddyapi.New(caddyapi.Options{BaseURL: server.URL}))
+	update := discovery.Update{Snapshot: []*discovery.ContainerInfo{{
 		ContainerName: "web", IsRunning: true, SelectedPort: 8080,
 	}}}
-	if err := plugin.Apply(context.Background(), delta); err != nil {
+	if err := hook.Apply(context.Background(), update); err != nil {
 		t.Fatal(err)
 	}
 

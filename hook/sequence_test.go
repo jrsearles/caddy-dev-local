@@ -1,4 +1,4 @@
-package plugin
+package hook
 
 import (
 	"context"
@@ -11,10 +11,10 @@ import (
 
 func TestSequenceOrdersApplyAndCleanup(t *testing.T) {
 	var applied, cleaned []string
-	makePlugin := func(name string) Func {
+	makeHook := func(name string) Func {
 		return Func{
-			PluginName: name,
-			ApplyFunc: func(context.Context, discovery.Delta) error {
+			HookName: name,
+			ApplyFunc: func(context.Context, discovery.Update) error {
 				applied = append(applied, name)
 				return nil
 			},
@@ -24,8 +24,8 @@ func TestSequenceOrdersApplyAndCleanup(t *testing.T) {
 			},
 		}
 	}
-	sequence := NewSequence("ordered", makePlugin("first"), makePlugin("second"))
-	if err := sequence.Apply(context.Background(), discovery.Delta{}); err != nil {
+	sequence := NewSequence("ordered", makeHook("first"), makeHook("second"))
+	if err := sequence.Apply(context.Background(), discovery.Update{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := sequence.Cleanup(context.Background()); err != nil {
@@ -44,19 +44,19 @@ func TestSequenceStopsApplyButContinuesCleanupOnError(t *testing.T) {
 	secondApplied := false
 	secondCleaned := false
 	sequence := NewSequence("ordered",
-		Func{PluginName: "first", ApplyFunc: func(context.Context, discovery.Delta) error { return wantErr }, CleanupFunc: func(context.Context) error { return wantErr }},
-		Func{PluginName: "second", ApplyFunc: func(context.Context, discovery.Delta) error { secondApplied = true; return nil }, CleanupFunc: func(context.Context) error { secondCleaned = true; return nil }},
+		Func{HookName: "first", ApplyFunc: func(context.Context, discovery.Update) error { return wantErr }, CleanupFunc: func(context.Context) error { return wantErr }},
+		Func{HookName: "second", ApplyFunc: func(context.Context, discovery.Update) error { secondApplied = true; return nil }, CleanupFunc: func(context.Context) error { secondCleaned = true; return nil }},
 	)
-	if err := sequence.Apply(context.Background(), discovery.Delta{}); !errors.Is(err, wantErr) {
+	if err := sequence.Apply(context.Background(), discovery.Update{}); !errors.Is(err, wantErr) {
 		t.Fatalf("Apply error = %v", err)
 	}
 	if secondApplied {
-		t.Fatal("second plugin applied after dependency failure")
+		t.Fatal("second hook applied after dependency failure")
 	}
 	if err := sequence.Cleanup(context.Background()); !errors.Is(err, wantErr) {
 		t.Fatalf("Cleanup error = %v", err)
 	}
 	if !secondCleaned {
-		t.Fatal("second plugin cleanup was skipped")
+		t.Fatal("second hook cleanup was skipped")
 	}
 }

@@ -280,6 +280,15 @@
     let configTree = null;
     let showingRaw = false;
 
+    function configNodePath(node) {
+        const path = [];
+        while (node && node.parent) {
+            path.push(String(node.key));
+            node = node.parent;
+        }
+        return path.reverse();
+    }
+
     function configExpandAll() {
         if (configTree && window.jsonview) jsonview.expand(configTree);
     }
@@ -319,7 +328,19 @@
         if (!src || !tree || !raw || typeof jsonview === 'undefined') return;
         try {
             configTree = jsonview.create(JSON.parse(src.textContent));
-            jsonview.traverse(configTree, (n) => { if (n.depth <= 1) n.isExpanded = true; });
+            let expanded = null;
+            try {
+                const saved = sessionStorage.getItem('devlocal-config-expanded');
+                if (saved !== null) {
+                    const paths = JSON.parse(saved);
+                    if (Array.isArray(paths)) expanded = new Set(paths.map((path) => JSON.stringify(path)));
+                }
+            } catch (e) {}
+            jsonview.traverse(configTree, (n) => {
+                n.isExpanded = expanded === null
+                    ? n.depth <= 1
+                    : expanded.has(JSON.stringify(configNodePath(n)));
+            });
             jsonview.render(configTree, tree);
             raw.style.display = 'none';
             tree.hidden = false;
@@ -352,6 +373,14 @@
             sessionStorage.setItem('devlocal-scroll', String(Math.round(window.scrollY)));
             const q = document.getElementById('devlocal-search');
             if (q) sessionStorage.setItem('devlocal-search', q.value);
+            sessionStorage.setItem('devlocal-config-raw', String(showingRaw));
+            if (configTree && window.jsonview) {
+                const expanded = [];
+                jsonview.traverse(configTree, (node) => {
+                    if (node.children.length && node.isExpanded) expanded.push(configNodePath(node));
+                });
+                sessionStorage.setItem('devlocal-config-expanded', JSON.stringify(expanded));
+            }
         } catch (e) {}
     }
     function restoreUIState() {
@@ -360,6 +389,7 @@
 
             const tab = params.get('tab') || sessionStorage.getItem('devlocal-tab') || 'containers';
             if (tab !== 'containers') switchTab(tab);
+            if (tab === 'config' && sessionStorage.getItem('devlocal-config-raw') === 'true') toggleRawJSON();
 
             const open = JSON.parse(sessionStorage.getItem('devlocal-open') || '[]');
             const openParam = params.getAll('open');

@@ -15,8 +15,8 @@ A Docker discovery controller and Caddy plugin that automatically registers `{pr
 - **Index page** — Visit `dev.local` (or `dev.localhost`) to see all registered containers, with the following features:
   - **Cards** show each container's icon, image, health badge (`healthy`/`starting`/`unhealthy`), and running/stopped status with live relative timestamps ("since 3m ago")
   - **Search** — filter across name, image, project, service, and domains using the header search box; filter terms are space-separated (all must match); query is synced to the URL as `?q=` for bookmarking; matching project sections auto-expand while filtering and collapse back when the filter is cleared
-  - **Compose groups** — services grouped under collapsible project sections with up/down counts; expansion state and active tab are preserved across live reloads via `sessionStorage` and reflected in the URL (`?open=`, `?tab=`)
-  - **Detail drawer** — click any container card header to slide open a side panel with full image, short container ID, networks, published port table, health status, and filtered labels (`dev.local.*`, `com.docker.compose.*`, `org.opencontainers.image.*`); includes an "Open in Docker Desktop" button
+  - **Compose groups** — services grouped under collapsible project sections with up/down counts; project and Caddy config expansion state, config view mode, and the active tab are preserved across live reloads via `sessionStorage` (project expansion and active tab are also reflected in the URL via `?open=` and `?tab=`)
+  - **Detail drawer** — click any container card header to slide open a wide side panel with full image, short container ID, networks, published port table, health status, and filtered labels (`dev.local.*`, `com.docker.compose.*`, `org.opencontainers.image.*`); includes an "Open in Docker Desktop" button
   - **Domain rows** — copy button per domain copies `host:port`; a globe icon links directly to the service in the browser
   - **Docker Desktop links** — each container card has an icon that opens Docker Desktop's Logs view filtered to that container (`docker-desktop://dashboard/logs?containerIds={id}`); the icon next to "Containers" opens the dashboard (`docker-desktop://dashboard/open`); each Compose project section header links to that project's view (`docker-desktop://dashboard/apps/{project}`)
   - **Live refresh** — polls a lightweight `/version.json` endpoint every 30 seconds and reloads only on change; scroll position is preserved across reloads; falls back to full-page hash polling if `version.json` is unavailable
@@ -25,7 +25,7 @@ A Docker discovery controller and Caddy plugin that automatically registers `{pr
   - **Theme** — defaults to system preference; header toggle cycles light → dark → system
 - **Stale cleanup** — Stopped containers stay listed on the index page (marked stopped) until the stale TTL expires, then their config is removed
 - **OpenTelemetry tracing** — Dynamic reverse proxy routes include Caddy's `tracing` handler for automatic span collection; opt out with `--no-tracing`
-- **Composable plugins** — Caddy registration, UI rendering, and hosts-file updates consume the same discovery stream independently
+- **Composable hooks** — Caddy registration, UI rendering, and hosts-file updates independently reconcile complete discovery snapshots
 - **Standalone controller** — `devlocal` can attach to a separate Caddy process on the same host through its admin API
 
 ## Quick Start
@@ -104,9 +104,9 @@ services:
 | `--poll-interval` | `DEVLOCAL_POLL_INTERVAL` | `30s` | Periodic full refresh as a safety net for missed Docker events; `0` disables |
 | `--config` | `DEVLOCAL_CONFIG` | (auto-detect) | Path to a static Caddyfile loaded as-is |
 
-The standalone `devlocal` command also supports `--caddy`, `--ui`, `--caddy-admin`, `--caddy-server`, `--allow-create-server`, and `--index-dir`. Caddy, UI, and hosts plugins are enabled by default.
+The standalone `devlocal` command also supports `--caddy`, `--ui`, `--caddy-admin`, `--caddy-server`, `--allow-create-server`, and `--index-dir`. Caddy, UI, and hosts hooks are enabled by default.
 
-> **Note:** The periodic poll backstops missed Docker events and repairs Caddy configuration changed by another process. Plugin workers coalesce queued work to the newest complete snapshot.
+> **Note:** The periodic poll backstops missed Docker events and repairs Caddy configuration changed by another process. Hook workers coalesce queued work to the newest complete snapshot.
 
 ## Custom Caddyfile
 
@@ -116,16 +116,24 @@ caddy-dev-local auto-detects `Caddyfile`, `Caddyfile.json`, `Caddyfile.json5`, o
 
 ## Building from Source
 
-Requires [just](https://github.com/casey/just) and [golangci-lint](https://golangci-lint.run/).
+Requires [Go 1.26.2 or newer](https://go.dev/dl/), [just](https://github.com/casey/just), and [golangci-lint](https://golangci-lint.run/). Go 1.26.2 includes the upstream Windows networking-runtime fix required by generated `caddy.exe` binaries.
 
 ```bash
 just install-lint           # Install golangci-lint (one-time)
-just build-linux-amd64      # Build for linux-amd64
-just build-all              # Build for all platforms
+just build-caddy            # Build Caddy with the devlocal plugin
 just build-devlocal         # Build the standalone controller binaries
+just build-all              # Build both executable families
+just build-linux-amd64      # Build plugin-enabled Caddy for linux-amd64
 just lint                   # Run linter
 just check                  # Run linter + tests
 ```
+
+The builds produce two independent executables under `artifacts/binaries/<platform>/`:
+
+| Executable | Mode |
+|---|---|
+| `caddy` (`caddy.exe` on Windows) | A custom Caddy build containing the devlocal command plugin; run it with `caddy devlocal` |
+| `devlocal` (`devlocal.exe` on Windows) | A standalone controller that connects to a separately running Caddy instance through its admin API |
 
 See `just --list` for all available recipes.
 
@@ -141,7 +149,7 @@ The image runs `caddy devlocal`, so it expects the same mounts as the prebuilt i
 
 ## Standalone Controller
 
-The `devlocal` executable runs discovery and all built-in plugins without embedding Caddy. Start Caddy separately with its admin API enabled, then run:
+The `devlocal` executable runs discovery and all built-in hooks without embedding Caddy. Start Caddy separately with its admin API enabled, then run:
 
 ```bash
 just build-devlocal
@@ -190,8 +198,8 @@ Non-HTTP services like `mssql` are also registered (see it on the index page); S
 2. Lists all containers via the Docker API
 3. Computes domains from container labels (Compose project/service or container name)
 4. Registers running containers that publish at least one port; unpublished containers are skipped
-5. For multi-port containers, probes `localhost:{published_port}` to find the HTTP server (common ports 80, 8080, 443, 8443 are checked first)
-6. Publishes each immutable discovery update to independent Caddy, UI, and hosts-file plugin workers
+5. Probes only each running container's published host ports at `localhost:{published_port}` to find the HTTP server (common ports 80, 8080, 443, 8443 are checked first)
+6. Publishes each immutable discovery update to independent Caddy, UI, and hosts-file hook workers
 7. Reconciles stable, owned route and TLS policy IDs against Caddy's actual configuration, preserving unrelated resources and adopting state after restarts
 8. Renders the UI files independently and registers their directory with Caddy's file server
 9. Polls Docker every `--poll-interval` (default 30s) as a safety net for missed events and external Caddy changes
@@ -238,7 +246,7 @@ DEVLOCAL_HOSTS_FILE=false caddy devlocal
 
 ### Cleanup
 
-Remove all resources managed by the enabled plugins:
+Remove all resources managed by the enabled hooks:
 
 ```bash
 caddy devlocal-clean
@@ -246,7 +254,7 @@ caddy devlocal-clean
 devlocal clean
 ```
 
-`devlocal clean` runs cleanup for every enabled plugin: it removes owned Caddy routes and TLS policy, generated UI files, and the managed hosts block. It accepts the normal plugin and Caddy connection flags, such as `devlocal clean --caddy-admin http://localhost:2020`. Cleanup is explicit and does not run automatically when the controller stops.
+`devlocal clean` runs cleanup for every enabled hook: it removes owned Caddy routes and TLS policy, generated UI files, and the managed hosts block. It accepts the normal hook and Caddy connection flags, such as `devlocal clean --caddy-admin http://localhost:2020`. Cleanup is explicit and does not run automatically when the controller stops.
 
 `caddy devlocal-clean --index-dir /custom/path` removes the local generated UI files and hosts block; embedded Caddy routes disappear with that Caddy process.
 
@@ -268,9 +276,9 @@ caddy devlocal --no-tracing
 DEVLOCAL_TRACING=false caddy devlocal
 ```
 
-## Plugin Composition
+## Hook Composition
 
-The standalone controller enables all built-in plugins by default. Disable components independently with boolean flags:
+The standalone controller enables all built-in hooks by default. Disable components independently with boolean flags:
 
 ```bash
 devlocal --caddy=false --ui=false  # Hosts-file updates only
@@ -278,7 +286,7 @@ devlocal --hosts-file=false        # Caddy registration and UI only
 devlocal --ui=false                # Caddy registration without the index route
 ```
 
-Additional compile-time plugins implement `Name() string`, `Apply(context.Context, discovery.Delta) error`, and `Cleanup(context.Context) error`, then register with `plugin.Runtime`. Each plugin has an independent latest-update worker, so a slow or failed component does not block discovery or other plugins. Ordered dependencies can use `plugin.Sequence`; the default composition sequences Caddy before UI so the rendered config matches the reconciled update. Cleanup is invoked explicitly with `devlocal clean`.
+Additional compile-time hooks implement `Name() string`, `Apply(context.Context, discovery.Update) error`, and `Cleanup(context.Context) error`, then register with `hook.Runtime`. Docker events, polling, and stale cleanup trigger serialized discovery refreshes. Discovery probes published host ports, retains the selected port per container, and publishes authoritative complete snapshots to the runtime. The runtime owns hook fan-out and latest-update coalescing. Each hook has an independent worker, so a slow or failed hook does not block discovery or other hooks; port probing is part of the discovery refresh itself. Ordered dependencies can use `hook.Sequence`; the default composition sequences Caddy before UI so the rendered config matches the reconciled update. Cleanup is invoked explicitly with `devlocal clean`.
 
 ## Acknowledgements
 
