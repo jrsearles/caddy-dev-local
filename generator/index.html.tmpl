@@ -167,6 +167,7 @@
                     <span class="section-label">Config</span>
                     <div class="config-toolbar-actions">
                         <button class="config-action-btn" id="rawToggle" type="button" onclick="toggleRawJSON()">Raw JSON</button>
+                        <button class="config-action-btn" id="prettyToggle" type="button" onclick="togglePrettyJSON()" hidden>Compact</button>
                         <button class="config-action-btn" id="expandAllBtn" type="button" onclick="configExpandAll()" hidden>Expand all</button>
                         <button class="config-action-btn" id="collapseAllBtn" type="button" onclick="configCollapseAll()" hidden>Collapse all</button>
                     </div>
@@ -279,6 +280,7 @@
     // ── Config JSON tree (expand/collapse + highlighting) ─────────────
     let configTree = null;
     let showingRaw = false;
+    let compactRaw = false;
 
     function configNodePath(node) {
         const path = [];
@@ -301,22 +303,44 @@
         const raw = document.getElementById('config-raw');
         const tree = document.getElementById('config-tree');
         const btn = document.getElementById('rawToggle');
+        const prettyBtn = document.getElementById('prettyToggle');
         const expandAllBtn = document.getElementById('expandAllBtn');
         const collapseAllBtn = document.getElementById('collapseAllBtn');
         if (showingRaw) {
             if (raw) raw.style.display = '';
             if (tree) tree.hidden = true;
             if (btn) btn.textContent = 'Tree View';
+            if (prettyBtn) prettyBtn.hidden = false;
             if (expandAllBtn) expandAllBtn.hidden = true;
             if (collapseAllBtn) collapseAllBtn.hidden = true;
+            renderRawText();
         } else {
             if (raw) raw.style.display = 'none';
             if (tree) tree.hidden = false;
             if (!configTree) renderConfigTree();
             if (btn) btn.textContent = 'Raw JSON';
+            if (prettyBtn) prettyBtn.hidden = true;
             if (expandAllBtn) expandAllBtn.hidden = !configTree;
             if (collapseAllBtn) collapseAllBtn.hidden = !configTree;
         }
+    }
+
+    function togglePrettyJSON() {
+        compactRaw = !compactRaw;
+        renderRawText();
+        saveUIState();
+    }
+
+    function renderRawText() {
+        const raw = document.getElementById('config-raw');
+        const src = document.getElementById('config-json');
+        const prettyBtn = document.getElementById('prettyToggle');
+        if (!raw || !src) return;
+        try {
+            const obj = JSON.parse(src.textContent);
+            raw.textContent = compactRaw ? JSON.stringify(obj) : JSON.stringify(obj, null, 2);
+        } catch (e) {}
+        if (prettyBtn) prettyBtn.textContent = compactRaw ? 'Prettify' : 'Compact';
     }
 
     function renderConfigTree() {
@@ -336,12 +360,16 @@
                     if (Array.isArray(paths)) expanded = new Set(paths.map((path) => JSON.stringify(path)));
                 }
             } catch (e) {}
+            jsonview.render(configTree, tree);
             jsonview.traverse(configTree, (n) => {
-                n.isExpanded = expanded === null
+                const wanted = expanded === null
                     ? n.depth <= 1
                     : expanded.has(JSON.stringify(configNodePath(n)));
+                if (n.children.length && n.isExpanded !== wanted && (n.parent === null || n.parent.isExpanded)) {
+                    jsonview.toggleNode(n);
+                }
             });
-            jsonview.render(configTree, tree);
+            renderRawText();
             raw.style.display = 'none';
             tree.hidden = false;
             if (expandAllBtn) expandAllBtn.hidden = false;
@@ -374,6 +402,7 @@
             const q = document.getElementById('devlocal-search');
             if (q) sessionStorage.setItem('devlocal-search', q.value);
             sessionStorage.setItem('devlocal-config-raw', String(showingRaw));
+            sessionStorage.setItem('devlocal-config-compact', String(compactRaw));
             if (configTree && window.jsonview) {
                 const expanded = [];
                 jsonview.traverse(configTree, (node) => {
@@ -388,6 +417,7 @@
             const params = new URLSearchParams(location.search);
 
             const tab = params.get('tab') || sessionStorage.getItem('devlocal-tab') || 'containers';
+            if (sessionStorage.getItem('devlocal-config-compact') === 'true') compactRaw = true;
             if (tab !== 'containers') switchTab(tab);
             if (tab === 'config' && sessionStorage.getItem('devlocal-config-raw') === 'true') toggleRawJSON();
 

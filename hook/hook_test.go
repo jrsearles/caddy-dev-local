@@ -3,16 +3,45 @@ package hook
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"slices"
 	"sync"
 	"testing"
 	"time"
 
-	"go.uber.org/zap"
-	"go.uber.org/zap/zaptest/observer"
-
 	"github.com/jrsearles/caddy-dev-local/discovery"
 )
+
+type recordingHandler struct {
+	mu      sync.Mutex
+	level   slog.Level
+	records []slog.Record
+}
+
+func (h *recordingHandler) Enabled(_ context.Context, level slog.Level) bool {
+	return level >= h.level
+}
+
+func (h *recordingHandler) Handle(_ context.Context, record slog.Record) error { //nolint:gocritic
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.records = append(h.records, record.Clone())
+	return nil
+}
+
+func (h *recordingHandler) WithAttrs([]slog.Attr) slog.Handler {
+	return h
+}
+
+func (h *recordingHandler) WithGroup(string) slog.Handler {
+	return h
+}
+
+func (h *recordingHandler) Records() []slog.Record {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return slices.Clone(h.records)
+}
 
 func update(id string) discovery.Update {
 	return discovery.Update{Snapshot: []*discovery.ContainerInfo{{ContainerID: id}}}
@@ -188,8 +217,8 @@ func TestLatestWinsCoalescing(t *testing.T) {
 }
 
 func TestErrorIsolation(t *testing.T) {
-	core, logs := observer.New(zap.ErrorLevel)
-	r := NewRuntime(zap.New(core))
+	logs := &recordingHandler{level: slog.LevelError}
+	r := NewRuntime(slog.New(logs))
 	good := make(chan string, 2)
 	if err := r.Register(Func{HookName: "bad", ApplyFunc: func(_ context.Context, update discovery.Update) error {
 		if updateID(update) == "initial" {
@@ -215,13 +244,22 @@ func TestErrorIsolation(t *testing.T) {
 	}
 
 	deadline := time.Now().Add(time.Second)
-	for logs.Len() < 1 && time.Now().Before(deadline) {
+	for len(logs.Records()) < 1 && time.Now().Before(deadline) {
 		time.Sleep(time.Millisecond)
 	}
-	if logs.Len() != 1 {
-		t.Fatalf("error logs = %d, want 1", logs.Len())
+	records := logs.Records()
+	if len(records) != 1 {
+		t.Fatalf("error logs = %d, want 1", len(records))
 	}
-	if got := logs.All()[0].ContextMap()["hook"]; got != "bad" {
+	var got any
+	records[0].Attrs(func(attr slog.Attr) bool {
+		if attr.Key == "hook" {
+			got = attr.Value.Any()
+			return false
+		}
+		return true
+	})
+	if got != "bad" {
 		t.Fatalf("logged hook = %v", got)
 	}
 }

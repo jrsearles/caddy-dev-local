@@ -4,9 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
-
-	"go.uber.org/zap"
 
 	"github.com/jrsearles/caddy-dev-local/discovery"
 )
@@ -42,7 +41,7 @@ func (f Func) Cleanup(ctx context.Context) error {
 }
 
 type Runtime struct {
-	logger *zap.Logger
+	logger *slog.Logger
 
 	mu      sync.Mutex
 	hooks   []Hook
@@ -57,9 +56,9 @@ type worker struct {
 	pending chan discovery.Update
 }
 
-func NewRuntime(logger *zap.Logger) *Runtime {
+func NewRuntime(logger *slog.Logger) *Runtime {
 	if logger == nil {
-		logger = zap.NewNop()
+		logger = slog.New(slog.DiscardHandler)
 	}
 	return &Runtime{logger: logger}
 }
@@ -137,7 +136,7 @@ func (r *Runtime) Start(ctx context.Context, initial discovery.Update) error { /
 		var wg sync.WaitGroup
 		wg.Add(len(workers))
 		for _, w := range workers {
-			r.logger.Info("hook started", zap.String("hook", w.hook.Name()))
+			r.logger.Info("hook started", slog.String("hook", w.hook.Name()))
 			go func() {
 				defer wg.Done()
 				for ctx.Err() == nil {
@@ -183,7 +182,7 @@ func (r *Runtime) Cleanup(ctx context.Context) error {
 	var cleanupErrors []error
 	for _, h := range hooks {
 		if err := h.Cleanup(ctx); err != nil {
-			r.logger.Error("hook cleanup failed", zap.String("hook", h.Name()), zap.Error(err))
+			r.logger.Error("hook cleanup failed", slog.String("hook", h.Name()), slog.Any("error", err))
 			cleanupErrors = append(cleanupErrors, fmt.Errorf("%s: %w", h.Name(), err))
 		}
 	}
@@ -192,7 +191,7 @@ func (r *Runtime) Cleanup(ctx context.Context) error {
 
 func (r *Runtime) apply(ctx context.Context, h Hook, update discovery.Update) error { //nolint:gocritic
 	if err := h.Apply(ctx, update); err != nil {
-		r.logger.Error("hook apply failed", zap.String("hook", h.Name()), zap.Error(err))
+		r.logger.Error("hook apply failed", slog.String("hook", h.Name()), slog.Any("error", err))
 		return err
 	}
 	return nil

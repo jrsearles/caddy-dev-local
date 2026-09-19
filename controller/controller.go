@@ -3,8 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
-
-	"go.uber.org/zap"
+	"log/slog"
 
 	"github.com/jrsearles/caddy-dev-local/caddyapi"
 	"github.com/jrsearles/caddy-dev-local/config"
@@ -21,7 +20,7 @@ type Options struct {
 	Config       *config.Config
 	DockerClient dockerclient.Client
 	AdminClient  *caddyapi.Client
-	Logger       *zap.Logger
+	Logger       *slog.Logger
 	IndexDir     string
 	Caddy        bool
 	UI           bool
@@ -36,7 +35,7 @@ func Run(ctx context.Context, options Options) error {
 		return fmt.Errorf("caddy API client is required when Caddy or UI is enabled")
 	}
 	if options.Logger == nil {
-		options.Logger = zap.NewNop()
+		options.Logger = slog.New(slog.DiscardHandler)
 	}
 	if options.DockerClient == nil {
 		client, err := dockerclient.NewClient()
@@ -71,7 +70,7 @@ func Run(ctx context.Context, options Options) error {
 	if err := runtime.Start(ctx, initial); err != nil {
 		return err
 	}
-	options.Logger.Info("discovery started", zap.Int("containers", len(initial.Snapshot)))
+	options.Logger.Info("discovery started", slog.Int("containers", len(initial.Snapshot)))
 	go func() {
 		for {
 			select {
@@ -98,7 +97,7 @@ func Cleanup(ctx context.Context, options Options) error {
 		return fmt.Errorf("caddy API client is required when Caddy is enabled")
 	}
 	if options.Logger == nil {
-		options.Logger = zap.NewNop()
+		options.Logger = slog.New(slog.DiscardHandler)
 	}
 	runtime, err := newRuntime(options)
 	if err != nil {

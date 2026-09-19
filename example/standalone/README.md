@@ -21,8 +21,8 @@ docker compose up -d
 Start Caddy, then run the controller in another terminal:
 
 ```bash
-../../artifacts/binaries/linux-amd64/caddy run --config /dev/null
-sudo ../../artifacts/binaries/linux-amd64/devlocal
+../../artifacts/linux-amd64/caddy run --config /dev/null
+sudo ../../artifacts/linux-amd64/devlocal
 ```
 
 > `sudo` is required to write to `/etc/hosts`. Use `--hosts-file=false` to skip hosts file management.
@@ -52,5 +52,5 @@ sudo ../../artifacts/binaries/linux-amd64/devlocal
 
 ```bash
 docker compose down
-sudo ../../artifacts/binaries/linux-amd64/devlocal clean
+sudo ../../artifacts/linux-amd64/devlocal clean
 ```

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -18,7 +19,6 @@ import (
 	"github.com/moby/moby/api/types/events"
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
-	"go.uber.org/zap"
 
 	"github.com/jrsearles/caddy-dev-local/config"
 )
@@ -88,13 +88,13 @@ func makeContainerOnNetworks(id, name, project, service string, ports []containe
 func testDiscovery(t *testing.T, cfg *config.Config, mock *mockDocker) *Discovery {
 	t.Helper()
 	cfg = cloneConfig(cfg)
-	return New(cfg, mock, zap.NewNop())
+	return New(cfg, mock, slog.New(slog.DiscardHandler))
 }
 
 func testDiscoveryWithProbe(t *testing.T, cfg *config.Config, mock *mockDocker, probe PortProbe) *Discovery {
 	t.Helper()
 	cfg = cloneConfig(cfg)
-	return New(cfg, mock, zap.NewNop(), WithPortProbe(probe))
+	return New(cfg, mock, slog.New(slog.DiscardHandler), WithPortProbe(probe))
 }
 
 func TestStatusInitial(t *testing.T) {

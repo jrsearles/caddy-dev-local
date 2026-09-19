@@ -1,7 +1,6 @@
 package config
 
 import (
-	"flag"
 	"fmt"
 	"time"
 
@@ -46,18 +45,6 @@ func mustParseDuration(name, def string) time.Duration {
 
 // RegisterSharedFlags registers the shared discovery flags on a pflag flag set.
 func RegisterSharedFlags(fs *pflag.FlagSet) {
-	for _, s := range sharedFlagSpecs {
-		if isSharedDurationFlag(s.name) {
-			fs.Duration(s.name, mustParseDuration(s.name, s.def), s.usage)
-		} else {
-			fs.String(s.name, s.def, s.usage)
-		}
-	}
-}
-
-// RegisterSharedGoFlags registers the shared discovery flags on a standard
-// library flag set (used by Caddy's command flag registration).
-func RegisterSharedGoFlags(fs *flag.FlagSet) {
 	for _, s := range sharedFlagSpecs {
 		if isSharedDurationFlag(s.name) {
 			fs.Duration(s.name, mustParseDuration(s.name, s.def), s.usage)

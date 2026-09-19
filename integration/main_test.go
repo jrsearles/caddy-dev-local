@@ -4,12 +4,12 @@ package integration
 
 import (
 	"context"
+	"log/slog"
 	"os"
 	"testing"
 	"time"
 
 	"github.com/moby/moby/client"
-	"go.uber.org/zap"
 
 	"github.com/jrsearles/caddy-dev-local/config"
 	"github.com/jrsearles/caddy-dev-local/discovery"
@@ -19,14 +19,14 @@ import (
 var (
 	sharedDocker docker.Client
 	sharedConfig *config.Config
-	logger       *zap.Logger
+	logger       *slog.Logger
 )
 
 func TestMain(m *testing.M) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 
-	logger = zap.NewNop()
+	logger = slog.New(slog.DiscardHandler)
 
 	if !dockerReachable(ctx) {
 		logger.Info("docker daemon not reachable, skipping integration tests")
@@ -35,7 +35,7 @@ func TestMain(m *testing.M) {
 
 	api, err := docker.NewClient()
 	if err != nil {
-		logger.Error("creating docker client", zap.Error(err))
+		logger.Error("creating docker client", slog.Any("error", err))
 		os.Exit(1)
 	}
 	sharedDocker = api

@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"log/slog"
 	"maps"
 	"slices"
 	"strings"
@@ -14,7 +15,6 @@ import (
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/events"
 	"github.com/moby/moby/client"
-	"go.uber.org/zap"
 
 	"github.com/jrsearles/caddy-dev-local/config"
 	"github.com/jrsearles/caddy-dev-local/docker"
@@ -60,7 +60,7 @@ type Update struct {
 type Discovery struct {
 	cfg    *config.Config
 	docker docker.Client
-	logger *zap.Logger
+	logger *slog.Logger
 	probe  PortProbe
 
 	refreshMu     sync.Mutex
@@ -81,7 +81,7 @@ func WithPortProbe(probe PortProbe) Option {
 	}
 }
 
-func New(cfg *config.Config, dockerClient docker.Client, logger *zap.Logger, options ...Option) *Discovery {
+func New(cfg *config.Config, dockerClient docker.Client, logger *slog.Logger, options ...Option) *Discovery {
 	d := &Discovery{
 		cfg:           cfg,
 		docker:        dockerClient,
@@ -481,7 +481,7 @@ func (d *Discovery) streamEvents(ctx context.Context, msgCh <-chan events.Messag
 				return
 			}
 			if err != nil {
-				d.logger.Error("event stream error, reconnecting in 30s", zap.Error(err))
+				d.logger.Error("event stream error, reconnecting in 30s", slog.Any("error", err))
 				d.setError("Docker event stream error: " + err.Error())
 				return
 			}

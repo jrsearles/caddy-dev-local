@@ -744,8 +744,6 @@ body {
     line-height: 1.5;
     color: var(--text-secondary);
     white-space: pre;
-    overflow: auto;
-    max-height: 60vh;
 }
 
 .config-action-btn {

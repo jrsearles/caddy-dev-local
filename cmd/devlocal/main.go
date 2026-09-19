@@ -4,13 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"syscall"
 
 	"github.com/spf13/pflag"
-	"go.uber.org/zap"
 
 	"github.com/jrsearles/caddy-dev-local/caddyapi"
 	"github.com/jrsearles/caddy-dev-local/config"
@@ -51,6 +51,7 @@ func run(args []string, clean bool) error {
 	serverName := fs.String("caddy-server", envOrDefault("DEVLOCAL_CADDY_SERVER", "srv0"), "Caddy HTTP server name")
 	allowCreate := fs.Bool("allow-create-server", true, "Create the target Caddy HTTP server when absent")
 	indexDir := fs.String("index-dir", envOrDefault("DEVLOCAL_INDEX_DIR", filepath.Join(cacheDir, "caddy-dev-local")), "Directory for generated UI files")
+	logLevel := fs.String("log-level", envOrDefault("DEVLOCAL_LOG_LEVEL", "info"), "Log level: debug, info, warn, or error")
 	noTracing := fs.Bool("no-tracing", !cfg.Tracing, "Disable OpenTelemetry tracing on dynamic routes")
 	if parseErr := fs.Parse(args); parseErr != nil {
 		if errors.Is(parseErr, pflag.ErrHelp) {
@@ -62,11 +63,11 @@ func run(args []string, clean bool) error {
 	cfg.HostsFile = *hostsEnabled
 	cfg.Tracing = !*noTracing
 
-	logger, err := zap.NewProduction()
-	if err != nil {
-		return fmt.Errorf("creating logger: %w", err)
+	var level slog.Level
+	if err := level.UnmarshalText([]byte(*logLevel)); err != nil {
+		return fmt.Errorf("invalid log level %q: %w", *logLevel, err)
 	}
-	defer logger.Sync() //nolint:errcheck
+	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -78,7 +79,7 @@ func run(args []string, clean bool) error {
 	options := controller.Options{
 		Config:      cfg,
 		AdminClient: api,
-		Logger:      logger.Named(name),
+		Logger:      logger.With("service", name),
 		IndexDir:    *indexDir,
 		Caddy:       *caddyEnabled,
 		UI:          *uiEnabled,

@@ -1,8 +1,8 @@
 # caddy-dev-local
 
-A Docker discovery controller and Caddy plugin that automatically registers `{project}.{service}.dev.local` domains, with HTTP port probing, self-signed TLS, and a built-in index page — inspired by OrbStack's container domain feature.
+A host application that watches Docker and automatically registers `{project}.{service}.dev.local` domains with Caddy, with HTTP port probing, self-signed TLS, hosts-file management, and a built-in index page.
 
-> **Warning**: This plugin is designed for local development environments only. It uses self-signed TLS, auto-manages hosts files, and assumes trusted networks. Do not use in production.
+> **Warning**: This application is designed for local development environments only. It uses self-signed TLS, auto-manages hosts files, and assumes trusted networks. Do not use in production.
 
 ## Features
 
@@ -26,22 +26,26 @@ A Docker discovery controller and Caddy plugin that automatically registers `{pr
 - **Stale cleanup** — Stopped containers stay listed on the index page (marked stopped) until the stale TTL expires, then their config is removed
 - **OpenTelemetry tracing** — Dynamic reverse proxy routes include Caddy's `tracing` handler for automatic span collection; opt out with `--no-tracing`
 - **Composable hooks** — Caddy registration, UI rendering, and hosts-file updates independently reconcile complete discovery snapshots
-- **Standalone controller** — `devlocal` can attach to a separate Caddy process on the same host through its admin API
+- **Caddy integration** — Reconciles routes and TLS policies with a separately running Caddy process through its admin API
 
 ## Quick Start
 
-### 1. Run the proxy
+### 1. Start Caddy
 
-caddy-dev-local runs **directly on your host** (not inside Docker). It discovers containers via the Docker socket and proxies to them via `localhost` using their published ports.
+Install and start ordinary [Caddy](https://caddyserver.com/docs/install) on your host with its admin API enabled. Caddy's default admin endpoint is `http://localhost:2019`.
+
+### 2. Run devlocal
+
+devlocal also runs **directly on your host**. It discovers containers through Docker and configures Caddy to proxy to their published ports on `localhost`.
 
 ```bash
-just build-linux-amd64
-sudo ./artifacts/binaries/linux-amd64/caddy devlocal
+just build-devlocal
+sudo ./artifacts/binaries/linux-amd64/devlocal
 ```
 
 > `sudo` is required so the proxy can write to your system hosts file (`/etc/hosts`). Pass `--hosts-file=false` to skip hosts file management.
 
-### 2. Start your containers
+### 3. Start your containers
 
 Start any Docker container that publishes a port:
 
@@ -86,10 +90,10 @@ docker compose up -d
 services:
   my-app:
     image: nginx:alpine
-    networks:
-      - devlocal
+    ports:
+      - "8080:80"
     labels:
-      - "dev.local.domains=80:api.custom.local;80:api.alt.local"
+      - "dev.local.domains=8080:api.custom.local;8080:api.alt.local"
 ```
 
 ## Configuration
@@ -102,61 +106,52 @@ services:
 | `--hosts-file` | `DEVLOCAL_HOSTS_FILE` | `true` | Manage hosts file entries for domains |
 | `--no-tracing` | `DEVLOCAL_TRACING=false` | tracing enabled | Disable OpenTelemetry tracing on dynamic routes |
 | `--poll-interval` | `DEVLOCAL_POLL_INTERVAL` | `30s` | Periodic full refresh as a safety net for missed Docker events; `0` disables |
-| `--config` | `DEVLOCAL_CONFIG` | (auto-detect) | Path to a static Caddyfile loaded as-is |
+| `--caddy` | — | `true` | Register routes and TLS policies with Caddy |
+| `--ui` | — | `true` | Generate and register the index UI |
+| `--caddy-admin` | `DEVLOCAL_CADDY_ADMIN` | `http://localhost:2019` | Caddy admin API URL |
+| `--caddy-server` | `DEVLOCAL_CADDY_SERVER` | `srv0` | Caddy HTTP server name |
+| `--allow-create-server` | — | `true` | Create the target Caddy HTTP server when absent |
+| `--index-dir` | `DEVLOCAL_INDEX_DIR` | user cache directory | Directory for generated UI files |
+| `--log-level` | `DEVLOCAL_LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, or `error` |
 
-The standalone `devlocal` command also supports `--caddy`, `--ui`, `--caddy-admin`, `--caddy-server`, `--allow-create-server`, and `--index-dir`. Caddy, UI, and hosts hooks are enabled by default.
+Caddy, UI, and hosts-file integration are enabled by default.
 
 > **Note:** The periodic poll backstops missed Docker events and repairs Caddy configuration changed by another process. Hook workers coalesce queued work to the newest complete snapshot.
 
-## Custom Caddyfile
+## Caddy Configuration
 
-caddy-dev-local auto-detects `Caddyfile`, `Caddyfile.json`, `Caddyfile.json5`, or `Caddyfile.yaml` in the working directory. Use `--config` or `DEVLOCAL_CONFIG` to specify a different path.
+devlocal does not load or modify a Caddyfile. Start and configure Caddy normally, then point devlocal at its admin API with `--caddy-admin` when the endpoint differs from the default.
 
-**Your Caddyfile is loaded as-is.** Site blocks, TLS automation policies, logging, etc. are honored exactly as written. caddy-dev-local applies its own dynamic container routes, TLS policy, and index page through Caddy's [admin API](https://caddyserver.com/docs/api) — it never rewrites or merges your config. The two live side by side on the same HTTP server.
+devlocal applies dynamic container routes, its TLS policy, and the index route through Caddy's [admin API](https://caddyserver.com/docs/api). It owns only resources with stable `devlocal-` IDs and preserves unrelated routes and policies. By default it targets `srv0` and creates that server when absent; use `--allow-create-server=false` to require an existing server.
 
 ## Building from Source
 
-Requires [Go 1.26.2 or newer](https://go.dev/dl/), [just](https://github.com/casey/just), and [golangci-lint](https://golangci-lint.run/). Go 1.26.2 includes the upstream Windows networking-runtime fix required by generated `caddy.exe` binaries.
+Requires [Go 1.26.2 or newer](https://go.dev/dl/), [just](https://github.com/casey/just), and [golangci-lint](https://golangci-lint.run/).
 
 ```bash
 just install-lint           # Install golangci-lint (one-time)
-just build-caddy            # Build Caddy with the devlocal plugin
-just build-devlocal         # Build the standalone controller binaries
-just build-all              # Build both executable families
-just build-linux-amd64      # Build plugin-enabled Caddy for linux-amd64
+just build-devlocal         # Build devlocal for all supported platforms
+just build-all              # Run checks, integration tests with coverage, and build devlocal (default recipe)
 just lint                   # Run linter
 just check                  # Run linter + tests
 ```
 
-The builds produce two independent executables under `artifacts/binaries/<platform>/`:
-
-| Executable | Mode |
-|---|---|
-| `caddy` (`caddy.exe` on Windows) | A custom Caddy build containing the devlocal command plugin; run it with `caddy devlocal` |
-| `devlocal` (`devlocal.exe` on Windows) | A standalone controller that connects to a separately running Caddy instance through its admin API |
+The build produces `devlocal` (`devlocal.exe` on Windows) under `artifacts/<os>-<arch>/`. It connects to a separately installed Caddy instance through the admin API.
 
 See `just --list` for all available recipes.
 
-## Building the Docker Image
+## Running
 
-The root [`Dockerfile`](Dockerfile) builds caddy with the devlocal plugin via the official [`caddy:builder`](https://hub.docker.com/_/caddy#adding-custom-caddy-modules) image (using `xcaddy`), then overlays the built binary onto the regular `caddy` image. The base tags are pinned to the Caddy version in `go.mod` — bump them together when upgrading.
-
-```bash
-docker build -t caddy-dev-local .
-```
-
-The image runs `caddy devlocal`, so it expects the same mounts as the prebuilt image in the [Quick Start](#quick-start).
-
-## Standalone Controller
-
-The `devlocal` executable runs discovery and all built-in hooks without embedding Caddy. Start Caddy separately with its admin API enabled, then run:
+Start Caddy separately with its admin API enabled, then run:
 
 ```bash
 just build-devlocal
-sudo ./artifacts/binaries/linux-amd64/devlocal
+sudo ./artifacts/linux-amd64/devlocal
 ```
 
-The default admin endpoint is `http://localhost:2019`. Use `--caddy-admin` and `--caddy-server` to select another same-host Caddy process and HTTP server. The initial implementation assumes Caddy and Docker-published ports are on the same host because generated upstreams use `localhost:{published_port}`.
+Run Caddy and devlocal in **separate terminals**. devlocal attaches to Caddy over its admin API and never starts or stops it, but on Windows a console close or Ctrl-C broadcasts a signal to every process attached to that console. Caddy's `caddy start` child stays attached to the terminal on Windows, so if devlocal shares that terminal, closing it shuts down both. Keep Caddy in its own window (or run it as a service) and devlocal in another; with native Caddy daemons such as systemd the two are already independent.
+
+The default admin endpoint is `http://localhost:2019`. Use `--caddy-admin` and `--caddy-server` to select another same-host Caddy process and HTTP server. Caddy, devlocal, and Docker-published ports must be on the same host because generated upstreams use `localhost:{published_port}`.
 
 ```bash
 docker run -d --name my-app -p 8080:80 nginx:alpine
@@ -180,6 +175,9 @@ These domains are not generated when custom `dev.local.domains` labels are set.
 See the [example directory](example/) for a complete demo with multiple containers.
 
 ```bash
+just build-devlocal
+# Start Caddy in another terminal before devlocal.
+sudo ./artifacts/linux-amd64/devlocal
 cd example
 docker compose up -d
 ```
@@ -206,7 +204,7 @@ Non-HTTP services like `mssql` are also registered (see it on the index page); S
 
 ## Generated Files
 
-caddy-dev-local writes three files to the user cache directory (`os.UserCacheDir()/caddy-dev-local`) by default. Use `--index-dir` with the standalone controller when Caddy runs as another OS user; files are written with read permissions for the Caddy process.
+caddy-dev-local writes three files to the user cache directory (`os.UserCacheDir()/caddy-dev-local`) by default. Use `--index-dir` when Caddy runs as another OS user; files are written with read permissions for the Caddy process.
 
 | File | Purpose |
 |---|---|
@@ -239,9 +237,9 @@ The block is updated on every config reload — added when containers start, rem
 Disable hosts file management entirely:
 
 ```bash
-caddy devlocal --hosts-file=false
+devlocal --hosts-file=false
 # or
-DEVLOCAL_HOSTS_FILE=false caddy devlocal
+DEVLOCAL_HOSTS_FILE=false devlocal
 ```
 
 ### Cleanup
@@ -249,14 +247,10 @@ DEVLOCAL_HOSTS_FILE=false caddy devlocal
 Remove all resources managed by the enabled hooks:
 
 ```bash
-caddy devlocal-clean
-# or
 devlocal clean
 ```
 
 `devlocal clean` runs cleanup for every enabled hook: it removes owned Caddy routes and TLS policy, generated UI files, and the managed hosts block. It accepts the normal hook and Caddy connection flags, such as `devlocal clean --caddy-admin http://localhost:2020`. Cleanup is explicit and does not run automatically when the controller stops.
-
-`caddy devlocal-clean --index-dir /custom/path` removes the local generated UI files and hosts block; embedded Caddy routes disappear with that Caddy process.
 
 ### Permissions
 
@@ -271,14 +265,14 @@ All dynamic reverse proxy routes include Caddy's [tracing handler](https://caddy
 Disable tracing on dynamic routes:
 
 ```bash
-caddy devlocal --no-tracing
+devlocal --no-tracing
 # or
-DEVLOCAL_TRACING=false caddy devlocal
+DEVLOCAL_TRACING=false devlocal
 ```
 
 ## Hook Composition
 
-The standalone controller enables all built-in hooks by default. Disable components independently with boolean flags:
+The application enables all built-in hooks by default. Disable components independently with boolean flags:
 
 ```bash
 devlocal --caddy=false --ui=false  # Hosts-file updates only
@@ -292,7 +286,7 @@ Additional compile-time hooks implement `Name() string`, `Apply(context.Context,
 
 - [OrbStack](https://orbstack.dev/) — Container domain feature inspired the domain convention and automatic registration model
 - [caddy-docker-proxy](https://github.com/caddy-docker/proxy) — Pioneered Caddy as a Docker reverse proxy; this project takes a more opinionated, zero-config approach
-- [Caddy](https://caddyserver.com/docs/) — The web server this project extends
+- [Caddy](https://caddyserver.com/docs/) — The web server this project configures
 
 ## License
 
