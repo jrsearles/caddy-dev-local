@@ -22,8 +22,14 @@ func (s *Sequence) Name() string {
 }
 
 func (s *Sequence) Apply(ctx context.Context, update discovery.Update) error { //nolint:gocritic
+	return s.applyEach(func(h Hook) error {
+		return h.Apply(ctx, update)
+	})
+}
+
+func (s *Sequence) applyEach(apply func(Hook) error) error {
 	for _, h := range s.hooks {
-		if err := h.Apply(ctx, update); err != nil {
+		if err := apply(h); err != nil {
 			return fmt.Errorf("%s: %w", h.Name(), err)
 		}
 	}

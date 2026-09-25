@@ -6,17 +6,41 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/jrsearles/caddy-dev-local/config"
 	"github.com/jrsearles/caddy-dev-local/discovery"
 )
 
-type configSourceFunc func(context.Context) (string, error)
+type fakeCaddy struct {
+	config    string
+	configErr error
+	calls     int
+	routes    map[string]json.RawMessage
+	policies  map[string]json.RawMessage
+	cleaned   bool
+}
 
-func (f configSourceFunc) RunningConfig(ctx context.Context) (string, error) {
-	return f(ctx)
+func (f *fakeCaddy) RunningConfig(context.Context) (string, error) {
+	f.calls++
+	if f.configErr != nil {
+		return "", f.configErr
+	}
+	return f.config, nil
+}
+
+func (f *fakeCaddy) Reconcile(_ context.Context, routes, policies map[string]json.RawMessage, _ func(string) bool) error {
+	f.routes = routes
+	f.policies = policies
+	return nil
+}
+
+func (f *fakeCaddy) Cleanup(context.Context) error {
+	f.cleaned = true
+	return nil
 }
 
 func TestApplyWritesReadableArtifactsAndStableVersion(t *testing.T) {
@@ -24,9 +48,7 @@ func TestApplyWritesReadableArtifactsAndStableVersion(t *testing.T) {
 	if err := os.Chmod(dir, 0700); err != nil {
 		t.Fatal(err)
 	}
-	p := New("dev.local", dir, configSourceFunc(func(context.Context) (string, error) {
-		return `{"apps":{"http":{}}}`, nil
-	}))
+	p := New(&config.Config{TLD: "dev.local"}, dir, &fakeCaddy{config: `{"apps":{"http":{}}}`})
 	update := discovery.Update{
 		Snapshot: []*discovery.ContainerInfo{
 			{ContainerID: "b", ContainerName: "api", IsRunning: true, Ports: []uint16{443, 80}, SelectedPort: 80},
@@ -79,18 +101,13 @@ func TestApplyWritesReadableArtifactsAndStableVersion(t *testing.T) {
 }
 
 func TestApplyCachesConfigAcrossSourceFailure(t *testing.T) {
-	calls := 0
-	p := New("dev.local", t.TempDir(), configSourceFunc(func(context.Context) (string, error) {
-		calls++
-		if calls == 1 {
-			return `{"cached":true}`, nil
-		}
-		return "", errors.New("caddy unavailable")
-	}))
+	caddy := &fakeCaddy{config: `{"cached":true}`}
+	p := New(&config.Config{TLD: "dev.local"}, t.TempDir(), caddy)
 
 	if err := p.Apply(context.Background(), discovery.Update{}); err != nil {
 		t.Fatal(err)
 	}
+	caddy.configErr = errors.New("caddy unavailable")
 	if err := p.Apply(context.Background(), discovery.Update{}); err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +121,7 @@ func TestApplyCachesConfigAcrossSourceFailure(t *testing.T) {
 }
 
 func TestVersionChangesWithRenderedState(t *testing.T) {
-	p := New("dev.local", t.TempDir(), nil)
+	p := New(&config.Config{TLD: "dev.local"}, t.TempDir(), nil)
 	update := discovery.Update{Snapshot: []*discovery.ContainerInfo{{ContainerID: "a", ContainerName: "web", IsRunning: true, Ports: []uint16{80}}}}
 	if err := p.Apply(context.Background(), update); err != nil {
 		t.Fatal(err)
@@ -121,7 +138,8 @@ func TestVersionChangesWithRenderedState(t *testing.T) {
 
 func TestCleanupRemovesOnlyGeneratedArtifacts(t *testing.T) {
 	dir := t.TempDir()
-	p := New("dev.local", dir, nil)
+	caddy := &fakeCaddy{}
+	p := New(&config.Config{TLD: "dev.local"}, dir, caddy)
 	if err := p.Apply(context.Background(), discovery.Update{}); err != nil {
 		t.Fatal(err)
 	}
@@ -139,6 +157,68 @@ func TestCleanupRemovesOnlyGeneratedArtifacts(t *testing.T) {
 	}
 	if _, err := os.Stat(unrelated); err != nil {
 		t.Fatalf("unrelated file removed: %v", err)
+	}
+	if !caddy.cleaned {
+		t.Error("Caddy resources were not cleaned up")
+	}
+}
+
+func TestApplyRegistersIndexRouteAndTLS(t *testing.T) {
+	caddy := &fakeCaddy{}
+	dir := t.TempDir()
+	p := New(&config.Config{TLD: "dev.local"}, dir, caddy)
+	if err := p.Apply(context.Background(), discovery.Update{}); err != nil {
+		t.Fatal(err)
+	}
+	if len(caddy.routes) != 1 || caddy.routes[indexRouteID] == nil {
+		t.Fatalf("index route not registered: %v", caddy.routes)
+	}
+	if len(caddy.policies) != 1 || caddy.policies[tlsPolicyID] == nil {
+		t.Fatalf("index TLS policy not registered: %v", caddy.policies)
+	}
+	var route struct {
+		Handle []any `json:"handle"`
+		Match  []any `json:"match"`
+	}
+	if err := json.Unmarshal(caddy.routes[indexRouteID], &route); err != nil {
+		t.Fatal(err)
+	}
+	root := route.Handle[0].(map[string]any)["routes"].([]any)[0].(map[string]any)["handle"].([]any)[0].(map[string]any)["root"]
+	if root != dir {
+		t.Errorf("index root = %v, want %v", root, dir)
+	}
+	hosts := route.Match[0].(map[string]any)["host"].([]any)
+	if !slices.Equal(hosts, []any{"dev.local", "dev.localhost"}) {
+		t.Errorf("index hosts = %v", hosts)
+	}
+	var policy map[string]any
+	if err := json.Unmarshal(caddy.policies[tlsPolicyID], &policy); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(policy["subjects"].([]any), []any{"dev.local", "dev.localhost"}) {
+		t.Errorf("TLS subjects = %v", policy["subjects"])
+	}
+}
+
+func TestApplySkipsIndexHostClaimedByContainer(t *testing.T) {
+	caddy := &fakeCaddy{}
+	p := New(&config.Config{TLD: "dev.local"}, t.TempDir(), caddy)
+	update := discovery.Update{Snapshot: []*discovery.ContainerInfo{{
+		ContainerID: "a", ContainerName: "custom", IsRunning: true,
+		CustomDomains: []discovery.CustomDomain{{Port: 8080, Domain: "dev.local"}},
+	}}}
+	if err := p.Apply(context.Background(), update); err != nil {
+		t.Fatal(err)
+	}
+	var route struct {
+		Match []any `json:"match"`
+	}
+	if err := json.Unmarshal(caddy.routes[indexRouteID], &route); err != nil {
+		t.Fatal(err)
+	}
+	hosts := route.Match[0].(map[string]any)["host"].([]any)
+	if !slices.Equal(hosts, []any{"dev.localhost"}) {
+		t.Errorf("index hosts = %v, want dev.localhost only", hosts)
 	}
 }
 

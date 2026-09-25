@@ -35,7 +35,8 @@ generator/
   - Standalone container: `{container-name}.{tld}` (e.g., `my-nginx.dev.local`)
   - All containers register `.localhost` variants (e.g., `myapp.web.localhost`, `my-nginx.localhost`)
 - **Custom domains**: Containers can override auto-registration via `dev.local.domains` label (format: `port:domain;port:domain`). When set, auto-generated domain is skipped.
-- **Hook composition**: `controller.Run` owns one discovery instance and registers Caddy, UI, and hosts components with `hook.Runtime`. Docker events, polling, and stale cleanup trigger discovery refreshes; hooks receive the resulting authoritative `Update{Snapshot,Status}` values, not raw Docker events. Discovery probes only published host ports when Caddy or UI is enabled, caches `SelectedPort` per container ID, restores it for stopped containers, and evicts it when a container disappears. The runtime owns fan-out. Each hook has an independent worker, receives the newest complete immutable snapshot, and implements explicit cleanup used by `devlocal clean`. Caddy and UI run in an ordered `hook.Sequence` so UI config retrieval follows reconciliation.
+- **Execution modes**: `devlocal` performs one synchronous discovery and reconciliation pass, `devlocal start` continuously watches Docker events and polls, and `devlocal clean` removes managed resources.
+- **Hook composition**: `controller.RunOnce` synchronously applies one authoritative snapshot. `controller.Run` owns continuous discovery and registers Caddy, UI, and hosts components with `hook.Runtime`; Docker events, polling, and stale cleanup trigger refreshes. Discovery probes only published host ports when Caddy or UI is enabled, caches `SelectedPort` per container ID, restores it for stopped containers, and evicts it when a container disappears. Continuous hooks have independent workers receiving the newest complete immutable snapshot. Every hook implements explicit cleanup used by `devlocal clean`. Caddy and UI run in an ordered `hook.Sequence` so UI config retrieval follows reconciliation.
 - **External Caddy**: Caddy runs and loads its own configuration independently. devlocal only reconciles owned resources through the admin API and never imports or embeds Caddy.
 - **Refresh cycle**: event, poll, and stale refreshes are serialized. Discovery builds candidate Docker state, probes it without holding the state mutex, and atomically commits the complete enriched snapshot. Docker list errors are published without clearing retained state. An internal capacity-one channel keeps only the latest pending update because every update is a complete snapshot; consumers receive updates through the receive-only `Updates()` channel.
 - **Caddy ownership**: all managed routes and policies have stable `devlocal-` IDs. Every reconcile reads actual Caddy state, adopts existing resources, removes owned orphans, and preserves unrelated configuration.
@@ -45,8 +46,8 @@ generator/
 ```bash
 just lint                  # Run the linter
 just check                 # Run the linter and tests with race detector
-just build-all             # Default recipe: lint, tests with race detector, integration tests with coverage, build all platforms
-just build-devlocal        # Build devlocal for all supported platforms
+just                       # Default recipe: lint, tests with race detector, integration tests with coverage, build all platforms
+just build                 # Build devlocal for all supported platforms
 just --list                # List all recipes
 ```
 

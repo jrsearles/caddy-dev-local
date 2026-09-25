@@ -77,6 +77,19 @@ func (r *Runtime) Register(h Hook) error {
 	return nil
 }
 
+// ApplyOnce applies an update synchronously to every registered hook.
+func (r *Runtime) ApplyOnce(ctx context.Context, update discovery.Update) error { //nolint:gocritic
+	r.mu.Lock()
+	if r.started {
+		r.mu.Unlock()
+		return errors.New("hook runtime already started")
+	}
+	hooks := append([]Hook(nil), r.hooks...)
+	r.mu.Unlock()
+
+	return r.applyAll(ctx, hooks, update)
+}
+
 // Submit queues an update for every hook without waiting for hook execution.
 // If a hook already has pending work, that work is replaced by the update.
 func (r *Runtime) Submit(update discovery.Update) { //nolint:gocritic
@@ -121,22 +134,20 @@ func (r *Runtime) Start(ctx context.Context, initial discovery.Update) error { /
 	workers := r.workers
 	r.mu.Unlock()
 
-	var initialErrors []error
-	for _, w := range workers {
-		if err := r.apply(ctx, w.hook, initial); err != nil {
-			initialErrors = append(initialErrors, fmt.Errorf("%s: %w", w.hook.Name(), err))
-		}
+	hooks := make([]Hook, len(workers))
+	for i, w := range workers {
+		hooks[i] = w.hook
 	}
-	if len(initialErrors) > 0 {
+	if err := r.applyAll(ctx, hooks, initial); err != nil {
 		close(r.done)
-		return errors.Join(initialErrors...)
+		return err
 	}
 
 	go func() {
 		var wg sync.WaitGroup
 		wg.Add(len(workers))
 		for _, w := range workers {
-			r.logger.Info("hook started", slog.String("hook", w.hook.Name()))
+			r.logStarted(w.hook)
 			go func() {
 				defer wg.Done()
 				for ctx.Err() == nil {
@@ -190,9 +201,35 @@ func (r *Runtime) Cleanup(ctx context.Context) error {
 }
 
 func (r *Runtime) apply(ctx context.Context, h Hook, update discovery.Update) error { //nolint:gocritic
+	if sequence, ok := h.(*Sequence); ok {
+		return sequence.applyEach(func(child Hook) error {
+			return r.apply(ctx, child, update)
+		})
+	}
 	if err := h.Apply(ctx, update); err != nil {
 		r.logger.Error("hook apply failed", slog.String("hook", h.Name()), slog.Any("error", err))
 		return err
 	}
+	r.logger.Info("hook applied", slog.String("hook", h.Name()))
 	return nil
+}
+
+func (r *Runtime) applyAll(ctx context.Context, hooks []Hook, update discovery.Update) error { //nolint:gocritic
+	var applyErrors []error
+	for _, h := range hooks {
+		if err := r.apply(ctx, h, update); err != nil {
+			applyErrors = append(applyErrors, fmt.Errorf("%s: %w", h.Name(), err))
+		}
+	}
+	return errors.Join(applyErrors...)
+}
+
+func (r *Runtime) logStarted(h Hook) {
+	if sequence, ok := h.(*Sequence); ok {
+		for _, child := range sequence.hooks {
+			r.logStarted(child)
+		}
+		return
+	}
+	r.logger.Info("hook started", slog.String("hook", h.Name()))
 }

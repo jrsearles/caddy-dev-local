@@ -14,21 +14,22 @@ import (
 )
 
 const (
-	indexRouteID = "devlocal-index"
-	tlsPolicyID  = "devlocal-tls"
-	keyID        = "@id"
-	keyHandle    = "handle"
-	keyHandler   = "handler"
+	tlsPolicyID = "devlocal-tls"
+	keyID       = "@id"
+	keyHandle   = "handle"
+	keyHandler  = "handler"
 )
 
 type Hook struct {
-	cfg      *config.Config
-	indexDir string
-	client   *caddyapi.Client
+	cfg    *config.Config
+	client *caddyapi.Client
 }
 
-func New(cfg *config.Config, indexDir string, client *caddyapi.Client) *Hook {
-	return &Hook{cfg: cfg, indexDir: indexDir, client: client}
+// New returns a Hook that keeps Caddy in sync with the discovered containers:
+// it translates each snapshot into reverse-proxy routes and an internal-issuer
+// TLS policy, and reconciles them through the admin API.
+func New(cfg *config.Config, client *caddyapi.Client) *Hook {
+	return &Hook{cfg: cfg, client: client}
 }
 
 func (p *Hook) Name() string {
@@ -46,11 +47,18 @@ func (p *Hook) Apply(ctx context.Context, update discovery.Update) error { //nol
 		return nil
 	}
 	targets := generator.DomainTargets(p.cfg, update.Snapshot)
-	routes, policies, err := buildConfig(p.cfg, p.indexDir, targets)
+	routes, policies, err := buildConfig(p.cfg, targets)
 	if err != nil {
 		return err
 	}
-	return p.client.Reconcile(ctx, routes, policies)
+	return p.client.Reconcile(ctx, routes, policies, owned)
+}
+
+// owned reports identifiers this hook manages: per-container proxy routes and
+// the container TLS policy. Resources owned by other devlocal components (such
+// as the index route) are left to their owners.
+func owned(id string) bool {
+	return strings.HasPrefix(id, "devlocal-route-") || id == tlsPolicyID
 }
 
 func (p *Hook) Cleanup(ctx context.Context) error {
@@ -60,14 +68,14 @@ func (p *Hook) Cleanup(ctx context.Context) error {
 	return p.client.Cleanup(ctx)
 }
 
-func buildConfig(cfg *config.Config, indexDir string, targets map[string][]string) (map[string]json.RawMessage, map[string]json.RawMessage, error) {
+func buildConfig(cfg *config.Config, targets map[string][]string) (map[string]json.RawMessage, map[string]json.RawMessage, error) {
 	domains := make([]string, 0, len(targets))
 	for domain := range targets {
 		domains = append(domains, domain)
 	}
 	slices.Sort(domains)
 
-	routes := make(map[string]json.RawMessage, len(domains)+1)
+	routes := make(map[string]json.RawMessage, len(domains))
 	for _, domain := range domains {
 		id := routeID(domain)
 		upstreams := make([]any, 0, len(targets[domain]))
@@ -94,36 +102,10 @@ func buildConfig(cfg *config.Config, indexDir string, targets map[string][]strin
 		routes[id] = route
 	}
 
-	indexHosts := []string{}
-	if indexDir != "" {
-		for _, host := range []string{cfg.TLD, generator.TLDLocalhost(cfg.TLD)} {
-			if !slices.Contains(domains, host) && !slices.Contains(indexHosts, host) {
-				indexHosts = append(indexHosts, host)
-			}
-		}
-		indexRoute, err := json.Marshal(map[string]any{
-			keyID: indexRouteID,
-			keyHandle: []any{map[string]any{
-				keyHandler: "subroute",
-				"routes": []any{map[string]any{keyHandle: []any{
-					map[string]any{keyHandler: "vars", "root": indexDir},
-					map[string]any{keyHandler: "file_server", "hide": []string{"./Caddyfile"}},
-				}}},
-			}},
-			"match":    []any{map[string]any{"host": indexHosts}},
-			"terminal": true,
-		})
-		if err != nil {
-			return nil, nil, fmt.Errorf("building index route: %w", err)
-		}
-		routes[indexRouteID] = indexRoute
-	}
-
 	policies := make(map[string]json.RawMessage)
-	subjects := append(slices.Clone(domains), indexHosts...)
-	if len(subjects) > 0 {
+	if len(domains) > 0 {
 		policy, err := json.Marshal(map[string]any{
-			keyID: tlsPolicyID, "issuers": []any{map[string]any{"module": "internal"}}, "subjects": subjects,
+			keyID: tlsPolicyID, "issuers": []any{map[string]any{"module": "internal"}}, "subjects": domains,
 		})
 		if err != nil {
 			return nil, nil, fmt.Errorf("building TLS policy: %w", err)

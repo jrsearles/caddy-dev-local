@@ -1,6 +1,6 @@
 # caddy-dev-local
 
-A host application that watches Docker and automatically registers `{project}.{service}.dev.local` domains with Caddy, with HTTP port probing, self-signed TLS, hosts-file management, and a built-in index page.
+A host application that discovers Docker containers and registers `{project}.{service}.dev.local` domains with Caddy, with optional continuous watching, HTTP port probing, self-signed TLS, hosts-file management, and a built-in index page.
 
 > **Warning**: This application is designed for local development environments only. It uses self-signed TLS, auto-manages hosts files, and assumes trusted networks. Do not use in production.
 
@@ -34,24 +34,26 @@ A host application that watches Docker and automatically registers `{project}.{s
 
 Install and start ordinary [Caddy](https://caddyserver.com/docs/install) on your host with its admin API enabled. Caddy's default admin endpoint is `http://localhost:2019`.
 
-### 2. Run devlocal
-
-devlocal also runs **directly on your host**. It discovers containers through Docker and configures Caddy to proxy to their published ports on `localhost`.
-
-```bash
-just build-devlocal
-sudo ./artifacts/binaries/linux-amd64/devlocal
-```
-
-> `sudo` is required so the proxy can write to your system hosts file (`/etc/hosts`). Pass `--hosts-file=false` to skip hosts file management.
-
-### 3. Start your containers
+### 2. Start your containers
 
 Start any Docker container that publishes a port:
 
 ```bash
 docker run -d --name my-app -p 8080:80 nginx:alpine
 ```
+
+### 3. Run devlocal
+
+devlocal runs **directly on your host**. By default it discovers containers once, updates Caddy, generates the UI, writes the hosts file, and exits.
+
+```bash
+just build
+sudo ./artifacts/linux-amd64/devlocal
+```
+
+Successful runs log each applied hook and finish with a reminder to use `devlocal start` for continuous watching.
+
+> `sudo` is required so devlocal can write to your system hosts file (`/etc/hosts`). Pass `--hosts-file=false` to skip hosts file management.
 
 Visit `https://my-app.dev.local` (hosts entry written automatically) or `https://my-app.localhost` (no hosts entry needed).
 
@@ -69,10 +71,11 @@ services:
       - "8080:80"
 ```
 
-Start it and caddy-dev-local registers `{project}.{service}.dev.local` automatically:
+Start it, then run devlocal to register `{project}.{service}.dev.local`:
 
 ```bash
 docker compose up -d
+sudo devlocal
 ```
 
 ## Labels
@@ -105,7 +108,7 @@ services:
 | `--probe-timeout` | `DEVLOCAL_PROBE_TIMEOUT` | `2s` | HTTP probe timeout |
 | `--hosts-file` | `DEVLOCAL_HOSTS_FILE` | `true` | Manage hosts file entries for domains |
 | `--no-tracing` | `DEVLOCAL_TRACING=false` | tracing enabled | Disable OpenTelemetry tracing on dynamic routes |
-| `--poll-interval` | `DEVLOCAL_POLL_INTERVAL` | `30s` | Periodic full refresh as a safety net for missed Docker events; `0` disables |
+| `--poll-interval` | `DEVLOCAL_POLL_INTERVAL` | `30s` | In `start` mode, periodically refresh as a safety net for missed Docker events; `0` disables |
 | `--caddy` | — | `true` | Register routes and TLS policies with Caddy |
 | `--ui` | — | `true` | Generate and register the index UI |
 | `--caddy-admin` | `DEVLOCAL_CADDY_ADMIN` | `http://localhost:2019` | Caddy admin API URL |
@@ -116,7 +119,7 @@ services:
 
 Caddy, UI, and hosts-file integration are enabled by default.
 
-> **Note:** The periodic poll backstops missed Docker events and repairs Caddy configuration changed by another process. Hook workers coalesce queued work to the newest complete snapshot.
+> **Note:** `devlocal start` watches Docker events continuously. Its periodic poll backstops missed events and repairs Caddy configuration changed by another process. Hook workers coalesce queued work to the newest complete snapshot.
 
 ## Caddy Configuration
 
@@ -130,8 +133,8 @@ Requires [Go 1.26.2 or newer](https://go.dev/dl/), [just](https://github.com/cas
 
 ```bash
 just install-lint           # Install golangci-lint (one-time)
-just build-devlocal         # Build devlocal for all supported platforms
-just build-all              # Run checks, integration tests with coverage, and build devlocal (default recipe)
+just build                  # Build devlocal for all supported platforms
+just                        # Run checks, integration tests with coverage, and build devlocal (default recipe)
 just lint                   # Run linter
 just check                  # Run linter + tests
 ```
@@ -142,14 +145,20 @@ See `just --list` for all available recipes.
 
 ## Running
 
-Start Caddy separately with its admin API enabled, then run:
+Start Caddy separately with its admin API enabled. Run one reconciliation pass after starting or changing containers:
 
 ```bash
-just build-devlocal
+just build
 sudo ./artifacts/linux-amd64/devlocal
 ```
 
-Run Caddy and devlocal in **separate terminals**. devlocal attaches to Caddy over its admin API and never starts or stops it, but on Windows a console close or Ctrl-C broadcasts a signal to every process attached to that console. Caddy's `caddy start` child stays attached to the terminal on Windows, so if devlocal shares that terminal, closing it shuts down both. Keep Caddy in its own window (or run it as a service) and devlocal in another; with native Caddy daemons such as systemd the two are already independent.
+To watch Docker and reconcile automatically as containers change, run the continuous controller:
+
+```bash
+sudo ./artifacts/linux-amd64/devlocal start
+```
+
+When using `start`, run Caddy and devlocal in **separate terminals**. devlocal attaches to Caddy over its admin API and never starts or stops it, but on Windows a console close or Ctrl-C broadcasts a signal to every process attached to that console. Caddy's `caddy start` child stays attached to the terminal on Windows, so if devlocal shares that terminal, closing it shuts down both. Keep Caddy in its own window (or run it as a service) and devlocal in another; with native Caddy daemons such as systemd the two are already independent.
 
 The default admin endpoint is `http://localhost:2019`. Use `--caddy-admin` and `--caddy-server` to select another same-host Caddy process and HTTP server. Caddy, devlocal, and Docker-published ports must be on the same host because generated upstreams use `localhost:{published_port}`.
 
@@ -175,11 +184,11 @@ These domains are not generated when custom `dev.local.domains` labels are set.
 See the [example directory](example/) for a complete demo with multiple containers.
 
 ```bash
-just build-devlocal
-# Start Caddy in another terminal before devlocal.
-sudo ./artifacts/linux-amd64/devlocal
+just build
 cd example
 docker compose up -d
+# Start Caddy separately, then reconcile the running containers.
+sudo ../artifacts/linux-amd64/devlocal
 ```
 
 Then visit:
@@ -192,15 +201,13 @@ Non-HTTP services like `mssql` are also registered (see it on the index page); S
 
 ## How It Works
 
-1. Watches Docker events for container lifecycle changes across all networks
-2. Lists all containers via the Docker API
-3. Computes domains from container labels (Compose project/service or container name)
-4. Registers running containers that publish at least one port; unpublished containers are skipped
-5. Probes only each running container's published host ports at `localhost:{published_port}` to find the HTTP server (common ports 80, 8080, 443, 8443 are checked first)
-6. Publishes each immutable discovery update to independent Caddy, UI, and hosts-file hook workers
-7. Reconciles stable, owned route and TLS policy IDs against Caddy's actual configuration, preserving unrelated resources and adopting state after restarts
-8. Renders the UI files independently and registers their directory with Caddy's file server
-9. Polls Docker every `--poll-interval` (default 30s) as a safety net for missed events and external Caddy changes
+1. Lists all containers via the Docker API
+2. Computes domains from container labels (Compose project/service or container name)
+3. Registers running containers that publish at least one port; unpublished containers are skipped
+4. Probes only each running container's published host ports at `localhost:{published_port}` to find the HTTP server (common ports 80, 8080, 443, 8443 are checked first)
+5. Reconciles stable, owned route and TLS policy IDs against Caddy's actual configuration, preserving unrelated resources and adopting state after restarts
+6. Renders the UI after Caddy reconciliation and updates the hosts file
+7. Exits after one pass, or, with `devlocal start`, watches Docker events and periodically refreshes according to `--poll-interval`
 
 ## Generated Files
 
@@ -230,7 +237,7 @@ Entries are written inside a managed block with searchable markers:
 # dev-local:END
 ```
 
-The block is updated on every config reload — added when containers start, removed when they stop. The TLD (`dev.local`) and its `.localhost` alias (`dev.localhost`) always point at the index page; container `.dev.local` and `.localhost` domains are included so non-browser tools (curl, API clients, etc.) can resolve them without relying on DNS.
+The block is updated on each `devlocal` pass and whenever `devlocal start` refreshes configuration. The TLD (`dev.local`) and its `.localhost` alias (`dev.localhost`) always point at the index page; container `.dev.local` and `.localhost` domains are included so non-browser tools (curl, API clients, etc.) can resolve them without relying on DNS.
 
 ### Opt Out
 
@@ -280,7 +287,7 @@ devlocal --hosts-file=false        # Caddy registration and UI only
 devlocal --ui=false                # Caddy registration without the index route
 ```
 
-Additional compile-time hooks implement `Name() string`, `Apply(context.Context, discovery.Update) error`, and `Cleanup(context.Context) error`, then register with `hook.Runtime`. Docker events, polling, and stale cleanup trigger serialized discovery refreshes. Discovery probes published host ports, retains the selected port per container, and publishes authoritative complete snapshots to the runtime. The runtime owns hook fan-out and latest-update coalescing. Each hook has an independent worker, so a slow or failed hook does not block discovery or other hooks; port probing is part of the discovery refresh itself. Ordered dependencies can use `hook.Sequence`; the default composition sequences Caddy before UI so the rendered config matches the reconciled update. Cleanup is invoked explicitly with `devlocal clean`.
+Additional compile-time hooks implement `Name() string`, `Apply(context.Context, discovery.Update) error`, and `Cleanup(context.Context) error`, then register with `hook.Runtime`. The default command synchronously applies one authoritative snapshot to every hook. In `start` mode, Docker events, polling, and stale cleanup trigger serialized discovery refreshes; each hook has an independent worker with latest-update coalescing. Port probing is part of discovery. Ordered dependencies can use `hook.Sequence`; the default composition sequences Caddy before UI so the rendered config matches the reconciled update. Cleanup is invoked explicitly with `devlocal clean`.
 
 ## Acknowledgements
 

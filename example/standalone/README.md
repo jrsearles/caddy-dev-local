@@ -8,7 +8,7 @@ Build the binary:
 
 ```bash
 cd ../..
-just build-all
+just
 ```
 
 Start the containers:
@@ -22,7 +22,7 @@ Start Caddy, then run the controller in another terminal:
 
 ```bash
 ../../artifacts/linux-amd64/caddy run --config /dev/null
-sudo ../../artifacts/linux-amd64/devlocal
+sudo ../../artifacts/linux-amd64/devlocal start
 ```
 
 > `sudo` is required to write to `/etc/hosts`. Use `--hosts-file=false` to skip hosts file management.

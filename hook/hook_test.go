@@ -115,6 +115,170 @@ func TestInitialApplyFailureStopsStartup(t *testing.T) {
 	}
 }
 
+func TestApplyOnceAttemptsEveryHook(t *testing.T) {
+	wantErr := errors.New("apply failure")
+	var applied []string
+	r := NewRuntime(nil)
+	for _, h := range []Func{
+		{HookName: "first", ApplyFunc: func(_ context.Context, got discovery.Update) error {
+			applied = append(applied, "first:"+updateID(got))
+			return wantErr
+		}},
+		{HookName: "second", ApplyFunc: func(_ context.Context, got discovery.Update) error {
+			applied = append(applied, "second:"+updateID(got))
+			return nil
+		}},
+	} {
+		if err := r.Register(h); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := r.ApplyOnce(context.Background(), update("once")); !errors.Is(err, wantErr) {
+		t.Fatalf("ApplyOnce error = %v, want %v", err, wantErr)
+	}
+	if !slices.Equal(applied, []string{"first:once", "second:once"}) {
+		t.Fatalf("applied = %v", applied)
+	}
+}
+
+func TestApplyOnceWaitsForHook(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	done := make(chan error, 1)
+	r := NewRuntime(nil)
+	if err := r.Register(Func{HookName: "blocking", ApplyFunc: func(context.Context, discovery.Update) error {
+		close(started)
+		<-release
+		return nil
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	go func() { done <- r.ApplyOnce(context.Background(), update("once")) }()
+	<-started
+	select {
+	case err := <-done:
+		t.Fatalf("ApplyOnce returned before hook completed: %v", err)
+	default:
+	}
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatalf("ApplyOnce: %v", err)
+	}
+}
+
+func TestApplyOnceJoinsErrors(t *testing.T) {
+	firstErr := errors.New("first failure")
+	secondErr := errors.New("second failure")
+	r := NewRuntime(nil)
+	for _, h := range []Func{
+		{HookName: "first", ApplyFunc: func(context.Context, discovery.Update) error { return firstErr }},
+		{HookName: "second", ApplyFunc: func(context.Context, discovery.Update) error { return secondErr }},
+	} {
+		if err := r.Register(h); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	err := r.ApplyOnce(context.Background(), update("once"))
+	if !errors.Is(err, firstErr) || !errors.Is(err, secondErr) {
+		t.Fatalf("ApplyOnce error = %v, want both failures", err)
+	}
+}
+
+func TestApplyOnceLogsSuccessfulHook(t *testing.T) {
+	logs := &recordingHandler{level: slog.LevelInfo}
+	r := NewRuntime(slog.New(logs))
+	if err := r.Register(Func{HookName: "successful", ApplyFunc: func(context.Context, discovery.Update) error {
+		return nil
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.ApplyOnce(context.Background(), update("once")); err != nil {
+		t.Fatal(err)
+	}
+
+	records := logs.Records()
+	if len(records) != 1 || records[0].Message != "hook applied" {
+		t.Fatalf("records = %v, want one hook applied log", records)
+	}
+	var hookName string
+	records[0].Attrs(func(attr slog.Attr) bool {
+		if attr.Key == "hook" {
+			hookName = attr.Value.String()
+		}
+		return true
+	})
+	if hookName != "successful" {
+		t.Fatalf("hook = %q, want successful", hookName)
+	}
+}
+
+func TestApplyOnceLogsSequenceHooks(t *testing.T) {
+	logs := &recordingHandler{level: slog.LevelInfo}
+	r := NewRuntime(slog.New(logs))
+	sequence := NewSequence("sequence",
+		Func{HookName: "caddy", ApplyFunc: func(context.Context, discovery.Update) error { return nil }},
+		Func{HookName: "ui", ApplyFunc: func(context.Context, discovery.Update) error { return nil }},
+	)
+	if err := r.Register(sequence); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.ApplyOnce(context.Background(), update("once")); err != nil {
+		t.Fatal(err)
+	}
+
+	var hookNames []string
+	for _, record := range logs.Records() {
+		record.Attrs(func(attr slog.Attr) bool {
+			if attr.Key == "hook" {
+				hookNames = append(hookNames, attr.Value.String())
+			}
+			return true
+		})
+	}
+	if !slices.Equal(hookNames, []string{"caddy", "ui"}) {
+		t.Fatalf("logged hooks = %v", hookNames)
+	}
+}
+
+func TestStartLogsSequenceHooks(t *testing.T) {
+	logs := &recordingHandler{level: slog.LevelInfo}
+	r := NewRuntime(slog.New(logs))
+	sequence := NewSequence("sequence",
+		Func{HookName: "caddy", ApplyFunc: func(context.Context, discovery.Update) error { return nil }},
+		Func{HookName: "ui", ApplyFunc: func(context.Context, discovery.Update) error { return nil }},
+	)
+	if err := r.Register(sequence); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	if err := r.Start(ctx, update("initial")); err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	if err := r.Wait(); err != nil {
+		t.Fatal(err)
+	}
+
+	var started []string
+	for _, record := range logs.Records() {
+		if record.Message != "hook started" {
+			continue
+		}
+		record.Attrs(func(attr slog.Attr) bool {
+			if attr.Key == "hook" {
+				started = append(started, attr.Value.String())
+			}
+			return true
+		})
+	}
+	if !slices.Equal(started, []string{"caddy", "ui"}) {
+		t.Fatalf("started hooks = %v", started)
+	}
+}
+
 func TestCleanupAttemptsEveryHook(t *testing.T) {
 	var cleaned []string
 	wantErr := errors.New("cleanup failure")

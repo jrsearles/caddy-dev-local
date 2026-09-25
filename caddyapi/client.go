@@ -21,7 +21,6 @@ const (
 	defaultBaseURL    = "http://localhost:2019"
 	defaultServerName = "srv0"
 	ownedPrefix       = "devlocal-"
-	tlsPolicyID       = "devlocal-tls"
 )
 
 type Options struct {
@@ -83,7 +82,13 @@ func (c *Client) RunningConfig(ctx context.Context) (string, error) {
 	return string(body), nil
 }
 
-func (c *Client) Reconcile(ctx context.Context, desiredRoutes, desiredPolicies map[string]json.RawMessage) error {
+// Reconcile reconciles desired owned routes and policies against the target
+// server. owned identifies the resources the caller manages: routes and
+// policies it does not claim are preserved, while owned orphans are removed.
+func (c *Client) Reconcile(ctx context.Context, desiredRoutes, desiredPolicies map[string]json.RawMessage, owned func(string) bool) error {
+	if owned == nil {
+		owned = isOwnedID
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -106,10 +111,10 @@ func (c *Client) Reconcile(ctx context.Context, desiredRoutes, desiredPolicies m
 		}
 	}
 
-	if err := c.reconcileRoutes(ctx, routesPath, actualRoutes, desiredRoutes); err != nil {
+	if err := c.reconcileRoutes(ctx, routesPath, actualRoutes, desiredRoutes, owned); err != nil {
 		return err
 	}
-	if err := c.reconcilePolicies(ctx, desiredPolicies); err != nil {
+	if err := c.reconcilePolicies(ctx, desiredPolicies, owned); err != nil {
 		return err
 	}
 	return nil
@@ -123,7 +128,7 @@ func (c *Client) Cleanup(ctx context.Context) error {
 	routesPath := "/config/apps/http/servers/" + url.PathEscape(c.serverName) + "/routes"
 	actualRoutes, err := c.getArray(ctx, routesPath)
 	if err == nil {
-		if reconcileErr := c.reconcileRoutes(ctx, routesPath, actualRoutes, nil); reconcileErr != nil {
+		if reconcileErr := c.reconcileRoutes(ctx, routesPath, actualRoutes, nil, isOwnedID); reconcileErr != nil {
 			cleanupErrors = append(cleanupErrors, reconcileErr)
 		}
 	} else {
@@ -152,9 +157,10 @@ func (c *Client) cleanupPolicies(ctx context.Context) error {
 	remaining := make([]json.RawMessage, 0, len(actual))
 	for _, policy := range actual {
 		id, _ := resourceID(policy)
-		if id != tlsPolicyID {
-			remaining = append(remaining, policy)
+		if isOwnedID(id) {
+			continue
 		}
+		remaining = append(remaining, policy)
 	}
 	body, err := json.Marshal(remaining)
 	if err != nil {
@@ -290,8 +296,8 @@ func (c *Client) effectivePorts(ctx context.Context) (int, int, error) {
 	return app.HTTPPort, app.HTTPSPort, nil
 }
 
-func (c *Client) reconcileRoutes(ctx context.Context, routesPath string, actual []json.RawMessage, desired map[string]json.RawMessage) error {
-	actualOwned := resourcesByID(actual, func(id string) bool { return strings.HasPrefix(id, ownedPrefix) })
+func (c *Client) reconcileRoutes(ctx context.Context, routesPath string, actual []json.RawMessage, desired map[string]json.RawMessage, owned func(string) bool) error {
+	actualOwned := resourcesByID(actual, owned)
 	for _, id := range sortedKeys(desired) {
 		resource := desired[id]
 		if actualResource, exists := actualOwned[id]; exists {
@@ -331,7 +337,7 @@ func (c *Client) reconcileRoutes(ctx context.Context, routesPath string, actual 
 	return nil
 }
 
-func (c *Client) reconcilePolicies(ctx context.Context, desired map[string]json.RawMessage) error {
+func (c *Client) reconcilePolicies(ctx context.Context, desired map[string]json.RawMessage, owned func(string) bool) error {
 	const path = "/config/apps/tls/automation/policies"
 	actual, err := c.getArray(ctx, path)
 	missing := false
@@ -343,22 +349,35 @@ func (c *Client) reconcilePolicies(ctx context.Context, desired map[string]json.
 		missing = true
 	}
 
-	merged := make([]json.RawMessage, 0, len(actual)+len(desired))
-	if policy, ok := desired[tlsPolicyID]; ok {
-		merged = append(merged, policy)
+	ownedByID := make(map[string]json.RawMessage, len(desired)+len(actual))
+	for id, policy := range desired {
+		ownedByID[id] = policy
 	}
-	for _, id := range sortedKeys(desired) {
-		if id != tlsPolicyID {
-			merged = append(merged, desired[id])
-		}
-	}
+
+	userPolicies := make([]json.RawMessage, 0, len(actual))
 	for _, policy := range actual {
-		id, _ := resourceID(policy)
-		if id == tlsPolicyID {
+		id, ok := resourceID(policy)
+		if !ok {
+			userPolicies = append(userPolicies, policy)
 			continue
 		}
-		merged = append(merged, policy)
+		switch {
+		case owned(id) && !hasID(desired, id):
+			continue
+		case strings.HasPrefix(id, ownedPrefix):
+			if _, exists := ownedByID[id]; !exists {
+				ownedByID[id] = policy
+			}
+		default:
+			userPolicies = append(userPolicies, policy)
+		}
 	}
+
+	merged := make([]json.RawMessage, 0, len(ownedByID)+len(userPolicies))
+	for _, id := range sortedKeys(ownedByID) {
+		merged = append(merged, ownedByID[id])
+	}
+	merged = append(merged, userPolicies...)
 	body, err := json.Marshal(merged)
 	if err != nil {
 		return fmt.Errorf("encoding TLS policies: %w", err)
@@ -398,6 +417,15 @@ func resourcesByID(resources []json.RawMessage, owned func(string) bool) map[str
 		}
 	}
 	return result
+}
+
+func isOwnedID(id string) bool {
+	return strings.HasPrefix(id, ownedPrefix)
+}
+
+func hasID[V any](values map[string]V, key string) bool {
+	_, ok := values[key]
+	return ok
 }
 
 func resourceID(resource json.RawMessage) (string, bool) {

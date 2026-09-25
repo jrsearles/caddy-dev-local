@@ -24,7 +24,7 @@ var sharedFlagSpecs = []sharedFlagSpec{
 	{flagTLD, "", "Top-level domain (env: DEVLOCAL_TLD)"},
 	{flagStaleTTL, "0", "Keep config for stopped containers (env: DEVLOCAL_STALE_TTL)"},
 	{flagProbeTimeout, "0", "HTTP probe timeout (env: DEVLOCAL_PROBE_TIMEOUT)"},
-	{flagPollInterval, "0", "Periodic full refresh as a safety net for missed events (env: DEVLOCAL_POLL_INTERVAL, default 30s, 0 disables)"},
+	{flagPollInterval, "0", "Periodic full refresh in start mode (env: DEVLOCAL_POLL_INTERVAL, default 30s, 0 disables)"},
 }
 
 func isSharedDurationFlag(name string) bool {

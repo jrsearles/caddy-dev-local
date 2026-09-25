@@ -113,7 +113,9 @@ func (s *apiState) handler(w http.ResponseWriter, r *http.Request) {
 	case (r.Method == http.MethodPatch || r.Method == http.MethodPut) && r.URL.Path == "/config/apps/tls/automation/policies":
 		s.policiesExist = true
 		s.policyWrites++
-		_ = json.NewDecoder(r.Body).Decode(&s.policies)
+		var decoded []json.RawMessage
+		_ = json.NewDecoder(r.Body).Decode(&decoded)
+		s.policies = decoded
 		write(map[string]any{})
 	default:
 		http.Error(w, fmt.Sprintf("unexpected %s %s", r.Method, r.URL.Path), http.StatusNotFound)
@@ -121,6 +123,10 @@ func (s *apiState) handler(w http.ResponseWriter, r *http.Request) {
 }
 
 func raw(value string) json.RawMessage { return json.RawMessage(value) }
+
+const tlsPolicyID = "devlocal-tls"
+
+func managed(id string) bool { return strings.HasPrefix(id, "devlocal-") }
 
 func TestReconcileAdoptsActualStateAndPreservesUnrelatedResources(t *testing.T) {
 	state := &apiState{
@@ -145,7 +151,7 @@ func TestReconcileAdoptsActualStateAndPreservesUnrelatedResources(t *testing.T) 
 		"devlocal-new":      raw(`{"@id":"devlocal-new"}`),
 	}, map[string]json.RawMessage{
 		"devlocal-tls": raw(`{"@id":"devlocal-tls","subjects":["new"]}`),
-	})
+	}, managed)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,7 +182,7 @@ func TestReconcileMissingServerPolicy(t *testing.T) {
 	state := &apiState{}
 	server := httptest.NewServer(http.HandlerFunc(state.handler))
 	defer server.Close()
-	err := New(Options{BaseURL: server.URL}).Reconcile(context.Background(), nil, nil)
+	err := New(Options{BaseURL: server.URL}).Reconcile(context.Background(), nil, nil, managed)
 	if err == nil || !strings.Contains(err.Error(), "creation is disabled") || !strings.Contains(err.Error(), "server missing") {
 		t.Fatalf("error = %v, want disabled policy and response body", err)
 	}
@@ -189,7 +195,7 @@ func TestReconcileCreatesMissingServerForInvalidTraversal(t *testing.T) {
 	client := New(Options{BaseURL: server.URL, AllowCreateServer: true, HTTPPort: 8080, HTTPSPort: 8443})
 	if err := client.Reconcile(context.Background(), map[string]json.RawMessage{
 		"devlocal-new": raw(`{"@id":"devlocal-new"}`),
-	}, nil); err != nil {
+	}, nil, managed); err != nil {
 		t.Fatal(err)
 	}
 	state.mu.Lock()
@@ -225,7 +231,7 @@ func TestReconcileDoesNotRewriteMatchingState(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(state.handler))
 	defer server.Close()
 	client := New(Options{BaseURL: server.URL})
-	if err := client.Reconcile(context.Background(), map[string]json.RawMessage{"devlocal-existing": route}, map[string]json.RawMessage{"devlocal-tls": policy}); err != nil {
+	if err := client.Reconcile(context.Background(), map[string]json.RawMessage{"devlocal-existing": route}, map[string]json.RawMessage{"devlocal-tls": policy}, managed); err != nil {
 		t.Fatal(err)
 	}
 	state.mu.Lock()
@@ -233,6 +239,58 @@ func TestReconcileDoesNotRewriteMatchingState(t *testing.T) {
 	if len(state.patched) != 0 || len(state.posted) != 0 || len(state.deleted) != 0 || state.policyWrites != 0 {
 		t.Fatalf("matching state was rewritten: patched=%v posted=%v deleted=%v policyWrites=%d", state.patched, state.posted, state.deleted, state.policyWrites)
 	}
+}
+
+func TestReconcilePoliciesStableOrderAcrossOwners(t *testing.T) {
+	caddyOwned := func(id string) bool {
+		return strings.HasPrefix(id, "devlocal-route-") || id == "devlocal-tls"
+	}
+	uiOwned := func(id string) bool {
+		return id == "devlocal-index" || id == "devlocal-tls-ui"
+	}
+	caddy := raw(`{"@id":"devlocal-tls","subjects":["web.dev.local"]}`)
+	ui := raw(`{"@id":"devlocal-tls-ui","subjects":["dev.local"]}`)
+	user := raw(`{"@id":"user-policy"}`)
+	state := &apiState{
+		serverExists: true, policiesExist: true,
+		policies: []json.RawMessage{ui, user},
+	}
+	server := httptest.NewServer(http.HandlerFunc(state.handler))
+	defer server.Close()
+	client := New(Options{BaseURL: server.URL})
+
+	if err := client.Reconcile(context.Background(), nil, map[string]json.RawMessage{"devlocal-tls": caddy}, caddyOwned); err != nil {
+		t.Fatal(err)
+	}
+	state.mu.Lock()
+	if writes := state.policyWrites; writes != 1 {
+		t.Fatalf("policyWrites after caddy reconcile = %d, want 1", writes)
+	}
+	if got := policyIDList(state.policies); !slices.Equal(got, []string{"devlocal-tls", "devlocal-tls-ui", "user-policy"}) {
+		t.Errorf("order after caddy reconcile = %v", got)
+	}
+	state.mu.Unlock()
+
+	if err := client.Reconcile(context.Background(), nil, map[string]json.RawMessage{"devlocal-tls-ui": ui}, uiOwned); err != nil {
+		t.Fatal(err)
+	}
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	if got := policyIDList(state.policies); !slices.Equal(got, []string{"devlocal-tls", "devlocal-tls-ui", "user-policy"}) {
+		t.Errorf("order after ui reconcile = %v", got)
+	}
+	if writes := state.policyWrites; writes != 1 {
+		t.Fatalf("policyWrites after ui reconcile = %d, want no rewrite", writes)
+	}
+}
+
+func policyIDList(policies []json.RawMessage) []string {
+	ids := make([]string, 0, len(policies))
+	for _, policy := range policies {
+		id, _ := resourceID(policy)
+		ids = append(ids, id)
+	}
+	return ids
 }
 
 func TestCleanupRemovesOnlyOwnedResources(t *testing.T) {
@@ -245,6 +303,7 @@ func TestCleanupRemovesOnlyOwnedResources(t *testing.T) {
 		},
 		policies: []json.RawMessage{
 			raw(`{"@id":"devlocal-tls"}`),
+			raw(`{"@id":"devlocal-tls-ui"}`),
 			raw(`{"@id":"user-policy"}`),
 		},
 	}

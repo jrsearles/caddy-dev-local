@@ -43,12 +43,12 @@ func (a *capturedAPI) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func TestHookBuildsRouteIndexAndTLSJSON(t *testing.T) {
+func TestHookBuildsRouteAndTLSJSON(t *testing.T) {
 	api := &capturedAPI{}
 	server := httptest.NewServer(http.HandlerFunc(api.serveHTTP))
 	defer server.Close()
 	cfg := &config.Config{TLD: "dev.local", Tracing: true}
-	hook := New(cfg, "/tmp/devlocal-index", caddyapi.New(caddyapi.Options{BaseURL: server.URL}))
+	hook := New(cfg, caddyapi.New(caddyapi.Options{BaseURL: server.URL}))
 	update := discovery.Update{Snapshot: []*discovery.ContainerInfo{{
 		ContainerName: "web", IsRunning: true, SelectedPort: 8080,
 	}}}
@@ -81,19 +81,8 @@ func TestHookBuildsRouteIndexAndTLSJSON(t *testing.T) {
 	if dial != "localhost:8080" {
 		t.Errorf("upstream dial = %v, want localhost:8080", dial)
 	}
-	index := objects[indexRouteID]
-	if index == nil {
-		t.Fatal("stable index route missing")
-	}
-	indexHandle := index["handle"].([]any)[0].(map[string]any)
-	indexInner := indexHandle["routes"].([]any)[0].(map[string]any)
-	vars := indexInner["handle"].([]any)[0].(map[string]any)
-	if vars["root"] != "/tmp/devlocal-index" {
-		t.Errorf("index root = %v", vars["root"])
-	}
-	indexHosts := index["match"].([]any)[0].(map[string]any)["host"].([]any)
-	if !slices.Equal(indexHosts, []any{"dev.local", "dev.localhost"}) {
-		t.Errorf("index hosts = %v", indexHosts)
+	if _, ok := objects["devlocal-index"]; ok {
+		t.Fatal("index route must be registered by the ui hook, not the caddy hook")
 	}
 	if len(api.policies) != 1 {
 		t.Fatalf("policies = %s", api.policies)
@@ -105,16 +94,33 @@ func TestHookBuildsRouteIndexAndTLSJSON(t *testing.T) {
 	if policy["@id"] != tlsPolicyID || policy["issuers"].([]any)[0].(map[string]any)["module"] != "internal" {
 		t.Errorf("TLS policy = %v", policy)
 	}
+	subjects := policy["subjects"].([]any)
+	if !slices.Equal(subjects, []any{"web.dev.local", "web.localhost"}) {
+		t.Errorf("TLS policy subjects = %v, want container domains only", subjects)
+	}
 }
 
-func TestBuildConfigWithoutIndexDirectory(t *testing.T) {
-	routes, _, err := buildConfig(&config.Config{TLD: "dev.local"}, "", map[string][]string{
+func TestBuildConfigProducesOnlyContainerRoutes(t *testing.T) {
+	routes, policies, err := buildConfig(&config.Config{TLD: "dev.local"}, map[string][]string{
 		"web.dev.local": {"localhost:8080"},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := routes[indexRouteID]; ok {
-		t.Fatal("index route present when UI is disabled")
+	if len(routes) != 1 {
+		t.Fatalf("routes = %v, want only the container route", routes)
+	}
+	var policy struct {
+		ID       string   `json:"@id"`
+		Subjects []string `json:"subjects"`
+	}
+	if err := json.Unmarshal(policies[tlsPolicyID], &policy); err != nil {
+		t.Fatal(err)
+	}
+	if policy.ID != tlsPolicyID {
+		t.Errorf("policy ID = %q, want %q", policy.ID, tlsPolicyID)
+	}
+	if !slices.Equal(policy.Subjects, []string{"web.dev.local"}) {
+		t.Errorf("TLS policy subjects = %v", policy.Subjects)
 	}
 }

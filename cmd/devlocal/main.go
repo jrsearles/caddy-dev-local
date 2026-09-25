@@ -17,21 +17,32 @@ import (
 	"github.com/jrsearles/caddy-dev-local/controller"
 )
 
-const name = "devlocal"
+const (
+	name             = "devlocal"
+	startCommandName = "start"
+	cleanCommandName = "clean"
+)
+
+type command int
+
+const (
+	commandRunOnce command = iota
+	commandStart
+	commandClean
+)
 
 func main() {
-	clean := len(os.Args) > 1 && os.Args[1] == "clean"
-	args := os.Args[1:]
-	if clean {
-		args = args[1:]
-	}
-	if err := run(args, clean); err != nil {
+	if err := run(os.Args[1:]); err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %v\n", name, err)
 		os.Exit(1)
 	}
 }
 
-func run(args []string, clean bool) error {
+func run(args []string) error {
+	cmd, args, err := parseCommand(args)
+	if err != nil {
+		return err
+	}
 	cfg := config.DefaultConfig()
 	cacheDir, err := os.UserCacheDir()
 	if err != nil {
@@ -40,7 +51,7 @@ func run(args []string, clean bool) error {
 
 	fs := pflag.NewFlagSet(name, pflag.ContinueOnError)
 	fs.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: %s [clean] [flags]\n\nFlags:\n", name)
+		fmt.Fprintf(os.Stderr, "Usage: %s [%s|%s] [flags]\n\nFlags:\n", name, startCommandName, cleanCommandName)
 		fs.PrintDefaults()
 	}
 	config.RegisterSharedFlags(fs)
@@ -58,6 +69,9 @@ func run(args []string, clean bool) error {
 			return nil
 		}
 		return parseErr
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected argument %q", fs.Arg(0))
 	}
 	config.ApplySharedFlags(cfg, fs)
 	cfg.HostsFile = *hostsEnabled
@@ -85,10 +99,28 @@ func run(args []string, clean bool) error {
 		UI:          *uiEnabled,
 		Hosts:       *hostsEnabled,
 	}
-	if clean {
+	switch cmd {
+	case commandStart:
+		return controller.Run(ctx, options)
+	case commandClean:
 		return controller.Cleanup(ctx, options)
+	default:
+		return controller.RunOnce(ctx, options)
 	}
-	return controller.Run(ctx, options)
+}
+
+func parseCommand(args []string) (command, []string, error) {
+	if len(args) == 0 || args[0] == "" || args[0][0] == '-' {
+		return commandRunOnce, args, nil
+	}
+	switch args[0] {
+	case startCommandName:
+		return commandStart, args[1:], nil
+	case cleanCommandName:
+		return commandClean, args[1:], nil
+	default:
+		return commandRunOnce, nil, fmt.Errorf("unknown command %q", args[0])
+	}
 }
 
 func envOrDefault(name, fallback string) string {

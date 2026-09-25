@@ -13,6 +13,7 @@ import (
 	"slices"
 	"sync"
 
+	"github.com/jrsearles/caddy-dev-local/config"
 	"github.com/jrsearles/caddy-dev-local/discovery"
 	"github.com/jrsearles/caddy-dev-local/generator"
 )
@@ -21,23 +22,34 @@ const (
 	indexHTMLName = "index.html"
 	indexCSSName  = "index.css"
 	versionName   = "version.json"
+
+	indexRouteID = "devlocal-index"
+	tlsPolicyID  = "devlocal-tls-ui"
+
+	keyID      = "@id"
+	keyHandle  = "handle"
+	keyHandler = "handler"
 )
 
-type ConfigSource interface {
+// caddyClient is the subset of caddyapi.Client the UI hook needs to serve the
+// generated index page through Caddy.
+type caddyClient interface {
 	RunningConfig(context.Context) (string, error)
+	Reconcile(context.Context, map[string]json.RawMessage, map[string]json.RawMessage, func(string) bool) error
+	Cleanup(context.Context) error
 }
 
 type Hook struct {
-	tld       string
+	cfg       *config.Config
 	outputDir string
-	source    ConfigSource
+	caddy     caddyClient
 
 	mu           sync.Mutex
 	cachedConfig string
 }
 
-func New(tld, outputDir string, source ConfigSource) *Hook {
-	return &Hook{tld: tld, outputDir: outputDir, source: source}
+func New(cfg *config.Config, outputDir string, caddy caddyClient) *Hook {
+	return &Hook{cfg: cfg, outputDir: outputDir, caddy: caddy}
 }
 
 func (p *Hook) Name() string {
@@ -51,8 +63,8 @@ func (p *Hook) Apply(ctx context.Context, update discovery.Update) error { //nol
 	if p.outputDir == "" {
 		return fmt.Errorf("ui hook: output directory is empty")
 	}
-	if p.source != nil {
-		if runningConfig, err := p.source.RunningConfig(ctx); err == nil {
+	if p.caddy != nil {
+		if runningConfig, err := p.caddy.RunningConfig(ctx); err == nil {
 			p.cachedConfig = runningConfig
 		}
 	}
@@ -62,7 +74,7 @@ func (p *Hook) Apply(ctx context.Context, update discovery.Update) error { //nol
 	if !update.Status.LastRefresh.IsZero() {
 		lastRefresh = update.Status.LastRefresh.Unix()
 	}
-	page := generator.GenerateIndexPage(p.tld, snapshot, p.cachedConfig, update.Status.LastError, lastRefresh)
+	page := generator.GenerateIndexPage(p.cfg.TLD, snapshot, p.cachedConfig, update.Status.LastError, lastRefresh)
 	fingerprint := fingerprint(page, generator.IndexCSS)
 
 	if err := os.MkdirAll(p.outputDir, 0755); err != nil {
@@ -86,10 +98,24 @@ func (p *Hook) Apply(ctx context.Context, update discovery.Update) error { //nol
 	if err := writeIfChanged(filepath.Join(p.outputDir, versionName), version); err != nil {
 		return err
 	}
+
+	if p.caddy != nil {
+		reserved := make(map[string]bool, len(update.Snapshot))
+		for domain := range generator.DomainTargets(p.cfg, update.Snapshot) {
+			reserved[domain] = true
+		}
+		routes, policies, err := p.indexResources(reserved)
+		if err != nil {
+			return err
+		}
+		if err := p.caddy.Reconcile(ctx, routes, policies, p.owned); err != nil {
+			return fmt.Errorf("reconciling index UI in Caddy: %w", err)
+		}
+	}
 	return nil
 }
 
-func (p *Hook) Cleanup(context.Context) error {
+func (p *Hook) Cleanup(ctx context.Context) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.outputDir == "" {
@@ -102,7 +128,55 @@ func (p *Hook) Cleanup(context.Context) error {
 			cleanupErrors = append(cleanupErrors, fmt.Errorf("removing %s: %w", name, err))
 		}
 	}
+	if p.caddy != nil {
+		if err := p.caddy.Cleanup(ctx); err != nil {
+			cleanupErrors = append(cleanupErrors, fmt.Errorf("cleaning Caddy resources: %w", err))
+		}
+	}
 	return errors.Join(cleanupErrors...)
+}
+
+// indexResources builds the file-server route and internal-issuer TLS policy
+// that serve the generated index page at the TLD and its .localhost alias,
+// skipping hosts already claimed by container routes.
+func (p *Hook) indexResources(reserved map[string]bool) (map[string]json.RawMessage, map[string]json.RawMessage, error) {
+	indexHosts := make([]string, 0, 2)
+	for _, host := range []string{p.cfg.TLD, generator.TLDLocalhost(p.cfg.TLD)} {
+		if !reserved[host] && !slices.Contains(indexHosts, host) {
+			indexHosts = append(indexHosts, host)
+		}
+	}
+	if len(indexHosts) == 0 {
+		return map[string]json.RawMessage{}, map[string]json.RawMessage{}, nil
+	}
+	indexRoute, err := json.Marshal(map[string]any{
+		keyID: indexRouteID,
+		keyHandle: []any{map[string]any{
+			keyHandler: "subroute",
+			"routes": []any{map[string]any{keyHandle: []any{
+				map[string]any{keyHandler: "vars", "root": p.outputDir},
+				map[string]any{keyHandler: "file_server", "hide": []string{"./Caddyfile"}},
+			}}},
+		}},
+		"match":    []any{map[string]any{"host": indexHosts}},
+		"terminal": true,
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("building index route: %w", err)
+	}
+	policy, err := json.Marshal(map[string]any{
+		keyID: tlsPolicyID, "issuers": []any{map[string]any{"module": "internal"}}, "subjects": indexHosts,
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("building index TLS policy: %w", err)
+	}
+	return map[string]json.RawMessage{indexRouteID: indexRoute}, map[string]json.RawMessage{tlsPolicyID: policy}, nil
+}
+
+// owned reports identifiers this hook manages: the index route and its TLS
+// policy. Container routes and policies are left to the caddy hook.
+func (p *Hook) owned(id string) bool {
+	return id == indexRouteID || id == tlsPolicyID
 }
 
 func canonicalSnapshot(snapshot []*discovery.ContainerInfo) []*discovery.ContainerInfo {
