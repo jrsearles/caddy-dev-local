@@ -1,0 +1,34 @@
+[
+  {
+    "name": "empty state and discovery error",
+    "tld": "dev.local",
+    "containers": [],
+    "configJSON": "",
+    "discoveryError": "Docker unavailable",
+    "expectedContains": ["No containers registered.", "Docker discovery error: Docker unavailable", "id=\"errorBanner\""],
+    "excludedContains": ["id=\"tab-config\""]
+  },
+  {
+    "name": "compose and standalone cards",
+    "tld": "dev.local",
+    "containers": [
+      { "containerID": "a", "containerName": "web", "image": "nginx:alpine", "project": "example", "service": "web", "isCompose": true, "isRunning": true, "ports": [80], "publishedPorts": { "80": 8080 }, "selectedPort": 8080 },
+      { "containerID": "b", "containerName": "worker", "image": "redis:alpine", "isRunning": false, "ports": [6379] }
+    ],
+    "configJSON": "{\"apps\":{}}",
+    "discoveryError": "",
+    "expectedContains": ["example.web.dev.local", "example.web.localhost", "data-published=\"80:8080\"", "data-project=\"example\"", "data-name=\"worker\"", "id=\"tab-config\""],
+    "excludedContains": ["worker.localhost\" target=\"_blank\""]
+  },
+  {
+    "name": "custom domains override generated domains",
+    "tld": "dev.local",
+    "containers": [
+      { "containerID": "c", "containerName": "api", "isRunning": true, "ports": [80], "publishedPorts": { "80": 8081 }, "customDomains": [{ "port": 80, "domain": "api.custom.local" }] }
+    ],
+    "configJSON": "",
+    "discoveryError": "",
+    "expectedContains": ["api.custom.local", "data-copy=\"api.custom.local:8081\""],
+    "excludedContains": ["api.dev.local", "api.localhost"]
+  }
+]

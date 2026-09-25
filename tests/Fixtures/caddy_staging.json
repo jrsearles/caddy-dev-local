@@ -1,0 +1,15 @@
+{
+  "admin": { "listen": "localhost:20199" },
+  "storage": { "module": "file_system", "root": "C:\\ProgramData\\DevLocal\\staging-caddy-storage" },
+  "apps": {
+    "http": {
+      "servers": {
+        "srv0": {
+          "listen": ["127.0.0.1:19080"],
+          "automatic_https": { "disable": true },
+          "routes": []
+        }
+      }
+    }
+  }
+}

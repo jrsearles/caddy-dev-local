@@ -4,6 +4,9 @@ namespace DevLocal.Tool;
 
 internal sealed record ServiceSettings(string CaddyAdmin, string DockerPipe)
 {
+    public AppOptions? Options { get; init; }
+    public bool ControllerEnabled { get; init; }
+
     internal static ServiceSettings Default => new("http://localhost:2019", "docker_engine");
 
     internal static async Task<ServiceSettings> LoadAsync(CancellationToken token)

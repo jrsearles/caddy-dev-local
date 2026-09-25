@@ -1,0 +1,48 @@
+[
+  {
+    "name": "traced reverse proxy and internal certificate",
+    "tracing": true,
+    "targets": { "web.dev.local": ["localhost:8080"] },
+    "expectedRoutes": {
+      "devlocal-route-web-dev-local": {
+        "@id": "devlocal-route-web-dev-local",
+        "handle": [
+          { "handler": "tracing", "span": "{http.request.method} {http.request.host}" },
+          { "handler": "subroute", "routes": [{ "handle": [
+            { "handler": "reverse_proxy", "upstreams": [{ "dial": "localhost:8080" }] }
+          ] }] }
+        ],
+        "match": [{ "host": ["web.dev.local"] }],
+        "terminal": true
+      }
+    },
+    "expectedPolicies": {
+      "devlocal-tls": { "@id": "devlocal-tls", "issuers": [{ "module": "internal" }], "subjects": ["web.dev.local"] }
+    }
+  },
+  {
+    "name": "untraced duplicate domain targets",
+    "tracing": false,
+    "targets": { "myapp.api.dev.local": ["localhost:32000", "localhost:32001"] },
+    "expectedRoutes": {
+      "devlocal-route-myapp-api-dev-local": {
+        "@id": "devlocal-route-myapp-api-dev-local",
+        "handle": [{ "handler": "subroute", "routes": [{ "handle": [
+          { "handler": "reverse_proxy", "upstreams": [{ "dial": "localhost:32000" }, { "dial": "localhost:32001" }] }
+        ] }] }],
+        "match": [{ "host": ["myapp.api.dev.local"] }],
+        "terminal": true
+      }
+    },
+    "expectedPolicies": {
+      "devlocal-tls": { "@id": "devlocal-tls", "issuers": [{ "module": "internal" }], "subjects": ["myapp.api.dev.local"] }
+    }
+  },
+  {
+    "name": "empty target set removes owned resources",
+    "tracing": true,
+    "targets": {},
+    "expectedRoutes": {},
+    "expectedPolicies": {}
+  }
+]

@@ -7,8 +7,8 @@
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>devlocal</ToolCommandName>
     <PackageId>DevLocal.Tool</PackageId>
-    <Version>0.1.0-preview.6</Version>
-    <Description>Windows service lifecycle prototype for devlocal</Description>
+    <Version>0.1.0-preview.9</Version>
+    <Description>Windows Docker discovery and Caddy integration tool for local development</Description>
     <PackageReadmeFile>csharp-port.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>
@@ -17,7 +17,10 @@
   <ItemGroup>
     <PackageReference Include="Docker.DotNet.Enhanced" Version="4.3.3" />
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.0" />
+    <PackageReference Include="go-text-template" Version="1.0.70" />
     <None Include="../../docs/csharp-port.md" Pack="true" PackagePath="/" />
+    <EmbeddedResource Include="../../generator/index.html.tmpl" LogicalName="DevLocal.IndexTemplate" />
+    <EmbeddedResource Include="../../generator/index.css" LogicalName="DevLocal.IndexCss" />
   </ItemGroup>
   <ItemGroup>
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">

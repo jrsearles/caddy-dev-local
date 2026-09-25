@@ -4,6 +4,8 @@
 
 caddy-dev-local is a host application that auto-registers `.dev.local` domains for Docker containers. The `devlocal` process attaches to same-host Caddy through its admin API and also manages the hosts file and generated UI.
 
+On the `port/csharp` branch, `src/DevLocal.Core` holds immutable container/discovery models and Go-parity generators; `src/DevLocal.Tool` holds the Windows service, Docker adapter, Caddy admin client, hosts reconciler, discovery runner, hook runtime, UI renderer and controller. `tests/DevLocal.Tool.Tests` checks these components; shared JSON fixtures under `tests/Fixtures` are also verified by Go tests. The foreground CLI runs one-pass/start/clean modes; installed services run `MonitorWorker` by default and use `ControllerWorker` only when installed with `service install --controller`. The existing installed service remains in monitor mode. See `docs/csharp-port.md` for progress and remaining work.
+
 ## Architecture
 
 ```
@@ -49,6 +51,8 @@ just check                 # Run the linter and tests with race detector
 just                       # Default recipe: lint, tests with race detector, integration tests with coverage, build all platforms
 just build                 # Build devlocal for all supported platforms
 just --list                # List all recipes
+dotnet test DevLocal.slnx -c Release  # C# port tests on Windows or WSL
+dotnet format DevLocal.slnx --verify-no-changes # C# formatting check
 ```
 
 ## Code Conventions

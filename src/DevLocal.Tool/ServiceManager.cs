@@ -18,8 +18,11 @@ internal static class ServiceManager
             case "install":
                 RequireAdmin();
                 var settings = ParseSettings(args[1..]);
-                if (!args.Contains("--docker-pipe", StringComparer.Ordinal))
-                    settings = settings with { DockerPipe = await DockerContext.CurrentPipeAsync(token) ?? settings.DockerPipe };
+                if (!args.Any(arg => arg == "--docker-pipe" || arg.StartsWith("--docker-pipe=", StringComparison.Ordinal)))
+                {
+                    var pipe = await DockerContext.CurrentPipeAsync(token) ?? settings.DockerPipe;
+                    settings = settings with { DockerPipe = pipe, Options = settings.Options! with { DockerPipe = pipe } };
+                }
                 if (await ExistsAsync(token))
                     throw new InvalidOperationException("DevLocal service already exists; use service upgrade");
                 Deploy();
@@ -70,7 +73,9 @@ internal static class ServiceManager
                 return 0;
             case "status":
                 Console.WriteLine(await ScAsync(token, "query", ServicePaths.Name));
-                if (File.Exists(ServicePaths.StatusPath))
+                if (File.Exists(ServicePaths.ConfigPath) && (await ServiceSettings.LoadAsync(token)).ControllerEnabled)
+                    Console.WriteLine("Mode: continuous controller");
+                else if (File.Exists(ServicePaths.StatusPath))
                     Console.WriteLine(await File.ReadAllTextAsync(ServicePaths.StatusPath, token));
                 return 0;
             case "logs":
@@ -85,24 +90,18 @@ internal static class ServiceManager
 
     internal static ServiceSettings ParseSettings(string[] args)
     {
-        var settings = ServiceSettings.Default;
-        for (var i = 0; i < args.Length; i++)
-        {
-            if (i + 1 >= args.Length)
-                throw new ArgumentException($"Missing value for {args[i]}");
-            var value = args[++i];
-            settings = args[i - 1] switch
-            {
-                "--caddy-admin" => settings with { CaddyAdmin = value },
-                "--docker-pipe" => settings with { DockerPipe = value },
-                _ => throw new ArgumentException($"Unknown option: {args[i - 1]}")
-            };
-        }
-        if (!Uri.TryCreate(settings.CaddyAdmin, UriKind.Absolute, out var uri) || uri.Scheme != "http")
+        var controllerEnabled = args.Contains("--controller", StringComparer.Ordinal);
+        var flags = args.Where(arg => arg != "--controller").ToArray();
+        var options = CommandLine.Parse(flags, indexDir: Path.Combine(ServicePaths.DataDirectory, "ui")).Options;
+        if (!Uri.TryCreate(options.CaddyAdmin, UriKind.Absolute, out var uri) || uri.Scheme != "http")
             throw new ArgumentException("--caddy-admin must be an HTTP URL");
-        if (string.IsNullOrWhiteSpace(settings.DockerPipe) || settings.DockerPipe.Contains('\\') || settings.DockerPipe.Contains('/'))
+        if (string.IsNullOrWhiteSpace(options.DockerPipe) || options.DockerPipe.Contains('\\') || options.DockerPipe.Contains('/'))
             throw new ArgumentException("--docker-pipe must be a pipe name, such as docker_engine");
-        return settings;
+        return new ServiceSettings(options.CaddyAdmin, options.DockerPipe)
+        {
+            Options = options,
+            ControllerEnabled = controllerEnabled
+        };
     }
 
     private static void RequireAdmin()
