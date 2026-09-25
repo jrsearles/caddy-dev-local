@@ -32,3 +32,9 @@ go.work.sum
 # .vscode/
 
 /artifacts
+
+# .NET build outputs
+**/bin/
+**/obj/
+**/bin-win/
+**/obj-win/

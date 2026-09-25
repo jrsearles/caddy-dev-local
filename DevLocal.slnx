@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="src/DevLocal.Core/DevLocal.Core.csproj" />
+  <Project Path="src/DevLocal.Tool/DevLocal.Tool.csproj" />
+  <Project Path="tests/DevLocal.Tool.Tests/DevLocal.Tool.Tests.csproj" />
+</Solution>

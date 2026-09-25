@@ -2,6 +2,8 @@
 
 A host application that discovers Docker containers and registers `{project}.{service}.dev.local` domains with Caddy, with optional continuous watching, HTTP port probing, self-signed TLS, hosts-file management, and a built-in index page.
 
+> **C# port branch:** `port/csharp` contains a Windows .NET tool/service **prototype** in `src/DevLocal.Tool`. It lists Docker Desktop containers and checks Caddy availability, but does not yet configure Caddy, the UI, or hosts. Continue using the Go application below for domain registration. See [the port plan and Windows trial](docs/csharp-port.md).
+
 > **Warning**: This application is designed for local development environments only. It uses self-signed TLS, auto-manages hosts files, and assumes trusted networks. Do not use in production.
 
 ## Features

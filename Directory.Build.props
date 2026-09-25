@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup Condition="'$(OS)' == 'Windows_NT'">
+    <BaseIntermediateOutputPath>obj-win/</BaseIntermediateOutputPath>
+    <BaseOutputPath>bin-win/</BaseOutputPath>
+  </PropertyGroup>
+  <PropertyGroup>
+    <DefaultItemExcludes>$(DefaultItemExcludes);**/obj/**;**/obj-win/**;**/bin/**;**/bin-win/**</DefaultItemExcludes>
+  </PropertyGroup>
+</Project>

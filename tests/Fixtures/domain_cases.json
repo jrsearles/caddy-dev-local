@@ -1,0 +1,47 @@
+[
+  {
+    "name": "compose and standalone published services",
+    "tld": "dev.local",
+    "containers": [
+      { "containerName": "web", "project": "myapp", "service": "web", "isCompose": true, "isRunning": true, "ports": [80], "publishedPorts": { "80": 8080 }, "selectedPort": 8080 },
+      { "containerName": "nginx", "isRunning": true, "ports": [80], "publishedPorts": { "80": 8181 }, "selectedPort": 8181 }
+    ],
+    "expectedDomains": ["myapp.web.dev.local", "myapp.web.localhost", "nginx.dev.local", "nginx.localhost"],
+    "expectedTargets": {
+      "myapp.web.dev.local": ["localhost:8080"], "myapp.web.localhost": ["localhost:8080"],
+      "nginx.dev.local": ["localhost:8181"], "nginx.localhost": ["localhost:8181"]
+    }
+  },
+  {
+    "name": "custom overrides auto and uses published or explicit port",
+    "tld": "dev.local",
+    "containers": [
+      { "containerName": "api", "isRunning": true, "selectedPort": 0, "publishedPorts": { "80": 9090 }, "customDomains": [
+        { "port": 80, "domain": "api.custom.local" }, { "port": 3000, "domain": "admin.custom.local" }
+      ] }
+    ],
+    "expectedDomains": ["admin.custom.local", "api.custom.local"],
+    "expectedTargets": { "admin.custom.local": ["localhost:3000"], "api.custom.local": ["localhost:9090"] }
+  },
+  {
+    "name": "duplicate compose domain merges and sorts upstreams",
+    "tld": "dev.local",
+    "containers": [
+      { "containerName": "web", "project": "myapp", "service": "web", "isCompose": true, "isRunning": true, "selectedPort": 4000 },
+      { "containerName": "web", "project": "myapp", "service": "web", "isCompose": true, "isRunning": true, "selectedPort": 3000 }
+    ],
+    "expectedDomains": ["myapp.web.dev.local", "myapp.web.localhost"],
+    "expectedTargets": { "myapp.web.dev.local": ["localhost:3000", "localhost:4000"], "myapp.web.localhost": ["localhost:3000", "localhost:4000"] }
+  },
+  {
+    "name": "unpublished stopped and unselected containers",
+    "tld": "dev.local",
+    "containers": [
+      { "containerName": "stopped", "isRunning": false, "selectedPort": 8080 },
+      { "containerName": "internal", "isRunning": true, "ports": [80] },
+      { "containerName": "waiting", "isRunning": true, "ports": [80], "publishedPorts": { "80": 8181 } }
+    ],
+    "expectedDomains": ["waiting.dev.local", "waiting.localhost"],
+    "expectedTargets": {}
+  }
+]

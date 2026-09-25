@@ -1,0 +1,26 @@
+[
+  {
+    "name": "sorted domains",
+    "tld": "dev.local",
+    "domains": ["b.dev.local", "a.dev.local"],
+    "expectedBlock": "# dev-local:BEGIN\n# Managed by caddy-dev-local — do not edit.\n127.0.0.1    dev.local\n127.0.0.1    dev.localhost\n127.0.0.1    a.dev.local\n127.0.0.1    b.dev.local\n# dev-local:END\n"
+  },
+  {
+    "name": "empty snapshot keeps index domains",
+    "tld": "dev.local",
+    "domains": [],
+    "expectedBlock": "# dev-local:BEGIN\n# Managed by caddy-dev-local — do not edit.\n127.0.0.1    dev.local\n127.0.0.1    dev.localhost\n# dev-local:END\n"
+  },
+  {
+    "name": "alias and tld collisions",
+    "tld": "dev.local",
+    "domains": ["dev.localhost", "dev.dev.local", "dev.local"],
+    "expectedBlock": "# dev-local:BEGIN\n# Managed by caddy-dev-local — do not edit.\n127.0.0.1    dev.local\n127.0.0.1    dev.dev.local\n127.0.0.1    dev.localhost\n# dev-local:END\n"
+  },
+  {
+    "name": "localhost tld has no alias",
+    "tld": "localhost",
+    "domains": ["web.localhost"],
+    "expectedBlock": "# dev-local:BEGIN\n# Managed by caddy-dev-local — do not edit.\n127.0.0.1    localhost\n127.0.0.1    web.localhost\n# dev-local:END\n"
+  }
+]
