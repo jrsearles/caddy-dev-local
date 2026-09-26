@@ -55,7 +55,9 @@ internal static class DockerDiscoveryClient
             IsRunning = summary.State == "running",
             Ports = ports.Select(port => port.PrivatePort).Distinct().Order().ToImmutableArray(),
             PublishedPorts = published.ToImmutable(),
-            Created = summary.Created == default ? null : new DateTimeOffset(summary.Created.ToUniversalTime()),
+            Created = summary.Created == default
+                ? null
+                : new DateTimeOffset(DateTime.SpecifyKind(summary.Created, DateTimeKind.Local)),
             Labels = labels.ToImmutableDictionary(StringComparer.Ordinal),
             CustomDomains = custom.ToImmutable(),
             Health = summary.Health?.Status ?? "",

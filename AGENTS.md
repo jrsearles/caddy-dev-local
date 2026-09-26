@@ -83,3 +83,4 @@ dotnet format DevLocal.slnx --verify-no-changes # C# formatting check
 - Tests verify both presence and absence of entries in generated domain targets
 - All tests model the standalone-only path: containers must publish ports to be proxied, and all targets resolve to `localhost:{published_port}`
 - UI artifact tests use temporary directories; template behavior remains covered by generator render tests
+- `tests/Fixtures/index_cases.json` drives both Go and C# index rendering; `tests/Fixtures/golden/index` holds Go-generated pages compared byte for byte by `generator/index_golden_test.go` and `IndexGoldenTests`. Regenerate with `go test ./generator/ -update-index-golden`; goldens are `-text` in `.gitattributes` and both sides normalize CRLF

@@ -32,7 +32,7 @@ internal sealed class UiHook(string tld, string outputDir, ICaddyConfigClient? c
                 }
             }
 
-            var page = IndexTemplate.Render(IndexViewModelBuilder.Build(tld, update, cachedConfig));
+            var page = IndexTemplate.Render(IndexViewModelBuilder.Build(tld, Canonical(update), cachedConfig));
             var css = IndexTemplate.Css;
             var version = Fingerprint(page, css);
             Directory.CreateDirectory(outputDir);
@@ -76,6 +76,18 @@ internal sealed class UiHook(string tld, string outputDir, ICaddyConfigClient? c
     }
 
     private static bool Owns(string id) => id is "devlocal-index" or "devlocal-tls-ui";
+
+    private static DiscoveryUpdate Canonical(DiscoveryUpdate update) => update with
+    {
+        Snapshot = update.Snapshot.Select(info => info with
+        {
+            Ports = [.. info.Ports.Order()],
+            Networks = [.. info.Networks.Order(StringComparer.Ordinal)],
+            CustomDomains = [.. info.CustomDomains
+                .OrderBy(domain => domain.Domain, StringComparer.Ordinal)
+                .ThenBy(domain => domain.Port)]
+        }).OrderBy(info => info.ContainerId, StringComparer.Ordinal).ToImmutableArray()
+    };
 
     private CaddyResources IndexResources(ImmutableArray<ContainerInfo> containers)
     {

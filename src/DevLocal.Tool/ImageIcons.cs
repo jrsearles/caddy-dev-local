@@ -18,6 +18,7 @@ internal static class ImageIcons
         ["mariadb"] = "mariadb",
         ["redis"] = "redis",
         ["mongo"] = "mongodb",
+        ["mongodb"] = "mongodb",
         ["node"] = "nodedotjs",
         ["nodejs"] = "nodedotjs",
         ["python"] = "python",

@@ -15,6 +15,7 @@
     <Content Include="../Fixtures/hosts_cases.json" Link="Fixtures/hosts_cases.json" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="../Fixtures/caddy_cases.json" Link="Fixtures/caddy_cases.json" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="../Fixtures/index_cases.json" Link="Fixtures/index_cases.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../Fixtures/golden/index/*.html" Link="Fixtures/golden/index/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <ProjectReference Include="../../src/DevLocal.Tool/DevLocal.Tool.csproj" />
     <ProjectReference Include="../../src/DevLocal.Core/DevLocal.Core.csproj" />
   </ItemGroup>

@@ -38,7 +38,7 @@ public sealed class DiscoveryState(
         {
             current = current with
             {
-                Status = current.Status with { LastError = message, LastErrorAt = clock.GetUtcNow() }
+                Status = current.Status with { LastError = message, LastErrorAt = clock.GetLocalNow() }
             };
             return current;
         }
@@ -64,7 +64,7 @@ public sealed class DiscoveryState(
                 {
                     current = current with
                     {
-                        Status = current.Status with { LastError = ex.Message, LastErrorAt = clock.GetUtcNow() }
+                        Status = current.Status with { LastError = ex.Message, LastErrorAt = clock.GetLocalNow() }
                     };
                     return new DiscoveryRefreshResult(current, ex);
                 }
@@ -78,7 +78,7 @@ public sealed class DiscoveryState(
                 cache = selectedPorts.ToBuilder();
             }
 
-            var now = clock.GetUtcNow();
+            var now = clock.GetLocalNow();
             var next = before.ToBuilder();
             var seen = new HashSet<string>(StringComparer.Ordinal);
             foreach (var info in listed)
@@ -150,7 +150,7 @@ public sealed class DiscoveryState(
             var update = new DiscoveryUpdate(
                 next.Values.OrderBy(item => item.ContainerName, StringComparer.Ordinal)
                     .ThenBy(item => item.ContainerId, StringComparer.Ordinal).ToImmutableArray(),
-                new DiscoveryStatus(clock.GetUtcNow(), ""));
+                new DiscoveryStatus(clock.GetLocalNow(), ""));
             lock (stateGate)
             {
                 containers = next.ToImmutable();

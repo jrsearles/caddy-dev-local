@@ -7,26 +7,31 @@ internal static class IndexTemplate
 {
     private static readonly Lazy<Template> page = new(() => Template.New("index").Parse(CompatibleTemplate()));
 
-    internal static string Css { get; } = ReadAsset("DevLocal.IndexCss");
+    internal static string Css { get; } = Normalize(ReadAsset("DevLocal.IndexCss"));
 
     internal static string Render<T>(T model) => page.Value.Execute(model);
 
     private static string CompatibleTemplate()
     {
-        var source = ReadAsset("DevLocal.IndexTemplate");
+        var source = Normalize(ReadAsset("DevLocal.IndexTemplate"));
         foreach (var (expression, replacement) in new[]
         {
             ("{{if eq (len .Groups) 1}}", "{{if .OneProject}}"),
             ("{{if eq (len .Rows) 1}}", "{{if .OneService}}"),
-            ("{{if and .IsRunning (and (ne .Health \"\") (ne .Health \"none\"))}}", "{{if .ShowHealth}}")
+            ("{{if and .IsRunning (and (ne .Health \"\") (ne .Health \"none\"))}}", "{{if .ShowHealth}}"),
+            ("{{$url := .URL}}", "{{$url := .URL}}{{$urlText := .URLText}}"),
+            ("aria-label=\"Open {{$url}}\" title=\"Open {{$url}}\"",
+                "aria-label=\"Open {{$urlText}}\" title=\"Open {{$urlText}}\"")
         })
         {
             if (!source.Contains(expression, StringComparison.Ordinal))
                 throw new InvalidDataException($"Index template expression changed: {expression}");
             source = source.Replace(expression, replacement, StringComparison.Ordinal);
         }
-        return source;
+        return GoHtml.ElideComments(source);
     }
+
+    private static string Normalize(string text) => text.Replace("\r\n", "\n", StringComparison.Ordinal);
 
     private static string ReadAsset(string name)
     {

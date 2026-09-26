@@ -1,15 +1,18 @@
 [
   {
     "name": "empty state and discovery error",
+    "slug": "empty-with-error",
     "tld": "dev.local",
     "containers": [],
     "configJSON": "",
     "discoveryError": "Docker unavailable",
+    "lastRefreshUnix": 0,
     "expectedContains": ["No containers registered.", "Docker discovery error: Docker unavailable", "id=\"errorBanner\""],
     "excludedContains": ["id=\"tab-config\""]
   },
   {
     "name": "compose and standalone cards",
+    "slug": "compose-and-standalone",
     "tld": "dev.local",
     "containers": [
       { "containerID": "a", "containerName": "web", "image": "nginx:alpine", "project": "example", "service": "web", "isCompose": true, "isRunning": true, "ports": [80], "publishedPorts": { "80": 8080 }, "selectedPort": 8080 },
@@ -17,18 +20,248 @@
     ],
     "configJSON": "{\"apps\":{}}",
     "discoveryError": "",
+    "lastRefreshUnix": 0,
     "expectedContains": ["example.web.dev.local", "example.web.localhost", "data-published=\"80:8080\"", "data-project=\"example\"", "data-name=\"worker\"", "id=\"tab-config\""],
     "excludedContains": ["worker.localhost\" target=\"_blank\""]
   },
   {
     "name": "custom domains override generated domains",
+    "slug": "custom-domains",
     "tld": "dev.local",
     "containers": [
       { "containerID": "c", "containerName": "api", "isRunning": true, "ports": [80], "publishedPorts": { "80": 8081 }, "customDomains": [{ "port": 80, "domain": "api.custom.local" }] }
     ],
     "configJSON": "",
     "discoveryError": "",
+    "lastRefreshUnix": 0,
     "expectedContains": ["api.custom.local", "data-copy=\"api.custom.local:8081\""],
     "excludedContains": ["api.dev.local", "api.localhost"]
+  },
+  {
+    "name": "hostile names, images, labels and config are escaped",
+    "slug": "hostile-escaping",
+    "tld": "dev.local",
+    "containers": [
+      {
+        "containerID": "0123456789abcdef0123",
+        "containerName": "\"><img src=x onerror=alert('1')>",
+        "image": "evil\"<svg/onload=alert(1)>",
+        "project": "pr&oject",
+        "service": "we<b>rk",
+        "isCompose": true,
+        "isRunning": true,
+        "ports": [80],
+        "publishedPorts": { "80": 8080 },
+        "selectedPort": 8080,
+        "networks": ["net<1>"],
+        "labels": {
+          "dev.local.note": "</script><script>alert('x')</script>",
+          "unrelated.label": "skipped"
+        }
+      }
+    ],
+    "configJSON": "{\"injected\":\"</script><script>evil</script> & \\\"quoted\\\" café\"}",
+    "discoveryError": "docker <b>down</b> & \"quoted\"",
+    "lastRefreshUnix": 1767322800,
+    "expectedContains": [
+      "data-name=\"&#34;&gt;&lt;img src=x onerror=alert(&#39;1&#39;)&gt;\"",
+      "data-image=\"evil&#34;&lt;svg/onload=alert(1)&gt;\"",
+      "data-project=\"pr&amp;oject\"",
+      "data-labels='{&#34;dev.local.note&#34;:&#34;\\u003c/script\\u003e\\u003cscript\\u003ealert(&#39;x&#39;)\\u003c/script\\u003e&#34;}'",
+      "docker-desktop://dashboard/apps/pr&amp;oject",
+      "Docker discovery error: docker &lt;b&gt;down&lt;/b&gt; &amp; &#34;quoted&#34;",
+      "id=\"config-raw\">{&#34;injected&#34;:&#34;&lt;/script&gt;&lt;script&gt;evil&lt;/script&gt; &amp; \\&#34;quoted\\&#34; café&#34;}",
+      "id=\"config-json\">{\"injected\":\"\\u003c/script\\u003e\\u003cscript\\u003eevil\\u003c/script\\u003e \\u0026 \\\"quoted\\\" café\"}",
+      "id=\"errorBanner\"",
+      "data-ts=\"1767322800\""
+    ],
+    "excludedContains": [
+      "<img src=x onerror=",
+      "<svg/onload=",
+      "</script><script>evil",
+      "unrelated.label"
+    ]
+  },
+  {
+    "name": "image icons from known names, repositories and labels",
+    "slug": "image-icons",
+    "tld": "dev.local",
+    "containers": [
+      { "containerID": "i4", "containerName": "aspire", "image": "mcr.microsoft.com/dotnet/aspire-dashboard", "isRunning": true, "ports": [8080], "publishedPorts": { "8080": 8083 }, "selectedPort": 8083 },
+      { "containerID": "i1", "containerName": "known", "image": "nginx:alpine", "isRunning": true, "ports": [80], "publishedPorts": { "80": 8081 }, "selectedPort": 8081 },
+      { "containerID": "i5", "containerName": "labelled", "image": "acme/thing:1", "isRunning": true, "ports": [80], "publishedPorts": { "80": 8084 }, "selectedPort": 8084, "labels": { "org.opencontainers.image.logo": "https://example.com/logo.png" } },
+      { "containerID": "i7", "containerName": "mongo", "image": "mongodb:7", "isRunning": true, "ports": [27017], "publishedPorts": { "27017": 27017 }, "selectedPort": 27017 },
+      { "containerID": "i3", "containerName": "mssql", "image": "mcr.microsoft.com/mssql/server:2022-latest", "isRunning": true, "ports": [1433], "publishedPorts": { "1433": 14330 }, "selectedPort": 14330 },
+      { "containerID": "i2", "containerName": "registry", "image": "myreg:5000/nginx@sha256:0123456789abcdef", "isRunning": true, "ports": [80], "publishedPorts": { "80": 8082 }, "selectedPort": 8082 },
+      { "containerID": "i6", "containerName": "unlabelled", "image": "acme/other:1", "isRunning": true, "ports": [80], "publishedPorts": { "80": 8085 }, "selectedPort": 8085, "labels": { "org.opencontainers.image.logo": "not-a-url" } }
+    ],
+    "configJSON": "",
+    "discoveryError": "",
+    "lastRefreshUnix": 0,
+    "expectedContains": [
+      "src=\"https://cdn.simpleicons.org/nginx\"",
+      "src=\"https://cdn.simpleicons.org/mongodb\"",
+      "src=\"https://upload.wikimedia.org/wikipedia/commons/4/41/Microsoft_SQL_Server_2025_icon.svg\"",
+      "src=\"https://microsoft.github.io/aspire-brand/logo/aspire-icon-256.svg\"",
+      "src=\"https://example.com/logo.png\""
+    ],
+    "excludedContains": ["src=\"https://cdn.simpleicons.org/acme\"", "src=\"not-a-url\""]
+  },
+  {
+    "name": "stopped containers and unprobed ports render without links",
+    "slug": "stopped-and-unprobed",
+    "tld": "dev.local",
+    "containers": [
+      { "containerID": "s1", "containerName": "stopped", "image": "redis:7", "isRunning": false, "ports": [6379], "publishedPorts": { "6379": 63790 }, "selectedPort": 63790, "health": "unhealthy", "created": "2026-01-02T03:04:00-05:00", "lastStopped": "2026-01-03T04:05:00-05:00" },
+      { "containerID": "s2", "containerName": "stopped-no-time", "image": "redis:7", "isRunning": false, "ports": [6379], "created": "2026-01-02T03:04:00-05:00" },
+      { "containerID": "s3", "containerName": "unprobed", "image": "nginx:alpine", "isRunning": true, "ports": [80], "publishedPorts": { "80": 8080 }, "selectedPort": 0, "created": "2026-01-02T03:04:00-05:00" }
+    ],
+    "configJSON": "",
+    "discoveryError": "",
+    "lastRefreshUnix": 0,
+    "expectedContains": [
+      "class=\"card stopped\"",
+      "<span class=\"domain-plain\">stopped.dev.local</span>",
+      "title=\"2026-01-03 04:05\"",
+      "data-ts=\"1767431100\"",
+      "<span class=\"domain-plain\">unprobed.dev.local</span>",
+      "since <time class=\"timeago\" data-ts=\"1767341040\" title=\"2026-01-02 03:04\">"
+    ],
+    "excludedContains": [
+      "stopped.dev.local\" target=\"_blank\"",
+      "unprobed.dev.local\" target=\"_blank\"",
+      "health-badge health-unhealthy",
+      "chip-globe"
+    ]
+  },
+  {
+    "name": "health badges follow running state and health value",
+    "slug": "health-states",
+    "tld": "dev.local",
+    "containers": [
+      { "containerID": "h5", "containerName": "empty", "image": "app:5", "isRunning": true, "ports": [80], "publishedPorts": { "80": 8085 }, "selectedPort": 8085, "created": "2026-01-02T03:04:00-05:00" },
+      { "containerID": "h1", "containerName": "healthy", "image": "app:1", "isRunning": true, "ports": [80], "publishedPorts": { "80": 8081 }, "selectedPort": 8081, "health": "healthy", "created": "2026-01-02T03:04:00-05:00" },
+      { "containerID": "h4", "containerName": "none", "image": "app:4", "isRunning": true, "ports": [80], "publishedPorts": { "80": 8084 }, "selectedPort": 8084, "health": "none", "created": "2026-01-02T03:04:00-05:00" },
+      { "containerID": "h3", "containerName": "starting", "image": "app:3", "isRunning": true, "ports": [80], "publishedPorts": { "80": 8083 }, "selectedPort": 8083, "health": "starting", "created": "2026-01-02T03:04:00-05:00" },
+      { "containerID": "h6", "containerName": "stopped", "image": "app:6", "isRunning": false, "ports": [80], "health": "unhealthy", "created": "2026-01-02T03:04:00-05:00", "lastStopped": "2026-01-03T04:05:00-05:00" },
+      { "containerID": "h2", "containerName": "unhealthy", "image": "app:2", "isRunning": true, "ports": [80], "publishedPorts": { "80": 8082 }, "selectedPort": 8082, "health": "unhealthy", "created": "2026-01-02T03:04:00-05:00" }
+    ],
+    "configJSON": "",
+    "discoveryError": "",
+    "lastRefreshUnix": 0,
+    "expectedContains": [
+      "health-badge health-healthy",
+      "health-badge health-unhealthy",
+      "health-badge health-starting",
+      "data-health=\"none\""
+    ],
+    "excludedContains": ["health-badge health-none"]
+  },
+  {
+    "name": "running caddy config exposes routes and config tabs",
+    "slug": "config-state",
+    "tld": "dev.local",
+    "containers": [
+      { "containerID": "cfg", "containerName": "web", "image": "nginx:alpine", "isRunning": true, "ports": [80], "publishedPorts": { "80": 8080 }, "selectedPort": 8080, "created": "2026-01-02T03:04:00-05:00" }
+    ],
+    "configJSON": "{\"apps\":{\"http\":{\"servers\":{\"srv0\":{\"routes\":[{\"@id\":\"devlocal-route-web-dev-local\",\"match\":[{\"host\":[\"web.dev.local\"]}],\"handle\":[{\"handler\":\"reverse_proxy\",\"upstreams\":[{\"dial\":\"localhost:8080\"}]}]}]}}},\"tls\":{\"automation\":{\"policies\":[{\"@id\":\"devlocal-tls\",\"issuers\":[{\"module\":\"internal\"}],\"subjects\":[\"web.dev.local\"]}]}}}}",
+    "discoveryError": "",
+    "lastRefreshUnix": 0,
+    "expectedContains": [
+      "data-tab=\"routes\"",
+      "data-tab=\"config\"",
+      "id=\"route-count-badge\"",
+      "id=\"config-raw\"",
+      "id=\"config-json\""
+    ],
+    "excludedContains": []
+  },
+  {
+    "name": "unparsable caddy config falls back to escaped json",
+    "slug": "config-invalid-json",
+    "tld": "dev.local",
+    "containers": [],
+    "configJSON": "{not json <b>&</b> \"quotes\" </script>}",
+    "discoveryError": "",
+    "lastRefreshUnix": 0,
+    "expectedContains": [
+      "id=\"config-json\">{not json \\u003cb\\u003e\\u0026\\u003c/b\\u003e \"quotes\" \\u003c/script\\u003e}",
+      "id=\"config-raw\">{not json &lt;b&gt;&amp;&lt;/b&gt; &#34;quotes&#34; &lt;/script&gt;}"
+    ],
+    "excludedContains": ["</script>}</script>"]
+  },
+  {
+    "name": "hostile urls are percent-encoded and html-escaped per context",
+    "slug": "hostile-urls",
+    "tld": "dev.local",
+    "containers": [
+      {
+        "containerID": "ab\"cd ef+g&h<i>j",
+        "containerName": "hostile",
+        "image": "app:1",
+        "isRunning": true,
+        "customDomains": [{ "port": 80, "domain": "a&b<c>\"d'e f+g.custom.local" }],
+        "created": "2026-01-02T03:04:00-05:00"
+      }
+    ],
+    "configJSON": "",
+    "discoveryError": "",
+    "lastRefreshUnix": 0,
+    "expectedContains": [
+      "data-id=\"ab&#34;cd ef&#43;g&amp;h\"",
+      "data-domains=\"a&amp;b&lt;c&gt;&#34;d&#39;e f&#43;g.custom.local\"",
+      "href=\"https://a&amp;b%3cc%3e%22d%27e%20f&#43;g.custom.local\"",
+      ">a&amp;b&lt;c&gt;&#34;d&#39;e f&#43;g.custom.local</a>",
+      "data-copy=\"a&amp;b&lt;c&gt;&#34;d&#39;e f&#43;g.custom.local:80\"",
+      "href=\"docker-desktop://dashboard/logs?containerIds=ab%22cd%20ef&#43;g&amp;h%3ci%3ej\""
+    ],
+    "excludedContains": ["ZgotmplZ", "href=\"https://a&amp;b%3C", "containerIds=ab%22cd%20ef%2Bg"]
+  },
+  {
+    "name": "published port order puts the probed port first",
+    "slug": "port-ordering",
+    "tld": "dev.local",
+    "containers": [
+      { "containerID": "p1", "containerName": "many", "image": "app:1", "isRunning": true, "ports": [9000, 80, 443, 8080], "publishedPorts": { "80": 18080, "443": 18443, "8080": 8080, "9000": 19000 }, "selectedPort": 8080, "created": "2026-01-02T03:04:00-05:00" },
+      { "containerID": "p3", "containerName": "multi", "image": "app:3", "isRunning": true, "customDomains": [{ "port": 80, "domain": "one.custom.local" }, { "port": 443, "domain": "two.custom.local" }], "created": "2026-01-02T03:04:00-05:00" },
+      { "containerID": "p2", "containerName": "portless", "image": "app:2", "isRunning": true, "created": "2026-01-02T03:04:00-05:00" }
+    ],
+    "configJSON": "",
+    "discoveryError": "",
+    "lastRefreshUnix": 0,
+    "expectedContains": [
+      "data-published=\"80:18080,443:18443,8080:8080,9000:19000\"",
+      "aria-label=\"Open https://many.dev.local\"",
+      "one.custom.local",
+      "two.custom.local",
+      "no ports exposed"
+    ],
+    "excludedContains": ["one.custom.local.dev.local", "two.custom.local.dev.local", "portless.dev.local"]
+  },
+  {
+    "name": "multiple compose projects group services with counts",
+    "slug": "compose-projects",
+    "tld": "dev.local",
+    "containers": [
+      { "containerID": "g2", "containerName": "alpha-db-1", "image": "app:2", "project": "alpha", "service": "db", "isCompose": true, "isRunning": false, "ports": [5432], "publishedPorts": { "5432": 15432 }, "created": "2026-01-02T03:04:00-05:00", "lastStopped": "2026-01-03T04:05:00-05:00" },
+      { "containerID": "g1", "containerName": "alpha-web-1", "image": "app:1", "project": "alpha", "service": "web", "isCompose": true, "isRunning": true, "ports": [80], "publishedPorts": { "80": 8081 }, "selectedPort": 8081, "created": "2026-01-02T03:04:00-05:00" },
+      { "containerID": "g3", "containerName": "beta-only-1", "image": "app:3", "project": "beta", "service": "only", "isCompose": true, "isRunning": true, "ports": [80], "publishedPorts": { "80": 8083 }, "selectedPort": 8083, "created": "2026-01-02T03:04:00-05:00" },
+      { "containerID": "g4", "containerName": "loose", "image": "app:4", "isRunning": true, "ports": [80], "publishedPorts": { "80": 8084 }, "selectedPort": 8084, "created": "2026-01-02T03:04:00-05:00" }
+    ],
+    "configJSON": "",
+    "discoveryError": "",
+    "lastRefreshUnix": 0,
+    "expectedContains": [
+      "data-project=\"alpha\"",
+      "data-project=\"beta\"",
+      "Open alpha in Docker Desktop",
+      "Open beta in Docker Desktop",
+      "2 services</span>",
+      "1 service</span>",
+      "2 projects</span>",
+      ">3 running<",
+      ">1 stopped<"
+    ],
+    "excludedContains": ["data-domains=\"\""]
   }
 ]

@@ -16,10 +16,12 @@ func TestIndexParityFixtures(t *testing.T) {
 	}
 	var cases []struct {
 		Name             string
+		Slug             string
 		TLD              string
 		Containers       []*discovery.ContainerInfo
 		ConfigJSON       string
 		DiscoveryError   string
+		LastRefreshUnix  int64
 		ExpectedContains []string
 		ExcludedContains []string
 	}
@@ -28,7 +30,7 @@ func TestIndexParityFixtures(t *testing.T) {
 	}
 	for _, fixture := range cases {
 		t.Run(fixture.Name, func(t *testing.T) {
-			page := GenerateIndexPage(fixture.TLD, fixture.Containers, fixture.ConfigJSON, fixture.DiscoveryError, 0)
+			page := GenerateIndexPage(fixture.TLD, fixture.Containers, fixture.ConfigJSON, fixture.DiscoveryError, fixture.LastRefreshUnix)
 			for _, expected := range fixture.ExpectedContains {
 				if !strings.Contains(page, expected) {
 					t.Errorf("page missing %q", expected)
