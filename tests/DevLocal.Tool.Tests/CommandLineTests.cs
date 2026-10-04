@@ -54,6 +54,15 @@ public sealed class CommandLineTests
         Assert.Equal(TimeSpan.FromSeconds(seconds), CommandLine.ParseDuration(value));
 
     [Fact]
+    public void RunCommandAndFlagOnlyInvocationSelectSinglePass()
+    {
+        Assert.Equal(RunMode.Once, CommandLine.Parse(["run"], _ => null, "C:/index").Mode);
+        Assert.Equal(RunMode.Once, CommandLine.Parse(["--caddy=false"], _ => null, "C:/index").Mode);
+        Assert.Equal(RunMode.Once, CommandLine.Parse(["--caddy=false", "--ui=false", "--hosts-file=false"],
+            _ => null, "C:/index").Mode);
+    }
+
+    [Fact]
     public void RejectsCommandsAfterFlagsAndInvalidExplicitDurations()
     {
         Assert.Throws<ArgumentException>(() => CommandLine.Parse(["--caddy=false", "start"], _ => null, "C:/index"));

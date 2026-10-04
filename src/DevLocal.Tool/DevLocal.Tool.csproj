@@ -7,7 +7,7 @@
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>devlocal</ToolCommandName>
     <PackageId>DevLocal.Tool</PackageId>
-    <Version>0.1.0-preview.9</Version>
+    <Version>0.1.0-preview.11</Version>
     <Description>Windows Docker discovery and Caddy integration tool for local development</Description>
     <PackageReadmeFile>csharp-port.md</PackageReadmeFile>
   </PropertyGroup>

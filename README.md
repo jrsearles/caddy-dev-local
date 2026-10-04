@@ -55,6 +55,8 @@ sudo ./artifacts/linux-amd64/devlocal
 
 Successful runs log each applied hook and finish with a reminder to use `devlocal start` for continuous watching.
 
+> **Windows (.NET) difference:** on the `port/csharp` branch the .NET tool requires an explicit subcommand. A bare `devlocal` prints usage and exits; pass `devlocal run` for the single reconciliation pass. Flags without a subcommand still imply `run`, so the examples that omit it behave the same. `devlocal version` (or `--version`) prints the tool version and build commit.
+
 > `sudo` is required so devlocal can write to your system hosts file (`/etc/hosts`). Pass `--hosts-file=false` to skip hosts file management.
 
 Visit `https://my-app.dev.local` (hosts entry written automatically) or `https://my-app.localhost` (no hosts entry needed).

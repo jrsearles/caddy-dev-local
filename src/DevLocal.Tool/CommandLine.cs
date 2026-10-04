@@ -57,6 +57,7 @@ internal static class CommandLine
         {
             mode = args[0] switch
             {
+                "run" => RunMode.Once,
                 "start" => RunMode.Start,
                 "clean" => RunMode.Clean,
                 _ => throw new ArgumentException($"Unknown command {args[0]}")

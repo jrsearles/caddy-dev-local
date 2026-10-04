@@ -26,12 +26,24 @@ try
         return 0;
     }
 
-    if (args.Contains("--help", StringComparer.Ordinal))
+    if (args is ["version"] || args.Contains("--version", StringComparer.Ordinal))
     {
-        Console.WriteLine("Usage: devlocal [start|clean] [flags]\n" +
+        Console.WriteLine($"devlocal {ToolVersion.Display}");
+        return 0;
+    }
+
+    if (args.Length == 0 || args.Contains("--help", StringComparer.Ordinal))
+    {
+        Console.WriteLine("Usage: devlocal [run|start|clean|version] [flags]\n" +
             "       devlocal service install|upgrade|status|logs|start|stop|restart|uninstall\n" +
+            "Commands:\n" +
+            "  run      Reconcile Caddy, UI and hosts once, then exit\n" +
+            "  start    Reconcile once, then watch Docker events and poll\n" +
+            "  clean    Remove managed Caddy routes, TLS policies and UI files\n" +
+            "  version  Print the tool version and exit\n" +
             "Flags: --tld --stale-ttl --probe-timeout --poll-interval --hosts-file --no-tracing " +
-            "--caddy --ui --caddy-admin --caddy-server --allow-create-server --index-dir --log-level --docker-pipe");
+            "--caddy --ui --caddy-admin --caddy-server --allow-create-server --index-dir --log-level --docker-pipe\n" +
+            "Flags without a command imply 'run'. Options come from flags, then DEVLOCAL_* env vars, then defaults.");
         return 0;
     }
 
