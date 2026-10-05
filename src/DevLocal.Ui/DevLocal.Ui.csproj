@@ -12,7 +12,7 @@
     <ProjectReference Include="../DevLocal.Core/DevLocal.Core.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <EmbeddedResource Include="../../generator/index.css" LogicalName="DevLocal.IndexCss" />
+    <EmbeddedResource Include="Assets/index.css" LogicalName="DevLocal.IndexCss" />
     <EmbeddedResource Include="Assets/ui.js" LogicalName="DevLocal.UiJs" />
   </ItemGroup>
   <ItemGroup>
