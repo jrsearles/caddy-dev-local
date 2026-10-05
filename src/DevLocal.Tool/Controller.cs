@@ -2,16 +2,8 @@ using DevLocal.Core;
 
 namespace DevLocal.Tool;
 
-internal sealed class Controller(DiscoveryState discovery, HookRuntime hooks, DiscoveryRunner? runner = null)
+internal sealed class Controller(HookRuntime hooks, DiscoveryRunner? runner = null) : IAsyncDisposable
 {
-    internal async Task RunOnceAsync(CancellationToken token)
-    {
-        var result = await discovery.RefreshAsync(token);
-        if (result.Error is not null)
-            throw new InvalidOperationException("Listing Docker containers failed", result.Error);
-        await hooks.ApplyOnceAsync(result.Update, token);
-    }
-
     internal async Task RunAsync(CancellationToken token)
     {
         if (runner is null)
@@ -41,4 +33,6 @@ internal sealed class Controller(DiscoveryState discovery, HookRuntime hooks, Di
     }
 
     internal Task CleanupAsync(CancellationToken token) => hooks.CleanupAsync(token);
+
+    public ValueTask DisposeAsync() => hooks.DisposeAsync();
 }

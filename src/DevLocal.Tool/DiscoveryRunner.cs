@@ -53,6 +53,7 @@ internal sealed class DiscoveryRunner(
             };
             if (pollInterval > TimeSpan.Zero)
                 tasks.Add(PollAsync(pollInterval, token));
+            tasks.Add(PendingPortPollAsync(TimeSpan.FromSeconds(1), token));
             await Task.WhenAll(tasks);
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -116,6 +117,22 @@ internal sealed class DiscoveryRunner(
         {
             while (await timer.WaitForNextTickAsync(token))
                 await RefreshAsync(token);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+        }
+    }
+
+    private async Task PendingPortPollAsync(TimeSpan interval, CancellationToken token)
+    {
+        using var timer = new PeriodicTimer(interval);
+        try
+        {
+            while (await timer.WaitForNextTickAsync(token))
+            {
+                if (state.HasPendingPorts())
+                    await RefreshAsync(token);
+            }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {

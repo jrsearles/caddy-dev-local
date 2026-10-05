@@ -1,0 +1,28 @@
+@if (Model.Error is { } error && !dismissed)
+{
+    <div class="banner banner-error" id="errorBanner">
+        <SvgIcon Name="alert" />
+        <span class="banner-msg">Docker discovery error: @error</span>
+        @if (Model.LastRefresh is { } refresh)
+        {
+            <span class="banner-time">Last refresh: <TimeAgo Value="refresh" /></span>
+        }
+        <button class="banner-dismiss" type="button" @onclick="Dismiss" title="Dismiss">
+            <SvgIcon Name="close" />
+        </button>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public DashboardModel Model { get; set; } = null!;
+
+    private bool dismissed;
+
+    protected override void OnParametersSet()
+    {
+        if (Model.Error is null)
+            dismissed = false;
+    }
+
+    private void Dismiss() => dismissed = true;
+}

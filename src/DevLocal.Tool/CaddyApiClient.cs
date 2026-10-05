@@ -24,7 +24,7 @@ internal sealed class CaddyApiClient : ICaddyConfigClient, IDisposable
 
     internal CaddyApiClient(string baseUrl, string serverName = "srv0", bool allowCreateServer = true, HttpClient? client = null)
     {
-        this.baseUrl = baseUrl.TrimEnd('/');
+        this.baseUrl = Loopback.NormalizeUrl(baseUrl);
         this.serverName = serverName;
         this.allowCreateServer = allowCreateServer;
         ownsHttp = client is null;

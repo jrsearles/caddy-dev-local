@@ -10,8 +10,9 @@ internal sealed class ControllerWorker(ServiceSettings settings, ILogger<Control
         try
         {
             var options = settings.Options ?? throw new InvalidOperationException("Controller service options are missing");
-            using var session = ControllerFactory.Create(options, (name, error) =>
-                logger.LogError(error, "Hook {HookName} failed", name));
+            await using var session = ControllerFactory.Create(options, (name, error) =>
+                logger.LogError(error, "Hook {HookName} failed", name),
+                message => logger.LogInformation("{Message}", message));
             await session.Controller.RunAsync(stoppingToken);
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)

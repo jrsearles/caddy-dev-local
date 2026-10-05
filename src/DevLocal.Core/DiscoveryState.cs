@@ -32,6 +32,17 @@ public sealed class DiscoveryState(
             return current;
     }
 
+    public bool HasPendingPorts()
+    {
+        lock (stateGate)
+            return current.Snapshot.Any(container =>
+                container.IsRunning
+                && container.SelectedPort == 0
+                && container.Labels.GetValueOrDefault("dev.local.domains") is not { Length: > 0 }
+                && container.Ports.Any(port =>
+                    container.PublishedPorts.TryGetValue(port, out var published) && published != 0));
+    }
+
     public DiscoveryUpdate ReportError(string message)
     {
         lock (stateGate)
@@ -105,41 +116,53 @@ public sealed class DiscoveryState(
                     next.Remove(id);
             }
 
-            foreach (var info in next.Values.OrderBy(item => item.ContainerName, StringComparer.Ordinal)
-                         .ThenBy(item => item.ContainerId, StringComparer.Ordinal))
+            var candidates = next.Values.OrderBy(item => item.ContainerName, StringComparer.Ordinal)
+                .ThenBy(item => item.ContainerId, StringComparer.Ordinal)
+                .ToArray();
+            var selections = new ushort[candidates.Length];
+            for (var index = 0; index < candidates.Length; index++)
             {
-                ushort selected = 0;
-                if (!info.IsRunning)
-                {
-                    cache.TryGetValue(info.ContainerId, out selected);
-                }
-                else if (probe is not null && (!info.Labels.TryGetValue("dev.local.domains", out var label) || label == ""))
-                {
-                    var published = info.Ports
-                        .Where(port => info.PublishedPorts.TryGetValue(port, out var publicPort) && publicPort != 0)
-                        .Select(port => info.PublishedPorts[port])
-                        .Distinct().ToArray();
-                    if (published.Length > 0)
-                    {
-                        try
-                        {
-                            selected = await probe.ProbeAsync("localhost", published, probeTimeout, token);
-                        }
-                        catch (OperationCanceledException) when (token.IsCancellationRequested)
-                        {
-                            throw;
-                        }
-                        catch
-                        {
-                            selected = 0;
-                        }
-                        token.ThrowIfCancellationRequested();
-                        if (selected != 0)
-                            cache[info.ContainerId] = selected;
-                    }
-                }
+                if (!candidates[index].IsRunning)
+                    cache.TryGetValue(candidates[index].ContainerId, out selections[index]);
+            }
 
-                next[info.ContainerId] = info with { SelectedPort = selected };
+            await Parallel.ForEachAsync(
+                Enumerable.Range(0, candidates.Length).Where(index => candidates[index].IsRunning),
+                cancellationToken: token,
+                body: async (index, cancellation) => selections[index] =
+                    await SelectPortAsync(candidates[index], cancellation));
+
+            for (var index = 0; index < candidates.Length; index++)
+            {
+                if (selections[index] != 0)
+                    cache[candidates[index].ContainerId] = selections[index];
+                next[candidates[index].ContainerId] = candidates[index] with { SelectedPort = selections[index] };
+            }
+
+            async Task<ushort> SelectPortAsync(ContainerInfo info, CancellationToken cancellation)
+            {
+                if (probe is null)
+                    return 0;
+                if (info.Labels.TryGetValue("dev.local.domains", out var label) && label != "")
+                    return 0;
+                var published = info.Ports
+                    .Where(port => info.PublishedPorts.TryGetValue(port, out var publicPort) && publicPort != 0)
+                    .Select(port => info.PublishedPorts[port])
+                    .Distinct().ToArray();
+                if (published.Length == 0)
+                    return 0;
+                try
+                {
+                    return await probe.ProbeAsync("localhost", published, probeTimeout, cancellation);
+                }
+                catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch
+                {
+                    return 0;
+                }
             }
 
             foreach (var id in cache.Keys.ToArray())

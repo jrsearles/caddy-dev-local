@@ -1,0 +1,16 @@
+@implements IDisposable
+@inject Clock Clock
+
+<span class="timeago" title="@(Value.HasValue ? Value.Value.ToString("u", CultureInfo.InvariantCulture) : "")">@Label</span>
+
+@code {
+    [Parameter] public DateTimeOffset? Value { get; set; }
+
+    private string Label => Clock.Label(Value);
+
+    protected override void OnInitialized() => Clock.Ticked += OnTick;
+
+    private void OnTick() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Clock.Ticked -= OnTick;
+}

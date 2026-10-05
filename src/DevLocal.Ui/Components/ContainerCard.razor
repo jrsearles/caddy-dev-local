@@ -1,0 +1,85 @@
+<div class="card @(Model.IsRunning ? "" : "stopped")" id="@Model.Id">
+    <div class="card-header" role="button" tabindex="0" @onclick="OpenAsync"
+         @onkeydown="OnKeyDownAsync">
+        @if (Model.Icon.Length > 0)
+        {
+            <img class="container-icon" src="@Model.Icon" alt="" title="@Model.Image"
+                 onerror="this.style.display='none'" />
+        }
+        <div class="card-title">
+            <div class="container-name"><span>@Model.Name</span></div>
+            <div class="container-meta">@Model.Image</div>
+        </div>
+        <div class="card-badges">
+            @if (Model.Service.Length > 0)
+            {
+                <span class="badge badge-service">@Model.Service</span>
+            }
+            <div class="status @(Model.IsRunning ? "status-running" : "status-stopped")">
+                <div class="status-dot"></div>
+                <span class="status-label">@(Model.IsRunning ? "running" : "stopped")</span>
+                @if (Model.ShowHealth)
+                {
+                    <span class="health-badge health-@Model.Health">@Model.Health</span>
+                }
+                @if (Model.IsRunning)
+                {
+                    <span class="status-time">since <TimeAgo Value="Model.Started" /></span>
+                }
+                else if (Model.Stopped is { } stopped)
+                {
+                    <span class="status-time"><TimeAgo Value="stopped" /></span>
+                }
+            </div>
+        </div>
+        @if (Model.DockerDesktopUrl.Length > 0)
+        {
+            <a class="dd-link" href="@Model.DockerDesktopUrl" title="View logs in Docker Desktop"
+               aria-label="View logs in Docker Desktop" target="_blank" rel="noopener"
+               @onclick:stopPropagation="true"> <SvgIcon Name="logs" /> </a>
+        }
+    </div>
+    @if (Model.Domains.Count > 0)
+    {
+        <div class="card-domains">
+            @foreach (var domain in Model.Domains)
+            {
+                <div class="domain-row" @onclick:stopPropagation="true">
+                    <a class="domain-link" href="@domain.Url" target="_blank" rel="noopener">@domain.Domain</a>
+                    <div class="port-chips">
+                        @foreach (var chip in domain.Ports)
+                        {
+                            <span class="port-chip">
+                                @if (chip.IsHttp)
+                                {
+                                    <a class="chip-globe" href="@domain.Url" target="_blank" rel="noopener"
+                                       aria-label="Open @domain.Url" title="Open @domain.Url"
+                                       @onclick:stopPropagation="true"> <SvgIcon Name="globe" /> </a>
+                                }
+                                :@chip.Port
+                                <CopyButton Text="@chip.CopyText" />
+                            </span>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
+    else if (Model.NoPorts)
+    {
+        <div class="card-domains">
+            <div class="domain-row domain-row-noports"><span class="domain-plain">no ports exposed</span></div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public ContainerModel Model { get; set; } = null!;
+
+    [Parameter] public EventCallback<ContainerModel> OnOpen { get; set; }
+
+    private Task OpenAsync() => OnOpen.InvokeAsync(Model);
+
+    private Task OnKeyDownAsync(KeyboardEventArgs args) =>
+        args.Key is "Enter" or " " ? OpenAsync() : Task.CompletedTask;
+}

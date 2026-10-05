@@ -1,0 +1,79 @@
+<div class="drawer-backdrop @(Model is null ? "" : "open")" @onclick="CloseAsync"></div>
+<aside class="drawer @(Model is null ? "" : "open")" aria-hidden="@((Model is null).ToString().ToLowerInvariant())">
+    @if (Model is { } container)
+    {
+        <div class="drawer-header">
+            <div class="drawer-title">
+                <div class="drawer-name">@container.Name</div>
+                <div class="drawer-subtitle">@container.ShortId · @(container.IsRunning ? "running" : "stopped")</div>
+            </div>
+            <button class="drawer-close" type="button" @onclick="CloseAsync" title="Close">
+                <SvgIcon Name="close" />
+            </button>
+        </div>
+        <div class="drawer-body">
+            <div>
+                <div class="drawer-section-title">Details</div>
+                <div class="drawer-row"><span class="drawer-row-label">Image</span><span class="drawer-row-value">@container.Image</span></div>
+                <div class="drawer-row"><span class="drawer-row-label">ID</span><span class="drawer-row-value">@container.Id</span></div>
+                @if (container.ShowHealth)
+                {
+                    <div class="drawer-row">
+                        <span class="drawer-row-label">Health</span>
+                        <span class="drawer-row-value"><span class="health-badge health-@container.Health">@container.Health</span></span>
+                    </div>
+                }
+            </div>
+            @if (container.Networks.Count > 0)
+            {
+                <div>
+                    <div class="drawer-section-title">Networks</div>
+                    <div class="drawer-tags">
+                        @foreach (var network in container.Networks)
+                        {
+                            <span class="drawer-tag">@network</span>
+                        }
+                    </div>
+                </div>
+            }
+            @if (container.PublishedPorts.Count > 0)
+            {
+                <div>
+                    <div class="drawer-section-title">Published Ports</div>
+                    <table class="drawer-ports-table">
+                        <thead><tr><th>Container</th><th>Host</th></tr></thead>
+                        <tbody>
+                            @foreach (var port in container.PublishedPorts)
+                            {
+                                <tr><td>@port.ContainerPort</td><td>@port.HostPort</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            @if (container.Labels.Count > 0)
+            {
+                <div>
+                    <div class="drawer-section-title">Labels</div>
+                    <div class="drawer-labels">
+                        @foreach (var label in container.Labels)
+                        {
+                            <div class="drawer-label-row">
+                                <span class="drawer-label-key" title="@label.Key">@label.Key</span>
+                                <span class="drawer-label-val" title="@label.Value">@label.Value</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</aside>
+
+@code {
+    [Parameter] public ContainerModel? Model { get; set; }
+
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private Task CloseAsync() => OnClose.InvokeAsync();
+}

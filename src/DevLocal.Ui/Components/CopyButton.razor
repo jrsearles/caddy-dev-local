@@ -1,0 +1,39 @@
+@implements IDisposable
+@inject UiInterop Interop
+
+<button class="copy-btn @(copied ? "copied" : "")" type="button" @onclick="CopyAsync"
+        aria-label="Copy @Text" title="Copy @Text" disabled="@(Text.Length == 0)">
+    <SvgIcon Name="copy" />
+    <SvgIcon Name="check" />
+</button>
+
+@code {
+    private bool copied;
+    private CancellationTokenSource? reset;
+
+    [Parameter, EditorRequired] public string Text { get; set; } = "";
+
+    private async Task CopyAsync()
+    {
+        if (Text.Length == 0)
+            return;
+        try { await Interop.CopyAsync(Text); } catch (Exception) { }
+        copied = true;
+        reset?.Cancel();
+        reset?.Dispose();
+        reset = new CancellationTokenSource();
+        var token = reset.Token;
+        _ = Task.Delay(1200, token).ContinueWith(task =>
+        {
+            if (task.IsCanceled || !copied)
+                return;
+            InvokeAsync(() => copied = false);
+        }, token);
+    }
+
+    public void Dispose()
+    {
+        reset?.Cancel();
+        reset?.Dispose();
+    }
+}

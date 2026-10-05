@@ -39,7 +39,7 @@ internal sealed class HookSequence(string name, params IUpdateHook[] hooks) : IU
     }
 }
 
-internal sealed class HookRuntime(Action<string, Exception>? onError = null)
+internal sealed class HookRuntime(Action<string, Exception>? onError = null) : IAsyncDisposable
 {
     private readonly object gate = new();
     private readonly List<IUpdateHook> hooks = [];
@@ -135,6 +135,25 @@ internal sealed class HookRuntime(Action<string, Exception>? onError = null)
         }
         if (errors.Count > 0)
             throw new AggregateException(errors);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        IUpdateHook[] snapshot;
+        lock (gate)
+            snapshot = hooks.ToArray();
+        foreach (var hook in snapshot)
+        {
+            switch (hook)
+            {
+                case IAsyncDisposable asyncDisposable:
+                    await asyncDisposable.DisposeAsync();
+                    break;
+                case IDisposable disposable:
+                    disposable.Dispose();
+                    break;
+            }
+        }
     }
 
     private static async Task ApplyAllAsync(IUpdateHook[] hooks, DiscoveryUpdate update, CancellationToken token)

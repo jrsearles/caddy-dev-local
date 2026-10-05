@@ -25,7 +25,7 @@ internal sealed class DependencyMonitor : IDependencyProbe, IDisposable
 
     public async Task CheckCaddyAsync(string adminUrl, CancellationToken token)
     {
-        using var response = await caddy.GetAsync(new Uri(new Uri(adminUrl.TrimEnd('/') + "/"), "config/"), token);
+        using var response = await caddy.GetAsync(new Uri(new Uri(Loopback.NormalizeUrl(adminUrl) + "/"), "config/"), token);
         response.EnsureSuccessStatusCode();
     }
 

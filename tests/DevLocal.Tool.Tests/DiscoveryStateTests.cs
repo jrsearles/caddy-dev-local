@@ -126,6 +126,43 @@ public sealed class DiscoveryStateTests
     }
 
     [Fact]
+    public async Task PendingPortsReportsRunningContainersAwaitingAProbeButSkipsUnprobeableOnes()
+    {
+        var source = new FakeSource();
+        var probe = new FakeProbe();
+        var discovery = new DiscoveryState(source, TimeSpan.FromHours(1), TimeSpan.FromSeconds(2), probe);
+
+        Assert.False(discovery.HasPendingPorts());
+
+        source.Enqueue([Container("web", 8080)]);
+        await discovery.RefreshAsync(CancellationToken.None);
+        Assert.False(discovery.HasPendingPorts());
+
+        probe.Error = new HttpRequestException("connection refused");
+        source.Enqueue([Container("web", 8080)]);
+        await discovery.RefreshAsync(CancellationToken.None);
+        Assert.True(discovery.HasPendingPorts());
+
+        var unpublished = new ContainerInfo
+        {
+            ContainerId = "no-ports",
+            ContainerName = "no-ports",
+            IsRunning = true,
+            Ports = [6379],
+            PublishedPorts = ImmutableDictionary<ushort, ushort>.Empty
+        };
+        var customDomains = Container("custom", 8080) with
+        {
+            Labels = ImmutableDictionary<string, string>.Empty.Add("dev.local.domains", "8080:api.test")
+        };
+        var stopped = Container("idle", 8080) with { IsRunning = false };
+
+        source.Enqueue([unpublished, customDomains, stopped]);
+        await discovery.RefreshAsync(CancellationToken.None);
+        Assert.False(discovery.HasPendingPorts());
+    }
+
+    [Fact]
     public async Task CancellationWhileProbingLeavesLastCompleteSnapshotUntouched()
     {
         var source = new FakeSource();

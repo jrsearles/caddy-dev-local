@@ -1,0 +1,12 @@
+<nav class="tab-nav">
+    <NavLink class="tab-btn" href="" Match="NavLinkMatch.All">Containers</NavLink>
+    @if (Model.HasConfig)
+    {
+        <NavLink class="tab-btn" href="routes">Routes<span class="tab-count"> (@Model.RouteCount)</span></NavLink>
+        <NavLink class="tab-btn" href="config">Caddy</NavLink>
+    }
+</nav>
+
+@code {
+    [Parameter, EditorRequired] public DashboardModel Model { get; set; } = null!;
+}

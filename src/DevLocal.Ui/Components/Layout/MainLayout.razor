@@ -1,0 +1,40 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject UiState State
+@inject TldProvider Tld
+
+<PageTitle>devlocal — Container Index</PageTitle>
+
+<h1 class="visually-hidden">devlocal container index</h1>
+<AppHeader Model="@Dashboard" />
+<ErrorBanner Model="@Dashboard" />
+<TabNav Model="@Dashboard" />
+
+<main class="content">
+    @Body
+</main>
+
+@code {
+    private DashboardModel dashboard = Empty();
+
+    private DashboardModel Dashboard => dashboard;
+
+    protected override void OnInitialized()
+    {
+        dashboard = Build();
+        State.Changed += OnStateChanged;
+    }
+
+    private DashboardModel Build() => DashboardBuilder.Build(Tld.Value, State.Current);
+
+    private void OnStateChanged() => InvokeAsync(() =>
+    {
+        dashboard = Build();
+        StateHasChanged();
+    });
+
+    public void Dispose() => State.Changed -= OnStateChanged;
+
+    private static DashboardModel Empty() =>
+        DashboardBuilder.Build("", new UiSnapshot([], new DiscoveryStatus(null, ""), ""));
+}

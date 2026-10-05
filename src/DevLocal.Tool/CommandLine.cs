@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 
 namespace DevLocal.Tool;
 
-internal enum RunMode { Once, Start, Clean }
+internal enum RunMode { Start, Clean }
 
 internal sealed record AppOptions
 {
@@ -15,10 +15,10 @@ internal sealed record AppOptions
     public bool Tracing { get; init; } = true;
     public bool Caddy { get; init; } = true;
     public bool UI { get; init; } = true;
+    public int UiPort { get; init; }
     public string CaddyAdmin { get; init; } = "http://localhost:2019";
     public string CaddyServer { get; init; } = "srv0";
     public bool AllowCreateServer { get; init; } = true;
-    public string IndexDir { get; init; } = "";
     public string LogLevel { get; init; } = "info";
     public string DockerPipe { get; init; } = "docker_engine";
 }
@@ -31,7 +31,21 @@ internal static class CommandLine
         @"\G(?<amount>\d+(?:\.\d+)?)(?<unit>ns|us|µs|μs|ms|s|m|h)", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     internal static ParsedCommand Parse(string[] args, Func<string, string?>? environment = null,
-        string? indexDir = null, string dockerPipe = "docker_engine")
+        string dockerPipe = "docker_engine")
+    {
+        if (args.Length == 0 || args[0].StartsWith('-'))
+            throw new ArgumentException("Missing command; expected 'start' or 'clean'");
+        var mode = args[0] switch
+        {
+            "start" => RunMode.Start,
+            "clean" => RunMode.Clean,
+            _ => throw new ArgumentException($"Unknown command {args[0]}")
+        };
+        return new ParsedCommand(mode, ParseOptions(args[1..], environment, dockerPipe));
+    }
+
+    internal static AppOptions ParseOptions(string[] args, Func<string, string?>? environment = null,
+        string dockerPipe = "docker_engine")
     {
         environment ??= Environment.GetEnvironmentVariable;
         string Env(string name, string fallback) => environment(name) is { Length: > 0 } value ? value : fallback;
@@ -45,27 +59,12 @@ internal static class CommandLine
             Tracing = EnvBool("DEVLOCAL_TRACING", true),
             CaddyAdmin = Env("DEVLOCAL_CADDY_ADMIN", "http://localhost:2019"),
             CaddyServer = Env("DEVLOCAL_CADDY_SERVER", "srv0"),
-            IndexDir = Env("DEVLOCAL_INDEX_DIR", indexDir ?? Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "caddy-dev-local")),
+            UiPort = ParsePort(Env("DEVLOCAL_UI_PORT", "0")),
             LogLevel = Env("DEVLOCAL_LOG_LEVEL", "info"),
             DockerPipe = dockerPipe
         };
 
-        var mode = RunMode.Once;
-        var cursor = 0;
-        if (args.Length > 0 && !args[0].StartsWith('-'))
-        {
-            mode = args[0] switch
-            {
-                "run" => RunMode.Once,
-                "start" => RunMode.Start,
-                "clean" => RunMode.Clean,
-                _ => throw new ArgumentException($"Unknown command {args[0]}")
-            };
-            cursor++;
-        }
-
-        for (; cursor < args.Length; cursor++)
+        for (var cursor = 0; cursor < args.Length; cursor++)
         {
             var input = args[cursor];
             if (!input.StartsWith("--", StringComparison.Ordinal))
@@ -96,20 +95,20 @@ internal static class CommandLine
                 "stale-ttl" => options with { StaleTtl = ParseDuration(value) },
                 "probe-timeout" => options with { ProbeTimeout = ParseDuration(value) },
                 "poll-interval" => options with { PollInterval = ParseDuration(value) },
+                "ui-port" => options with { UiPort = ParsePort(value) },
                 "caddy-admin" => options with { CaddyAdmin = value },
                 "caddy-server" => options with { CaddyServer = value },
-                "index-dir" => options with { IndexDir = value },
                 "log-level" => options with { LogLevel = value },
                 "docker-pipe" => options with { DockerPipe = value },
                 _ => throw new ArgumentException($"Unknown flag --{name}")
             };
         }
 
-        if (options.IndexDir == "" || options.DockerPipe == "")
-            throw new ArgumentException("Index directory and Docker pipe cannot be empty");
+        if (options.DockerPipe == "")
+            throw new ArgumentException("Docker pipe cannot be empty");
         if (options.LogLevel is not ("debug" or "info" or "warn" or "error"))
             throw new ArgumentException($"Invalid log level {options.LogLevel}");
-        return new ParsedCommand(mode, options);
+        return options;
 
         bool EnvBool(string key, bool fallback) => environment(key) switch
         {
@@ -163,4 +162,11 @@ internal static class CommandLine
         "false" or "0" or "f" => false,
         _ => throw new FormatException($"Invalid boolean value {value}")
     };
+
+    private static int ParsePort(string value) =>
+        int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var port) is true
+            ? port <= 65535
+                ? port
+                : throw new FormatException($"Invalid port {value}")
+            : throw new FormatException($"Invalid port {value}");
 }

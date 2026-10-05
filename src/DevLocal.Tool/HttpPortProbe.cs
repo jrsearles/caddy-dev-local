@@ -32,7 +32,7 @@ internal sealed class HttpPortProbe : IPortProbe
         Exception? lastError = null;
         foreach (var port in PreferredPorts(ports))
         {
-            foreach (var address in host == "localhost" ? new[] { host, "127.0.0.1" } : [host])
+            foreach (var address in host == "localhost" ? new[] { "127.0.0.1", host } : [host])
             {
                 try
                 {

@@ -1,0 +1,52 @@
+<div class="project-section" id="@Model.Project">
+    <div class="project-header">
+        <button class="project-toggle" aria-expanded="@open.ToString().ToLowerInvariant()" @onclick="Toggle">
+            <span class="chevron">▸</span>
+            <span class="project-name">@Model.Project</span>
+            <span class="project-status-chips">
+                @if (Model.Running > 0)
+                {
+                    <span class="mini-chip mini-chip-running">@Model.Running running</span>
+                }
+                @if (Model.Stopped > 0)
+                {
+                    <span class="mini-chip mini-chip-stopped">@Model.Stopped stopped</span>
+                }
+            </span>
+            <span class="project-count">@Model.Containers.Count @(Model.Containers.Count == 1 ? "service" : "services")</span>
+        </button>
+        <a class="dd-link" href="@Model.DockerDesktopUrl" title="@Model.DockerDesktopLabel"
+           aria-label="@Model.DockerDesktopLabel" target="_blank" rel="noopener"
+           @onclick:stopPropagation="true"> <SvgIcon Name="docker" /> </a>
+    </div>
+    <div class="project-cards @(open ? "open" : "")">
+        @foreach (var container in Model.Containers)
+        {
+            <ContainerCard Model="container" OnOpen="OnOpen" />
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public ProjectModel Model { get; set; } = null!;
+
+    [Parameter] public EventCallback<ContainerModel> OnOpen { get; set; }
+
+    [Parameter] public bool ForceOpen { get; set; }
+
+    private bool open;
+    private bool initialized;
+
+    protected override void OnParametersSet()
+    {
+        if (!initialized)
+        {
+            initialized = true;
+            open = Model.Containers.Any(container => container.IsRunning);
+        }
+        if (ForceOpen)
+            open = true;
+    }
+
+    private void Toggle() => open = !open;
+}

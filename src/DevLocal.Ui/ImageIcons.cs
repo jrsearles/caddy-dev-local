@@ -1,8 +1,8 @@
 using System.Collections.Immutable;
 
-namespace DevLocal.Tool;
+namespace DevLocal.Ui;
 
-internal static class ImageIcons
+public static class ImageIcons
 {
     private static readonly Dictionary<string, string> known = new(StringComparer.Ordinal)
     {
@@ -72,7 +72,7 @@ internal static class ImageIcons
         ["alpine"] = "alpinelinux"
     };
 
-    internal static string For(string image, ImmutableDictionary<string, string> labels)
+    public static string For(string image, ImmutableDictionary<string, string> labels)
     {
         foreach (var key in new[] { "org.opencontainers.image.logo", "com.docker.extension.icon" })
         {

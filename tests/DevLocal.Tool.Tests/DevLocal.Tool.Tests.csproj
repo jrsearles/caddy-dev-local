@@ -4,6 +4,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsTestProject>true</IsTestProject>
+    <RequiresAspNetWebAssets>true</RequiresAspNetWebAssets>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
@@ -11,12 +12,14 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
   </ItemGroup>
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
     <Content Include="../Fixtures/domain_cases.json" Link="Fixtures/domain_cases.json" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="../Fixtures/hosts_cases.json" Link="Fixtures/hosts_cases.json" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="../Fixtures/caddy_cases.json" Link="Fixtures/caddy_cases.json" CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="../Fixtures/index_cases.json" Link="Fixtures/index_cases.json" CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="../Fixtures/golden/index/*.html" Link="Fixtures/golden/index/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <ProjectReference Include="../../src/DevLocal.Tool/DevLocal.Tool.csproj" />
     <ProjectReference Include="../../src/DevLocal.Core/DevLocal.Core.csproj" />
+    <ProjectReference Include="../../src/DevLocal.Ui/DevLocal.Ui.csproj" />
   </ItemGroup>
 </Project>

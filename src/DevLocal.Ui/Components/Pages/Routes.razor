@@ -1,0 +1,102 @@
+@page "/routes"
+@implements IDisposable
+@inject UiState State
+@inject TldProvider Tld
+
+<PageTitle>devlocal — Registered Routes</PageTitle>
+
+<div class="section-label"><span>Registered Routes</span></div>
+@if (Model.Routes.Count == 0)
+{
+    <div class="route-empty">No routes found.</div>
+}
+else
+{
+    <div class="route-table-wrap">
+        <table class="route-table">
+            <thead><tr><th>Handler</th><th>Host</th><th>Upstream</th><th>TLS</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var route in Model.Routes)
+                {
+                    <tr>
+                        <td>
+                            @foreach (var handler in route.Handlers)
+                            {
+                                <span class="route-handler-badge @HandlerClass(handler)">@handler</span>
+                            }
+                            @if (route.Id.Length > 0)
+                            {
+                                <div class="route-id-val">@@@route.Id</div>
+                            }
+                        </td>
+                        <td>
+                            @foreach (var host in route.Hosts)
+                            {
+                                var path = route.Paths.Count > 0 ? route.Paths[0] : "";
+                                <div class="route-host-val"><a href="@($"https://{host}{path}")" target="_blank" rel="noopener">@host</a></div>
+                            }
+                            @foreach (var path in route.Paths)
+                            {
+                                <div class="route-host-val route-host-path">↳ @path</div>
+                            }
+                        </td>
+                        <td>
+                            @if (route.Upstreams.Count > 0)
+                            {
+                                <span class="route-upstream-val">@string.Join(", ", route.Upstreams)</span>
+                            }
+                            else if (route.FileRoot.Length > 0)
+                            {
+                                <span class="route-upstream-val">@route.FileRoot</span>
+                            }
+                        </td>
+                        <td>
+                            @if (route.Tls.Length > 0)
+                            {
+                                <span class="route-tls-badge @route.TlsClass">@route.Tls</span>
+                            }
+                        </td>
+                        <td class="route-action-cell">
+                            @if (route.Id != "devlocal-index" && route.Hosts.Count > 0 && Model.HasDomain(route.Hosts[0]))
+                            {
+                                <a class="route-link" href="@($"/?q={Uri.EscapeDataString(route.Hosts[0])}")"
+                                   title="Go to container" aria-label="Go to container">
+                                    <SvgIcon Name="external" />
+                                </a>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private DashboardModel model = DashboardBuilder.Build("", new UiSnapshot([], new DiscoveryStatus(null, ""), ""));
+
+    private DashboardModel Model => model;
+
+    protected override void OnInitialized()
+    {
+        model = Build();
+        State.Changed += OnStateChanged;
+    }
+
+    private DashboardModel Build() => DashboardBuilder.Build(Tld.Value, State.Current);
+
+    private void OnStateChanged() => InvokeAsync(() =>
+    {
+        model = Build();
+        StateHasChanged();
+    });
+
+    private static string HandlerClass(string handler) => handler switch
+    {
+        "reverse_proxy" => "handler-reverse_proxy",
+        "file_server" => "handler-file_server",
+        _ => "handler-other",
+    };
+
+    public void Dispose() => State.Changed -= OnStateChanged;
+}

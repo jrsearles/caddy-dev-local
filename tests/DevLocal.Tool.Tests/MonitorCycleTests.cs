@@ -80,6 +80,29 @@ public sealed class MonitorCycleTests
         }
     }
 
+    [Fact]
+    public void DeploymentCopiesStaticWebAssets()
+    {
+        var source = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+        var destination = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+        var script = Path.Combine("wwwroot", "_framework", "blazor.web.js");
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.Combine(source, script))!);
+            File.WriteAllText(Path.Combine(source, script), "blazor runtime");
+            File.WriteAllText(Path.Combine(source, "DevLocal.Tool.runtimeconfig.json"), "{}");
+
+            ServiceManager.CopyRuntimeFiles(source, destination);
+
+            Assert.Equal("blazor runtime", File.ReadAllText(Path.Combine(destination, script)));
+        }
+        finally
+        {
+            if (Directory.Exists(source)) Directory.Delete(source, true);
+            if (Directory.Exists(destination)) Directory.Delete(destination, true);
+        }
+    }
+
     private sealed class FakeProbe : IDependencyProbe
     {
         public Exception? DockerError { get; set; }

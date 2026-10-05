@@ -9,7 +9,7 @@ namespace DevLocal.Tool.Tests;
 public sealed class ControllerTests
 {
     [Fact]
-    public async Task OnePassReconcilesCaddyAndHostsFromSameEnrichedSnapshot()
+    public async Task ContinuousRunReconcilesCaddyAndHostsFromSameEnrichedSnapshot()
     {
         var temp = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
         Directory.CreateDirectory(temp);
@@ -27,14 +27,26 @@ public sealed class ControllerTests
                     PublishedPorts = ImmutableDictionary<ushort, ushort>.Empty.Add(80, 8080)
                 }]
             };
+            var events = new FakeEvents();
+            var discovery = new DiscoveryState(source, TimeSpan.FromHours(1), TimeSpan.FromSeconds(2), new FakeProbe());
             var caddy = new FakeCaddy();
             var runtime = new HookRuntime();
             runtime.Register(new CaddyHook(caddy, "dev.local", tracing: true));
             runtime.Register(new HostsHook(new HostsFileReconciler(hostsPath), "dev.local", true, true));
-            var controller = new Controller(
-                new DiscoveryState(source, TimeSpan.FromHours(1), TimeSpan.FromSeconds(2), new FakeProbe()), runtime);
+            var reconciled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            runtime.Register(new FakeHook((_, _) =>
+            {
+                reconciled.TrySetResult();
+                return Task.CompletedTask;
+            }));
+            using var cancellation = new CancellationTokenSource();
+            var controller = new Controller(runtime,
+                new DiscoveryRunner(discovery, events, TimeSpan.Zero));
+            var running = controller.RunAsync(cancellation.Token);
 
-            await controller.RunOnceAsync(CancellationToken.None);
+            await reconciled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            cancellation.Cancel();
+            await running.WaitAsync(TimeSpan.FromSeconds(5));
 
             Assert.Equal("localhost:8080", caddy.Desired!.Routes["devlocal-route-web-dev-local"]
                 .GetProperty("handle")[1].GetProperty("routes")[0].GetProperty("handle")[0]
@@ -49,20 +61,6 @@ public sealed class ControllerTests
         {
             Directory.Delete(temp, true);
         }
-    }
-
-    [Fact]
-    public async Task OnePassFailureDoesNotTouchHooks()
-    {
-        var source = new FakeSource { Error = new IOException("Docker unavailable") };
-        var caddy = new FakeCaddy();
-        var runtime = new HookRuntime();
-        runtime.Register(new CaddyHook(caddy, "dev.local", tracing: true));
-        var controller = new Controller(new DiscoveryState(source, TimeSpan.FromHours(1), TimeSpan.FromSeconds(2)), runtime);
-
-        await Assert.ThrowsAsync<InvalidOperationException>(() => controller.RunOnceAsync(CancellationToken.None));
-
-        Assert.Null(caddy.Desired);
     }
 
     [Fact]
@@ -82,7 +80,7 @@ public sealed class ControllerTests
             if (update.Snapshot[0].ContainerId == "changed") changed.TrySetResult();
             return Task.CompletedTask;
         }));
-        var controller = new Controller(discovery, runtime, runner);
+        var controller = new Controller(runtime, runner);
         var running = controller.RunAsync(cancellation.Token);
 
         await initial.Task.WaitAsync(TimeSpan.FromSeconds(5));

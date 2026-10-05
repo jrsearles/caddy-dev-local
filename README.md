@@ -2,7 +2,7 @@
 
 A host application that discovers Docker containers and registers `{project}.{service}.dev.local` domains with Caddy, with optional continuous watching, HTTP port probing, self-signed TLS, hosts-file management, and a built-in index page.
 
-> **C# port branch:** `port/csharp` now supports one-pass reconciliation, foreground watching, and cleanup through a Windows .NET tool. A separately installed Windows service still defaults to connectivity monitoring; `service install --controller` explicitly enables continuous reconciliation. Go remains the reference until parity and service reboot tests pass. See [the port status and Windows trial](docs/csharp-port.md).
+> **C# port branch:** `port/csharp` now supports foreground watching and cleanup through a Windows .NET tool. A separately installed Windows service still defaults to connectivity monitoring; `service install --controller` explicitly enables continuous reconciliation. Go remains the reference until parity and service reboot tests pass. See [the port status and Windows trial](docs/csharp-port.md).
 
 > **Warning**: This application is designed for local development environments only. It uses self-signed TLS, auto-manages hosts files, and assumes trusted networks. Do not use in production.
 
@@ -55,7 +55,7 @@ sudo ./artifacts/linux-amd64/devlocal
 
 Successful runs log each applied hook and finish with a reminder to use `devlocal start` for continuous watching.
 
-> **Windows (.NET) difference:** on the `port/csharp` branch the .NET tool requires an explicit subcommand. A bare `devlocal` prints usage and exits; pass `devlocal run` for the single reconciliation pass. Flags without a subcommand still imply `run`, so the examples that omit it behave the same. `devlocal version` (or `--version`) prints the tool version and build commit.
+> **Windows (.NET) difference:** on the `port/csharp` branch the .NET tool requires an explicit subcommand: `start` for continuous watching or `clean` to remove managed resources. A bare `devlocal` prints usage and exits, and flags without a subcommand are rejected, so the examples below need `start` added on this branch. There is no one-shot `run` subcommand; the foreground mode always watches. `devlocal version` (or `--version`) prints the tool version and build commit. The .NET tool also hosts the dashboard in-process (Blazor Server) on a random loopback port instead of writing generated files: `dev.local`/`dev.localhost` reverse-proxy to it, `--index-dir` is gone, and `--ui-port` / `DEVLOCAL_UI_PORT` pins the port (`0`, the default, picks a random free one). Pass `--ui=false` to skip hosting it. The "Generated Files" section below and the `--index-dir` flag describe the Go tool only.
 
 > `sudo` is required so devlocal can write to your system hosts file (`/etc/hosts`). Pass `--hosts-file=false` to skip hosts file management.
 
@@ -286,9 +286,9 @@ DEVLOCAL_TRACING=false devlocal
 The application enables all built-in hooks by default. Disable components independently with boolean flags:
 
 ```bash
-devlocal --caddy=false --ui=false  # Hosts-file updates only
-devlocal --hosts-file=false        # Caddy registration and UI only
-devlocal --ui=false                # Caddy registration without the index route
+devlocal start --caddy=false --ui=false  # Hosts-file updates only
+devlocal start --hosts-file=false        # Caddy registration and UI only
+devlocal start --ui=false                # Caddy registration without the index route
 ```
 
 Additional compile-time hooks implement `Name() string`, `Apply(context.Context, discovery.Update) error`, and `Cleanup(context.Context) error`, then register with `hook.Runtime`. The default command synchronously applies one authoritative snapshot to every hook. In `start` mode, Docker events, polling, and stale cleanup trigger serialized discovery refreshes; each hook has an independent worker with latest-update coalescing. Port probing is part of discovery. Ordered dependencies can use `hook.Sequence`; the default composition sequences Caddy before UI so the rendered config matches the reconciled update. Cleanup is invoked explicitly with `devlocal clean`.

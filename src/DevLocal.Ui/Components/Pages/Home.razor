@@ -1,0 +1,112 @@
+@page "/"
+@implements IDisposable
+@inject UiState State
+@inject TldProvider Tld
+@inject UiSession Session
+@inject NavigationManager Navigation
+@inject UiInterop Interop
+
+<PageTitle>devlocal — Container Index</PageTitle>
+
+@if (Model.IsEmpty)
+{
+    <div class="empty-state">
+        <SvgIcon Name="container" />
+        <p>No containers registered.</p>
+        <ul class="empty-hints">
+            <li>Containers expose or publish ports?</li>
+            <li>Docker Engine reachable on this host?</li>
+            <li>See the <a href="https://github.com/jrsearles/caddy-dev-local#troubleshooting" target="_blank" rel="noopener">README</a> for troubleshooting.</li>
+        </ul>
+        @if (Model.Error is { } error)
+        {
+            <div class="empty-error">@error</div>
+        }
+    </div>
+}
+else
+{
+    var terms = Model.FilterTerms(Session.Filter);
+    var standalone = Model.Standalone.Where(container => Model.Matches(container, terms)).ToList();
+    var projects = Model.Projects
+        .Select(project => project with { Containers = project.Containers.Where(container => Model.Matches(container, terms)).ToList() })
+        .Where(project => project.Containers.Count > 0)
+        .ToList();
+
+    @if (standalone.Count > 0)
+    {
+        <div class="section-label"><span>Containers</span></div>
+        <div class="card-list">
+            @foreach (var container in standalone)
+            {
+                <ContainerCard Model="container" OnOpen="OpenAsync" @key="container.Id" />
+            }
+        </div>
+    }
+
+    @if (projects.Count > 0)
+    {
+        <div class="section-label"><span>Compose Projects</span></div>
+        @foreach (var project in projects)
+        {
+            <ProjectSection Model="project" OnOpen="OpenAsync" ForceOpen="@(terms.Length > 0)" @key="project.Project" />
+        }
+    }
+
+    @if (standalone.Count == 0 && projects.Count == 0)
+    {
+        <div class="no-match visible">No containers match your filter.</div>
+    }
+}
+
+<ContainerDrawer Model="@Session.Selected" OnClose="CloseAsync" />
+
+@code {
+    private DashboardModel model = DashboardBuilder.Build("", new UiSnapshot([], new DiscoveryStatus(null, ""), ""));
+
+    private DashboardModel Model => model;
+
+    protected override void OnInitialized()
+    {
+        model = Build();
+        State.Changed += OnStateChanged;
+        Session.SelectionChanged += OnStateChanged;
+        Session.FilterChanged += OnStateChanged;
+    }
+
+    [SupplyParameterFromQuery(Name = "q")]
+    private string? Query { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        if (Query is { Length: > 0 } value && value != Session.Filter)
+            Session.SetFilter(value);
+    }
+
+    private DashboardModel Build() => DashboardBuilder.Build(Tld.Value, State.Current);
+
+    private void OnStateChanged() => InvokeAsync(() =>
+    {
+        model = Build();
+        StateHasChanged();
+    });
+
+    private Task OpenAsync(ContainerModel container)
+    {
+        Session.Select(container);
+        return Task.CompletedTask;
+    }
+
+    private Task CloseAsync()
+    {
+        Session.Select(null);
+        return Task.CompletedTask;
+    }
+
+    public void Dispose()
+    {
+        State.Changed -= OnStateChanged;
+        Session.SelectionChanged -= OnStateChanged;
+        Session.FilterChanged -= OnStateChanged;
+    }
+}

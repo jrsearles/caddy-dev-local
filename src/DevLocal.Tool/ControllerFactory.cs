@@ -1,9 +1,10 @@
 using DevLocal.Core;
+using DevLocal.Ui;
 using Docker.DotNet;
 
 namespace DevLocal.Tool;
 
-internal sealed class ControllerSession(Controller controller, IDisposable docker, CaddyApiClient? caddy) : IDisposable
+internal sealed class ControllerSession(Controller controller, IDisposable docker, CaddyApiClient? caddy) : IAsyncDisposable
 {
     internal Controller Controller => controller;
 
@@ -12,11 +13,18 @@ internal sealed class ControllerSession(Controller controller, IDisposable docke
         caddy?.Dispose();
         docker.Dispose();
     }
+
+    public async ValueTask DisposeAsync()
+    {
+        await controller.DisposeAsync();
+        Dispose();
+    }
 }
 
 internal static class ControllerFactory
 {
-    internal static ControllerSession Create(AppOptions options, Action<string, Exception>? onError = null)
+    internal static ControllerSession Create(AppOptions options,
+        Action<string, Exception>? onError = null, Action<string>? onLog = null)
     {
         if (!OperatingSystem.IsWindows())
             throw new PlatformNotSupportedException("Live controller currently supports Windows only");
@@ -36,11 +44,11 @@ internal static class ControllerFactory
             if (options.Caddy && options.UI)
                 runtime.Register(new HookSequence("caddy-ui",
                     new CaddyHook(caddy!, options.Tld, options.Tracing),
-                    new UiHook(options.Tld, options.IndexDir, caddy)));
+                    new UiServerHook(options.Tld, options.UiPort, caddy, onLog)));
             else if (options.Caddy)
                 runtime.Register(new CaddyHook(caddy!, options.Tld, options.Tracing));
             else if (options.UI)
-                runtime.Register(new UiHook(options.Tld, options.IndexDir, caddy));
+                runtime.Register(new UiServerHook(options.Tld, options.UiPort, caddy, onLog));
             if (options.HostsFile)
             {
                 var path = HostsFileReconciler.WindowsHostsPath;
@@ -50,7 +58,7 @@ internal static class ControllerFactory
                 runtime.Register(new HostsHook(new HostsFileReconciler(path), options.Tld, true, writable));
             }
 
-            return new ControllerSession(new Controller(discovery, runtime,
+            return new ControllerSession(new Controller(runtime,
                 new DiscoveryRunner(discovery, new DockerEventSource(docker), options.PollInterval)), docker, caddy);
         }
         catch

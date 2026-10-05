@@ -1184,3 +1184,67 @@ body {
 }
 
 .no-match.visible { display: block; }
+
+/* �� Interactive UI helpers ���������������������������������� */
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+.json-children {
+    margin-left: 0.9rem;
+    padding-left: 0.6rem;
+    border-left: 1px solid var(--border);
+}
+
+.json-caret {
+    display: inline-block;
+    width: 1em;
+    padding: 0;
+    background: none;
+    border: 0;
+    font: inherit;
+    line-height: inherit;
+    cursor: pointer;
+}
+
+.json-caret:hover { color: var(--accent); }
+
+.json-line {
+    display: block;
+    width: 100%;
+    padding: 0;
+    background: none;
+    border: 0;
+    font: inherit;
+    line-height: inherit;
+    text-align: left;
+    color: inherit;
+    cursor: pointer;
+}
+
+.json-line:hover { color: var(--text); }
+.json-line:hover .json-caret { color: var(--accent); }
+
+.json-line:focus-visible {
+    outline: 1px solid var(--accent);
+    outline-offset: -1px;
+}
+
+.tab-btn {
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+a.dd-link { text-decoration: none; }
+
+.copy-btn[disabled] { display: none; }

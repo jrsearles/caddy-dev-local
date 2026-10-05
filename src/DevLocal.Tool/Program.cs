@@ -34,16 +34,15 @@ try
 
     if (args.Length == 0 || args.Contains("--help", StringComparer.Ordinal))
     {
-        Console.WriteLine("Usage: devlocal [run|start|clean|version] [flags]\n" +
+        Console.WriteLine("Usage: devlocal [start|clean|version] [flags]\n" +
             "       devlocal service install|upgrade|status|logs|start|stop|restart|uninstall\n" +
             "Commands:\n" +
-            "  run      Reconcile Caddy, UI and hosts once, then exit\n" +
-            "  start    Reconcile once, then watch Docker events and poll\n" +
-            "  clean    Remove managed Caddy routes, TLS policies and UI files\n" +
+            "  start    Reconcile, then watch Docker events and poll, serving the index UI\n" +
+            "  clean    Remove managed Caddy routes, TLS policies and the hosts block\n" +
             "  version  Print the tool version and exit\n" +
             "Flags: --tld --stale-ttl --probe-timeout --poll-interval --hosts-file --no-tracing " +
-            "--caddy --ui --caddy-admin --caddy-server --allow-create-server --index-dir --log-level --docker-pipe\n" +
-            "Flags without a command imply 'run'. Options come from flags, then DEVLOCAL_* env vars, then defaults.");
+            "--caddy --ui --ui-port --caddy-admin --caddy-server --allow-create-server --log-level --docker-pipe\n" +
+            "A command is required. Options come from flags, then DEVLOCAL_* env vars, then defaults.");
         return 0;
     }
 
@@ -54,7 +53,9 @@ try
         if (pipe is not null)
             settings = settings with { Options = settings.Options with { DockerPipe = pipe } };
     }
-    using var session = ControllerFactory.Create(settings.Options);
+    await using var session = ControllerFactory.Create(settings.Options,
+        onError: (message, ex) => Console.Error.WriteLine($"devlocal: {message}: {ex.Message}"),
+        onLog: message => Console.WriteLine(message));
     using var stop = new CancellationTokenSource();
     Console.CancelKeyPress += (_, e) => { e.Cancel = true; stop.Cancel(); };
     switch (settings.Mode)
@@ -64,9 +65,6 @@ try
             break;
         case RunMode.Clean:
             await session.Controller.CleanupAsync(stop.Token);
-            break;
-        default:
-            await session.Controller.RunOnceAsync(stop.Token);
             break;
     }
     return 0;

@@ -1,0 +1,88 @@
+@page "/config"
+@implements IDisposable
+@inject UiState State
+
+<PageTitle>devlocal — Caddy Config</PageTitle>
+
+<div class="config-view">
+    <div class="config-toolbar">
+        <span class="section-label">Config</span>
+        <div class="config-toolbar-actions">
+            <button class="config-action-btn" type="button" @onclick="ToggleRaw">@(raw ? "Tree View" : "Raw JSON")</button>
+            @if (raw)
+            {
+                <button class="config-action-btn" type="button" @onclick="ToggleCompact">@(compact ? "Prettify" : "Compact")</button>
+            }
+            else
+            {
+                <button class="config-action-btn" type="button" @onclick="ExpandAll">Expand all</button>
+                <button class="config-action-btn" type="button" @onclick="CollapseAll">Collapse all</button>
+            }
+        </div>
+    </div>
+    @if (Node is null)
+    {
+        <div class="route-empty">No Caddy configuration available.</div>
+    }
+    else if (raw)
+    {
+        <pre class="config-pre">@Text</pre>
+    }
+    else
+    {
+        <div class="json-container config-pre">
+            <JsonTreeNode Tree="Tree" Node="Node" Path="" Key="config" />
+        </div>
+    }
+</div>
+
+@code {
+    private readonly JsonTreeState Tree = new();
+    private string text = "";
+    private JsonNode? node;
+    private bool raw;
+    private bool compact;
+
+    private JsonNode? Node => node;
+
+    private string Text => text;
+
+    protected override void OnInitialized()
+    {
+        State.Changed += OnStateChanged;
+        Render(State.Current.ConfigJson);
+        Tree.Open(JsonTreeState.Paths(node));
+    }
+
+    private void Render(string configJson)
+    {
+        node = JsonText.Parse(configJson);
+        text = compact ? JsonText.Compact(configJson) : JsonText.Pretty(configJson);
+    }
+
+    private void OnStateChanged() => InvokeAsync(() =>
+    {
+        var previous = node;
+        Render(State.Current.ConfigJson);
+        if (previous is null || node is null)
+        {
+            Tree.Reset();
+            Tree.Open(JsonTreeState.Paths(node));
+        }
+        StateHasChanged();
+    });
+
+    private void ToggleRaw() => raw = !raw;
+
+    private void ToggleCompact()
+    {
+        compact = !compact;
+        Render(State.Current.ConfigJson);
+    }
+
+    private void ExpandAll() => Tree.Open(JsonTreeState.Paths(node));
+
+    private void CollapseAll() => Tree.CloseAll();
+
+    public void Dispose() => State.Changed -= OnStateChanged;
+}

@@ -15,11 +15,12 @@ public sealed class CommandLineTests
             ["DEVLOCAL_POLL_INTERVAL"] = "30s",
             ["DEVLOCAL_HOSTS_FILE"] = "true",
             ["DEVLOCAL_TRACING"] = "false",
-            ["DEVLOCAL_CADDY_ADMIN"] = "http://localhost:2020"
+            ["DEVLOCAL_CADDY_ADMIN"] = "http://localhost:2020",
+            ["DEVLOCAL_UI_PORT"] = "8080"
         };
         var parsed = CommandLine.Parse(
             ["start", "--tld", "flag.local", "--poll-interval=0", "--hosts-file=false", "--no-tracing=false", "--caddy=false"],
-            name => env.GetValueOrDefault(name), "C:/index");
+            name => env.GetValueOrDefault(name));
 
         Assert.Equal(RunMode.Start, parsed.Mode);
         Assert.Equal("flag.local", parsed.Options.Tld);
@@ -28,13 +29,13 @@ public sealed class CommandLineTests
         Assert.True(parsed.Options.Tracing);
         Assert.False(parsed.Options.Caddy);
         Assert.Equal("http://localhost:2020", parsed.Options.CaddyAdmin);
-        Assert.Equal("C:/index", parsed.Options.IndexDir);
+        Assert.Equal(8080, parsed.Options.UiPort);
     }
 
     [Fact]
     public void KeepsGoDefaultsAndTreatsInvalidEnvironmentDurationAsDefault()
     {
-        var parsed = CommandLine.Parse(["clean"], name => name == "DEVLOCAL_STALE_TTL" ? "invalid" : null, "C:/index");
+        var parsed = CommandLine.Parse(["clean"], name => name == "DEVLOCAL_STALE_TTL" ? "invalid" : null);
 
         Assert.Equal(RunMode.Clean, parsed.Mode);
         Assert.Equal(TimeSpan.FromHours(1), parsed.Options.StaleTtl);
@@ -42,6 +43,22 @@ public sealed class CommandLineTests
         Assert.True(parsed.Options.Caddy);
         Assert.True(parsed.Options.UI);
         Assert.True(parsed.Options.HostsFile);
+        Assert.Equal(0, parsed.Options.UiPort);
+    }
+
+    [Fact]
+    public void ParsesUiPortFlagAndRejectsOutOfRangeValues()
+    {
+        Assert.Equal(5050, CommandLine.Parse(["start", "--ui-port", "5050"]).Options.UiPort);
+        Assert.Equal(5050, CommandLine.Parse(["start", "--ui-port=5050"]).Options.UiPort);
+        Assert.Throws<FormatException>(() => CommandLine.Parse(["start", "--ui-port=70000"]));
+        Assert.Throws<FormatException>(() => CommandLine.Parse(["start", "--ui-port=abc"]));
+    }
+
+    [Fact]
+    public void RejectsRemovedIndexDirFlag()
+    {
+        Assert.Throws<ArgumentException>(() => CommandLine.Parse(["start", "--index-dir", "C:/index"]));
     }
 
     [Theory]
@@ -54,20 +71,20 @@ public sealed class CommandLineTests
         Assert.Equal(TimeSpan.FromSeconds(seconds), CommandLine.ParseDuration(value));
 
     [Fact]
-    public void RunCommandAndFlagOnlyInvocationSelectSinglePass()
+    public void RejectsRemovedRunCommandAndRequiresAnExplicitSubcommand()
     {
-        Assert.Equal(RunMode.Once, CommandLine.Parse(["run"], _ => null, "C:/index").Mode);
-        Assert.Equal(RunMode.Once, CommandLine.Parse(["--caddy=false"], _ => null, "C:/index").Mode);
-        Assert.Equal(RunMode.Once, CommandLine.Parse(["--caddy=false", "--ui=false", "--hosts-file=false"],
-            _ => null, "C:/index").Mode);
+        Assert.Throws<ArgumentException>(() => CommandLine.Parse(["run"], _ => null));
+        Assert.Throws<ArgumentException>(() => CommandLine.Parse(["--caddy=false"], _ => null));
+        Assert.Throws<ArgumentException>(() => CommandLine.Parse(["--caddy=false", "--ui=false", "--hosts-file=false"],
+            _ => null));
     }
 
     [Fact]
     public void RejectsCommandsAfterFlagsAndInvalidExplicitDurations()
     {
-        Assert.Throws<ArgumentException>(() => CommandLine.Parse(["--caddy=false", "start"], _ => null, "C:/index"));
-        Assert.Throws<FormatException>(() => CommandLine.Parse(["--stale-ttl=broken"], _ => null, "C:/index"));
-        Assert.Throws<ArgumentException>(() => CommandLine.Parse(["unknown"], _ => null, "C:/index"));
+        Assert.Throws<ArgumentException>(() => CommandLine.Parse(["start", "--caddy=false", "clean"], _ => null));
+        Assert.Throws<FormatException>(() => CommandLine.Parse(["start", "--stale-ttl=broken"], _ => null));
+        Assert.Throws<ArgumentException>(() => CommandLine.Parse(["unknown"], _ => null));
     }
 
     [Fact]

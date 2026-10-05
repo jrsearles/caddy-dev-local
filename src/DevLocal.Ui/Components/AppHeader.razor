@@ -1,0 +1,79 @@
+<header class="header">
+    <a class="brand" href="/">
+        <div class="brand-icon"><SvgIcon Name="bolt" /></div>
+        <span class="brand-name">devlocal</span>
+    </a>
+
+    <div class="header-search">
+        <input class="search-input" id="devlocal-search" type="search" placeholder="Filter containers…"
+               autocomplete="off" spellcheck="false" value="@Session.Filter"
+               @oninput="OnFilterChangedAsync" />
+    </div>
+
+    <div class="header-stats">
+        @if (Model.Running > 0)
+        {
+            <span class="chip chip-running"><span class="chip-dot"></span>@Model.Running running</span>
+        }
+        @if (Model.Stopped > 0)
+        {
+            <span class="chip chip-stopped"><span class="chip-dot"></span>@Model.Stopped stopped</span>
+        }
+        @if (Model.Projects.Count > 0)
+        {
+            <span class="chip chip-projects"><span class="chip-dot"></span>@Model.Projects.Count @(Model.Projects.Count == 1 ? "project" : "projects")</span>
+        }
+        <button class="theme-toggle" type="button" @onclick="CycleThemeAsync" title="@themeLabel"
+                aria-label="@themeLabel">
+            <SvgIcon Name="sun" />
+            <SvgIcon Name="moon" />
+            <SvgIcon Name="monitor" />
+        </button>
+    </div>
+</header>
+
+@code {
+    [Parameter, EditorRequired] public DashboardModel Model { get; set; } = null!;
+
+    [Inject] private UiInterop Interop { get; set; } = null!;
+
+    [Inject] private UiSession Session { get; set; } = null!;
+
+    private string themeLabel = "Switch theme";
+
+    protected override async Task OnAfterRenderAsync(bool first)
+    {
+        if (!first)
+            return;
+        try
+        {
+            var theme = await Interop.ThemeAsync();
+            themeLabel = ThemeLabel(theme);
+            StateHasChanged();
+        }
+        catch (Exception) { }
+    }
+
+    private static string ThemeLabel(string theme) => theme switch
+    {
+        "light" => "Switch to dark theme",
+        "dark" => "Switch to system theme",
+        _ => "Switch to light theme",
+    };
+
+    private Task OnFilterChangedAsync(ChangeEventArgs args)
+    {
+        Session.SetFilter(args.Value?.ToString() ?? "");
+        return Task.CompletedTask;
+    }
+
+    private async Task CycleThemeAsync()
+    {
+        try
+        {
+            var theme = await Interop.CycleThemeAsync();
+            themeLabel = ThemeLabel(theme);
+        }
+        catch (Exception) { }
+    }
+}

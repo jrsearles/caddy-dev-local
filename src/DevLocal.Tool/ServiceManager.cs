@@ -92,7 +92,7 @@ internal static class ServiceManager
     {
         var controllerEnabled = args.Contains("--controller", StringComparer.Ordinal);
         var flags = args.Where(arg => arg != "--controller").ToArray();
-        var options = CommandLine.Parse(flags, indexDir: Path.Combine(ServicePaths.DataDirectory, "ui")).Options;
+        var options = CommandLine.ParseOptions(flags);
         if (!Uri.TryCreate(options.CaddyAdmin, UriKind.Absolute, out var uri) || uri.Scheme != "http")
             throw new ArgumentException("--caddy-admin must be an HTTP URL");
         if (string.IsNullOrWhiteSpace(options.DockerPipe) || options.DockerPipe.Contains('\\') || options.DockerPipe.Contains('/'))
@@ -134,10 +134,13 @@ internal static class ServiceManager
         Directory.CreateDirectory(destination);
         foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
         {
-            if (!file.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) &&
+            var relative = Path.GetRelativePath(source, file);
+            var isWebAsset = relative.StartsWith("wwwroot" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+            if (!isWebAsset &&
+                !file.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) &&
                 !file.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
                 continue;
-            var target = Path.Combine(destination, Path.GetRelativePath(source, file));
+            var target = Path.Combine(destination, relative);
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
             File.Copy(file, target, true);
         }

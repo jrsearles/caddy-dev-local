@@ -1,0 +1,66 @@
+@if (Node is JsonObject obj)
+{
+    <button type="button" class="line json-line" aria-expanded="@(IsOpen ? "true" : "false")" @onclick="Toggle">
+        <span class="caret-icon json-caret" aria-hidden="true">@(IsOpen ? "▾" : "▸")</span>
+        <span class="json-key">@Key</span><span class="json-separator">: </span><span class="json-separator">{</span>
+        <span class="json-size">@obj.Count</span>
+    </button>
+    @if (IsOpen)
+    {
+        <div class="json-children">
+            @foreach (var property in obj)
+            {
+                <JsonTreeNode Tree="Tree" Node="property.Value" Path="@(Path + "/" + property.Key)" Key="property.Key" />
+            }
+        </div>
+        <div class="line"><span class="json-separator">}</span></div>
+    }
+}
+else if (Node is JsonArray array)
+{
+    <button type="button" class="line json-line" aria-expanded="@(IsOpen ? "true" : "false")" @onclick="Toggle">
+        <span class="caret-icon json-caret" aria-hidden="true">@(IsOpen ? "▾" : "▸")</span>
+        <span class="json-key">@Key</span><span class="json-separator">: </span><span class="json-separator">[</span>
+        <span class="json-size">@array.Count</span>
+    </button>
+    @if (IsOpen)
+    {
+        <div class="json-children">
+            @for (var index = 0; index < array.Count; index++)
+            {
+                <JsonTreeNode Tree="Tree" Node="array[index]" Path="@(Path + "/" + index)" Key="@index.ToString(CultureInfo.InvariantCulture)" />
+            }
+        </div>
+        <div class="line"><span class="json-separator">]</span></div>
+    }
+}
+else if (Node is not null)
+{
+    <div class="line">
+        <span class="caret-icon" aria-hidden="true"></span>
+        <span class="json-key">@Key</span><span class="json-separator">: </span>
+        <span class="json-value json-@Kind">@Value</span>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public JsonTreeState Tree { get; set; } = null!;
+
+    [Parameter] public JsonNode? Node { get; set; }
+
+    [Parameter] public string Path { get; set; } = "";
+
+    [Parameter] public string Key { get; set; } = "";
+
+    private bool IsOpen => Tree.IsOpen(Path);
+
+    private string Kind => Node?.GetValueKind().ToString().ToLowerInvariant() ?? "null";
+
+    private string Value => Node switch
+    {
+        JsonValue value => value.ToJsonString().Trim('"'),
+        _ => "",
+    };
+
+    private void Toggle() => Tree.Toggle(Path);
+}

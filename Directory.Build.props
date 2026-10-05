@@ -6,4 +6,7 @@
   <PropertyGroup>
     <DefaultItemExcludes>$(DefaultItemExcludes);**/obj/**;**/obj-win/**;**/bin/**;**/bin-win/**</DefaultItemExcludes>
   </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Nerdbank.GitVersioning" Version="3.10.94" PrivateAssets="All" />
+  </ItemGroup>
 </Project>
