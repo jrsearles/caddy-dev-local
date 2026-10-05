@@ -47,6 +47,15 @@ internal sealed class HookRuntime(Action<string, Exception>? onError = null) : I
     private Task? workers;
     private CancellationToken token;
 
+    internal string[] HookNames
+    {
+        get
+        {
+            lock (gate)
+                return hooks.Select(hook => hook.Name).ToArray();
+        }
+    }
+
     internal void Register(IUpdateHook hook)
     {
         lock (gate)

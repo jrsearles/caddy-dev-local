@@ -32,6 +32,8 @@ internal sealed class Controller(HookRuntime hooks, DiscoveryRunner? runner = nu
         }
     }
 
+    internal string[] HookNames => hooks.HookNames;
+
     internal Task CleanupAsync(CancellationToken token) => hooks.CleanupAsync(token);
 
     public ValueTask DisposeAsync() => hooks.DisposeAsync();

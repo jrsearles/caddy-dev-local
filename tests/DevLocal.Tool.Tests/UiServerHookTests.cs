@@ -90,6 +90,22 @@ public sealed class UiServerHookTests
         Assert.Equal(new[] { "dev.localhost" }, subjects.EnumerateArray().Select(item => item.GetString()!).ToArray());
     }
 
+    [Fact]
+    public async Task AnnouncesBaseUrlOnceOnFirstRefresh()
+    {
+        var messages = new List<string>();
+        var caddy = new FakeCaddy();
+        await using var hook = new UiServerHook("dev.local", 0, caddy, messages.Add);
+        var update = new DiscoveryUpdate([], new DiscoveryStatus(DateTimeOffset.UtcNow, ""));
+
+        await hook.ApplyAsync(update, CancellationToken.None);
+        await hook.ApplyAsync(update, CancellationToken.None);
+
+        var line = Assert.Single(messages);
+        Assert.StartsWith("Index UI served from http://127.0.0.1:", line);
+        Assert.Equal(hook.BaseUrl, line["Index UI served from ".Length..]);
+    }
+
     private static string Dial(CaddyResources desired) =>
         desired.Routes["devlocal-index"].GetProperty("handle")[0]
             .GetProperty("upstreams")[0].GetProperty("dial").GetString()!;

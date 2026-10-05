@@ -74,13 +74,22 @@ internal static class ServiceManager
             case "status":
                 Console.WriteLine(await ScAsync(token, "query", ServicePaths.Name));
                 if (File.Exists(ServicePaths.ConfigPath) && (await ServiceSettings.LoadAsync(token)).ControllerEnabled)
+                {
                     Console.WriteLine("Mode: continuous controller");
+                    if (File.Exists(ServicePaths.ControllerStatusPath))
+                        Console.WriteLine(await File.ReadAllTextAsync(ServicePaths.ControllerStatusPath, token));
+                    else
+                        Console.WriteLine("Controller status is not available yet; the service may not have completed its first refresh.");
+                }
                 else if (File.Exists(ServicePaths.StatusPath))
                     Console.WriteLine(await File.ReadAllTextAsync(ServicePaths.StatusPath, token));
                 return 0;
             case "logs":
-                if (File.Exists(ServicePaths.LogPath))
-                    foreach (var line in File.ReadLines(ServicePaths.LogPath).TakeLast(50))
+                var logPath = File.Exists(ServicePaths.ConfigPath) && (await ServiceSettings.LoadAsync(token)).ControllerEnabled
+                    ? ServicePaths.ControllerLogPath
+                    : ServicePaths.LogPath;
+                if (File.Exists(logPath))
+                    foreach (var line in File.ReadLines(logPath).TakeLast(50))
                         Console.WriteLine(line);
                 return 0;
             default:

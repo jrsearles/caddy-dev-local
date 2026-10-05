@@ -10,4 +10,6 @@ internal static class ServicePaths
     internal static string ConfigPath => Path.Combine(DataDirectory, "service.json");
     internal static string StatusPath => Path.Combine(DataDirectory, "status.json");
     internal static string LogPath => Path.Combine(DataDirectory, "service.log");
+    internal static string ControllerStatusPath => Path.Combine(DataDirectory, "controller-status.json");
+    internal static string ControllerLogPath => Path.Combine(DataDirectory, "controller.log");
 }

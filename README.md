@@ -2,7 +2,7 @@
 
 A host application that discovers Docker containers and registers `{project}.{service}.dev.local` domains with Caddy, with optional continuous watching, HTTP port probing, self-signed TLS, hosts-file management, and a built-in index page.
 
-> **C# port branch:** `port/csharp` now supports foreground watching and cleanup through a Windows .NET tool. A separately installed Windows service still defaults to connectivity monitoring; `service install --controller` explicitly enables continuous reconciliation. Go remains the reference until parity and service reboot tests pass. See [the port status and Windows trial](docs/csharp-port.md).
+> **C# port branch:** `port/csharp` now supports foreground watching and cleanup through a Windows .NET tool. A separately installed Windows service defaults to connectivity monitoring; `service install --controller` explicitly enables continuous reconciliation, and has been validated across a reboot on Windows. Go remains the reference until its sources are removed. See [the port status and Windows trial](docs/csharp-port.md).
 
 > **Warning**: This application is designed for local development environments only. It uses self-signed TLS, auto-manages hosts files, and assumes trusted networks. Do not use in production.
 
