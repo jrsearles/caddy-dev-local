@@ -138,7 +138,7 @@ Requires [Go 1.26.2 or newer](https://go.dev/dl/), [just](https://github.com/cas
 ```bash
 just install-lint           # Install golangci-lint (one-time)
 just build                  # Build devlocal for all supported platforms
-just                        # Run checks, integration tests with coverage, and build devlocal (default recipe)
+just                        # Run checks, tests with coverage, and build devlocal (default recipe)
 just lint                   # Run linter
 just check                  # Run linter + tests
 ```

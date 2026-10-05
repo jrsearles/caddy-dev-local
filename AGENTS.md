@@ -48,7 +48,7 @@ generator/
 ```bash
 just lint                  # Run the linter
 just check                 # Run the linter and tests with race detector
-just                       # Default recipe: lint, tests with race detector, integration tests with coverage, build all platforms
+just                       # Default recipe: lint, tests with race detector, tests with coverage, build all platforms
 just build                 # Build devlocal for all supported platforms
 just --list                # List all recipes
 dotnet test DevLocal.slnx -c Release  # C# port tests on Windows or WSL

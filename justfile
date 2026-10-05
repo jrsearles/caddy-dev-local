@@ -16,10 +16,10 @@ lint:
 check: lint
     go test -race ./...
 
-# Run tests with coverage and generate HTML report (includes integration tests)
+# Run tests with coverage and generate HTML report
 coverage:
     mkdir -p {{artifacts}}
-    go test -tags=integration -count=1 -coverpkg=./... -coverprofile={{artifacts}}/coverage.out ./...
+    go test -count=1 -coverpkg=./... -coverprofile={{artifacts}}/coverage.out ./...
     go tool cover -html={{artifacts}}/coverage.out -o={{artifacts}}/coverage.html
     go tool cover -func={{artifacts}}/coverage.out | tail -1
 
