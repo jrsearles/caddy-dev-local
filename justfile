@@ -1,45 +1,35 @@
-set shell := ["bash", "-euco", "pipefail"]
+set shell := ["pwsh", "-NoProfile", "-Command"]
 
-artifacts := env_var_or_default("ARTIFACTS", "./artifacts")
+artifacts := env_var_or_default("ARTIFACTS", "artifacts")
+
+configuration := env_var_or_default("CONFIGURATION", "Release")
 
 # Default
-all: check coverage build
+all: check pack
 
-# Build devlocal binaries for all platforms
-build: build-linux-amd64 build-linux-arm64 build-windows-amd64
+# Run all tests
+test:
+    dotnet test DevLocal.slnx -c {{configuration}}
 
-# Run linter
-lint:
-    golangci-lint run ./...
+# Run formatting check
+format:
+    dotnet format DevLocal.slnx --verify-no-changes
 
-# Run linter and tests
-check: lint
-    go test -race ./...
+# Run formatting check and tests
+check: format test
 
-# Run tests with coverage and generate HTML report
-coverage:
-    mkdir -p {{artifacts}}
-    go test -count=1 -coverpkg=./... -coverprofile={{artifacts}}/coverage.out ./...
-    go tool cover -html={{artifacts}}/coverage.out -o={{artifacts}}/coverage.html
-    go tool cover -func={{artifacts}}/coverage.out | tail -1
+# Pack the tool package into artifacts/
+pack:
+    dotnet pack src/DevLocal.Tool/DevLocal.Tool.csproj -c {{configuration}} -o {{artifacts}}
 
-[private]
-build-linux-amd64:
-    mkdir -p {{artifacts}}/linux-amd64
-    rm -f {{artifacts}}/linux-amd64/devlocal
-    CGO_ENABLED=0 GOARCH=amd64 GOOS=linux \
-        go build -o {{artifacts}}/linux-amd64/devlocal ./cmd/devlocal
+# Publish a self-contained runnable tool into artifacts/publish/
+publish:
+    dotnet publish src/DevLocal.Tool/DevLocal.Tool.csproj -c {{configuration}} -o {{artifacts}}/publish
 
-[private]
-build-linux-arm64:
-    mkdir -p {{artifacts}}/linux-arm64
-    rm -f {{artifacts}}/linux-arm64/devlocal
-    CGO_ENABLED=0 GOARCH=arm64 GOOS=linux \
-        go build -o {{artifacts}}/linux-arm64/devlocal ./cmd/devlocal
+# Build the solution
+build:
+    dotnet build DevLocal.slnx -c {{configuration}}
 
-[private]
-build-windows-amd64:
-    mkdir -p {{artifacts}}/windows-amd64
-    rm -f {{artifacts}}/windows-amd64/devlocal.exe
-    CGO_ENABLED=0 GOARCH=amd64 GOOS=windows \
-        go build -o {{artifacts}}/windows-amd64/devlocal.exe ./cmd/devlocal
+# Clean build output
+clean:
+    dotnet clean DevLocal.slnx -c {{configuration}}

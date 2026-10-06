@@ -1,56 +1,60 @@
 # Standalone Mode Example
 
-Run the standalone devlocal controller on your host and attach it to a separate Caddy process on the same host.
+Run devlocal on your Windows host and attach it to a Caddy process on the same host.
 
 ## Setup
 
-Build the binary:
+Install the tool from a local package build:
 
-```bash
+```powershell
 cd ../..
-just
+just pack
+dotnet tool install --global DevLocal.Tool --add-source artifacts
 ```
 
-Start the containers:
+Start Caddy with its admin API enabled (the default is `http://localhost:2019`), then start the containers:
 
-```bash
+```powershell
 cd example/standalone
 docker compose up -d
 ```
 
-Start Caddy, then run the controller in another terminal:
+Run the continuous controller in another terminal:
 
-```bash
-../../artifacts/linux-amd64/caddy run --config /dev/null
-sudo ../../artifacts/linux-amd64/devlocal start
+```powershell
+devlocal start
 ```
 
-> `sudo` is required to write to `/etc/hosts`. Use `--hosts-file=false` to skip hosts file management.
+> devlocal writes the hosts file, which needs an Administrator PowerShell session. Use `--hosts-file=false` to skip hosts file management.
 
 ## Containers
 
 | Container | Ports | Domain(s) |
 |---|---|---|
-| `web` | 8080:80 | `web.dev.local`, `web.localhost` |
-| `api` | 9090:3000 | `api.dev.local`, `api.localhost` |
-| `multi` | 3000:3000, 8081:8080 | `multi.dev.local`, `multi.localhost` (HTTP port auto-detected) |
-| `ignored` | — | Skipped via `dev.local=false` label |
+| `web` | 8080:80 | `standalone.web.dev.local`, `standalone.web.localhost` |
+| `api` | 9090:3000 | `standalone.api.dev.local`, `standalone.api.localhost` |
+| `multi` | 3000:3000, 8081:8080 | `standalone.multi.dev.local`, `standalone.multi.localhost` (HTTP port auto-detected) |
+| `ignored` | - | Skipped via `dev.local=false` label |
 | `custom` | 8082:80 | `myapp.custom.local`, `myapp.alt.local` |
-| `worker` | — | Shown on index page with "no ports exposed" (Redis, no published ports) |
-| `mssql` | 1433:1433 | `mssql.dev.local`, `mssql.localhost` (SQL Server, no HTTP) |
+| `postgres` | 5432:5432 | `standalone.postgres.dev.local`, `standalone.postgres.localhost` (no HTTP) |
+| `worker` | - | Listed on the dashboard with no ports exposed |
+| `mssql` | 1433:1433 | `standalone.mssql.dev.local`, `standalone.mssql.localhost` (no HTTP) |
 
 ## URLs
 
-- `https://dev.local` — Index page
-- `https://web.dev.local` — nginx web server
-- `https://api.dev.local` — API server
-- `https://multi.dev.local` — Multi-port service
+- `https://dev.local` — Dashboard
+- `https://standalone.web.dev.local` — nginx web server
+- `https://standalone.api.dev.local` — API server
+- `https://standalone.multi.dev.local` — Multi-port service
 - `https://myapp.custom.local` — Custom domain
-- Any `.localhost` variant (e.g., `https://web.localhost`) — works without TLS warnings
+- Any `.localhost` variant (e.g. `https://standalone.web.localhost`) — works without TLS warnings
 
 ## Cleanup
 
-```bash
+```powershell
 docker compose down
-sudo ../../artifacts/linux-amd64/devlocal clean
+devlocal clean
+ipconfig /flushdns
 ```
+
+`devlocal clean` removes the owned Caddy routes and TLS policies and the managed hosts block. Flush the DNS cache afterwards so removed names stop resolving immediately.

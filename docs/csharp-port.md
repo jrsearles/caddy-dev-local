@@ -1,16 +1,16 @@
 # Windows C# port
 
-Branch: `port/csharp`, based on Go commit `e2a80d3`. The Go implementation remains the behavior reference until the C# implementation passes the parity suite.
+Branch: `port/csharp`, based on Go commit `e2a80d3`. The Go implementation was the behavior reference; it has now been removed from the tree and this document is the remaining port record.
 
 ## Current status
 
-The `.NET 10` tool implements `devlocal start` (Docker events and polling) and `devlocal clean`; a bare `devlocal` prints usage and exits, and a subcommand is always required, which diverges from Go where a bare `devlocal` runs the single pass. The one-shot `run` subcommand has been removed, so the foreground mode always watches. It lists Docker Desktop containers over the selected named pipe, probes published HTTP ports, reconciles Caddy, hosts the index UI in-process, and maintains the existing managed hosts block. Go remains the reference implementation; the Windows takeover, service activation, and reboot checks below have now passed, so only Go source removal remains.
+The `.NET 10` tool implements `devlocal start` (Docker events and polling) and `devlocal clean`; a bare `devlocal` prints usage and exits, and a subcommand is always required, which diverged from Go where a bare `devlocal` ran the single pass. The one-shot `run` subcommand was removed, so the foreground mode always watches. It lists Docker Desktop containers over the selected named pipe, probes published HTTP ports, reconciles Caddy, hosts the dashboard in-process, and maintains the existing managed hosts block. The Windows takeover, service activation, and reboot checks below all passed, and the Go sources have since been removed from the tree.
 
 On this Windows machine, the native tool package installed successfully and the service started as LocalSystem. The active Docker Desktop pipe and Caddy admin API both reported connected. Stop/start, in-place upgrade, uninstall/reinstall, and logs were exercised successfully. Delayed automatic start is registered with Windows and has now been confirmed across a real reboot, as has independent Docker/Caddy interruption recovery.
 
-`src/DevLocal.Core` contains immutable container models, discovery state, domain targets, hosts blocks and Caddy resource generation. `src/DevLocal.Ui` contains the Blazor dashboard components, view models, embedded CSS/JS assets and the in-process Kestrel host. `src/DevLocal.Tool` contains Docker SDK adapters, polling and event workers, Caddy admin reconciliation, the UI hook, hook composition, CLI and Windows service management. Shared domain, hosts and Caddy JSON fixtures in `tests/Fixtures` are checked in both Go and C#; the index fixtures and goldens are Go-only now that the C# UI is no longer template-rendered.
+`src/DevLocal.Core` contains immutable container models, discovery state, domain targets, hosts blocks and Caddy resource generation. `src/DevLocal.Ui` contains the Blazor dashboard components, view models, embedded CSS/JS assets and the in-process Kestrel host. `src/DevLocal.Tool` contains Docker SDK adapters, polling and event workers, Caddy admin reconciliation, the UI hook, hook composition, CLI and Windows service management. The shared domain, hosts and Caddy JSON fixtures in `tests/Fixtures` are asserted by the C# tests; the Go-only index fixtures and HTML goldens were deleted with the Go sources, since the C# dashboard is no longer template-rendered.
 
-The UI is a Blazor Interactive Server application hosted in-process by `UiServerHost`. Kestrel binds to `127.0.0.1` on a random OS-assigned port (or `--ui-port` / `DEVLOCAL_UI_PORT` to pin one) and Caddy reverse-proxies `dev.local` / `dev.localhost` to it, replacing the static `file_server` route with the same `devlocal-index` route id and TLS policy. The dashboard keeps the existing look: it reuses `index.css` (now `src/DevLocal.Ui/Assets/index.css`, moved out of the Go `generator/` package and embedded in `DevLocal.Ui` as `DevLocal.IndexCss`), and the theme toggle, container search, compose-project grouping, details drawer, routes table and Caddy config tree are Blazor components with a small `ui.js` interop file for clipboard and theme storage. The `@pgrabovets/json-view` CDN dependency is gone — the config tab renders a native recursive JSON tree, and live updates flow over the Blazor SignalR circuit instead of the old `version.json` polling, so `version.json` and the `refreshToast` are gone too. `start` and controller-service mode host the UI; pass `--ui=false` to skip hosting it. The Go byte-parity fixtures (`tests/Fixtures/index_cases.json`, `tests/Fixtures/golden/index`) no longer drive C# tests; `UiServerHostTests` and `UiServerHookTests` cover page/CSS/framework-script serving, SignalR negotiation, rendered discovery state, discovery-error banners and the Caddy route/policy reconciliation instead.
+The UI is a Blazor Interactive Server application hosted in-process by `UiServerHost`. Kestrel binds to `127.0.0.1` on a random OS-assigned port (or `--ui-port` / `DEVLOCAL_UI_PORT` to pin one) and Caddy reverse-proxies `dev.local` / `dev.localhost` to it, replacing the static `file_server` route with the same `devlocal-index` route id and TLS policy. The dashboard keeps the existing look: it reuses `index.css` (now `src/DevLocal.Ui/Assets/index.css`, moved out of the Go `generator/` package and embedded in `DevLocal.Ui` as `DevLocal.IndexCss`), and the theme toggle, container search, compose-project grouping, details drawer, routes table and Caddy config tree are Blazor components with a small `ui.js` interop file for clipboard and theme storage. The `@pgrabovets/json-view` CDN dependency is gone — the config tab renders a native recursive JSON tree, and live updates flow over the Blazor SignalR circuit instead of the old `version.json` polling, so `version.json` and the `refreshToast` are gone too. `start` and controller-service mode host the UI; pass `--ui=false` to skip hosting it. The Go byte-parity fixtures (`tests/Fixtures/index_cases.json`, `tests/Fixtures/golden/index`) were deleted along with the Go sources; `UiServerHostTests` and `UiServerHookTests` cover page/CSS/framework-script serving, SignalR negotiation, rendered discovery state, discovery-error banners and the Caddy route/policy reconciliation instead.
 
 The service installed on this machine now runs as a continuous controller (`service install --controller` from Administrator PowerShell). Any newly installed service defaults to connectivity-monitor mode unless `--controller` is passed. `service upgrade` preserves the current mode; upgrading a monitor-mode service does not start editing Caddy or the hosts file. To change modes, uninstall and reinstall the service with the desired option.
 
@@ -25,10 +25,11 @@ Install the .NET 10 SDK on **Windows** first (the SDK in WSL does not provide a 
 Build and pack:
 
 ```powershell
-dotnet test DevLocal.slnx
-dotnet pack src/DevLocal.Tool/DevLocal.Tool.csproj -c Release -o artifacts
+just pack
 dotnet tool install --global DevLocal.Tool --add-source artifacts
 ```
+
+`just` wraps the .NET commands (`just test`, `just format`, `just check`, `just build`, `just publish`); see the justfile for the full list.
 
 In Administrator PowerShell:
 
@@ -87,7 +88,7 @@ Three things to keep in mind:
 
 ## Remaining gates
 
-Gates 1 and 2 are complete: the Blazor dashboard was validated in a browser, and the continuous controller service survived a reboot while reconciling Caddy, TLS, hosts, and the UI against the live Caddy on 2019. Controller-mode observability is now file-backed through `controller-status.json` / `controller.log`.
+Both gates are complete. The Blazor dashboard was validated in a browser, and the continuous controller service survived a reboot while reconciling Caddy, TLS, hosts, and the UI against the live Caddy on 2019. Controller-mode observability is file-backed through `controller-status.json` / `controller.log`.
 
-1. Replace Go sources and Go-specific tooling; update README, examples and build recipes.
-2. Optional follow-up: decide whether the Application event log remains a sink at all, given that application log messages are not reliably recorded there, or whether `controller.log` should become the only supported destination.
+1. Replaced the Go sources and Go-specific tooling. `go.mod`, `go.sum`, `.golangci.yml`, the Go package trees, the Go-only index fixtures and HTML goldens, and the in-container `example/Dockerfile` are gone. The justfile now runs the .NET commands, `.gitignore` and `.gitattributes` no longer carry Go entries, and README.md, `example/standalone/README.md` and AGENTS.md describe the C# tool and its Windows-first workflow.
+2. Optional follow-up, still open: decide whether the Application event log remains a sink at all, given that application log messages are not reliably recorded there, or whether `controller.log` should become the only supported destination.
