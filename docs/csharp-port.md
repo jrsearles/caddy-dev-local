@@ -27,7 +27,7 @@ Build and pack:
 ```powershell
 dotnet test DevLocal.slnx
 dotnet pack src/DevLocal.Tool/DevLocal.Tool.csproj -c Release -o artifacts
-dotnet tool install --global DevLocal.Tool --prerelease --add-source artifacts
+dotnet tool install --global DevLocal.Tool --add-source artifacts
 ```
 
 In Administrator PowerShell:
@@ -56,7 +56,7 @@ The installer reads `docker context inspect` and persists the selected named pip
 
 The service is registered as `DevLocal` with delayed automatic start and restart-on-failure. Runtime files are copied to `%ProgramFiles%\DevLocal`; settings, connectivity status, and logs are stored under `%ProgramData%\DevLocal` (`service.json`, then `status.json`/`service.log` in monitor mode or `controller-status.json`/`controller.log` in controller mode). The service executes the copied tool through the installed .NET 10 runtime, not via the interactive user's tool shim. The service account does not inherit the user's Docker context or environment.
 
-Manage it with `devlocal service status|logs|start|stop|restart|uninstall`. To try an updated tool, run `dotnet tool update --global DevLocal.Tool --prerelease --add-source artifacts`, then run `devlocal service upgrade` from Administrator PowerShell. The upgrade stops the service, copies the new runtime files, and starts it again. Uninstalling the service leaves settings and logs for inspection. The tool package ID is provisional; the local package source avoids assuming it is published on NuGet.
+Manage it with `devlocal service status|logs|start|stop|restart|uninstall`. To try an updated tool, run `dotnet tool update --global DevLocal.Tool --add-source artifacts`, then run `devlocal service upgrade` from Administrator PowerShell. The upgrade stops the service, copies the new runtime files, and starts it again. Uninstalling the service leaves settings and logs for inspection. The tool package ID is provisional; the local package source avoids assuming it is published on NuGet.
 
 To try the new controller **without writing the live hosts file**, use `devlocal start --hosts-file=false --caddy-admin http://localhost:20199` against a separately started staging Caddy instance. `devlocal clean` with the same Caddy/UI flags removes its owned resources; stop that staging Caddy afterward. `devlocal start --caddy=false --ui=false --hosts-file=false` performs a read-only Docker discovery pass without touching the host. Running without those opt-outs applies Caddy, UI and hosts updates on the host.
 
@@ -73,16 +73,17 @@ The service's named-pipe and Caddy connections under LocalSystem have been verif
 
 ## Versioning
 
-The package version comes from `version.json` at the repository root via [Nerdbank.GitVersioning](https://dotnet.github.io/Nerdbank.GitVersioning/), which is referenced from `Directory.Build.props` so every project picks it up. Nothing is stored in the project files: `{height}` counts the commits since `version` last changed, and `versionHeightOffset` shifts that count. The sequence continued the previously hand-maintained numbers, so the commit that introduced `version.json` packs as `0.1.0-preview.12` and each later commit adds one.
+The package version comes from `version.json` at the repository root via [Nerdbank.GitVersioning](https://dotnet.github.io/Nerdbank.GitVersioning/), which is referenced from `Directory.Build.props` so every project picks it up. Nothing is stored in the project files. `version` is the plain release number `0.1.0` — no `{height}` counter and no prerelease label — so every build from a public branch packs as `0.1.0` until the file is bumped by hand, and `dotnet tool install` / `dotnet tool update` find it without `--prerelease`.
 
-Four things to keep in mind:
+`devlocal version` prints `devlocal 0.1.0.1 (5ad9eff)`: the fourth component is the commit height, which NB.GV appends to the informational version because the version string itself no longer carries a `{height}` token. It never reaches the package version, so the `.nupkg` is `DevLocal.Tool.0.1.0.nupkg` and `dotnet tool list --global` shows `0.1.0`.
 
-- Pass `--prerelease` to `dotnet tool install` and `dotnet tool update`. Every published version is a prerelease, and the flag defaults to `False`, so NuGet searches only for stable releases, finds none, and fails with a misleading `devlocal.tool is not found in NuGet feeds ...` that still lists the local source as searched. Passing an explicit `--version` works too.
-- Build from a commit, not a dirty tree. An uncommitted `version.json` is read as a working copy, which yields height `0` and silently drops `versionHeightOffset`.
+Three things to keep in mind:
+
+- Bump `version` by hand for the next release, e.g. to `0.2.0`. Nothing moves the number on its own, so forgetting to bump it republishes the same version instead of a higher one.
+- Build from a commit when the stamped commit matters. An uncommitted `version.json` is read from the working copy with height `0`, which shows up as `0.1.0.0` in `devlocal version` and as an `AssemblyVersion` of `0.1.0.0`.
 - Never set `<Version>` in a project file. It wins over the generated version and pins every build to that literal string.
-- To start the next minor version, change `version` to `0.2.0-preview.{height}` and leave `versionHeightOffset` and `versionHeightOffsetAppliesTo` alone. The offset then stops matching, so it is ignored and the sequence restarts at `preview.1`.
 
-`publicReleaseRefSpec` lists `main` and `port/csharp`, the two branches the tool is released from; a build from any other branch appends `-g<sha>` to the prerelease label to mark it as non-public. `nugetPackageVersion.semVer` is `2` so the prerelease number is not zero-padded, which keeps the `.nupkg` name identical to what `devlocal version` prints. `dotnet msbuild -getProperty:PackageVersion` reports `1.0.0` because the version is computed in a target rather than during evaluation; read the packed file name instead.
+`publicReleaseRefSpec` lists `main` and `port/csharp`, the two branches the tool is released from; a build from any other branch gets a `g<sha>` prerelease label appended (for example `DevLocal.Tool.0.1.0-gd4e9d48.nupkg`) so it can never be mistaken for the release. `dotnet msbuild -getProperty:PackageVersion` reports `1.0.0` because the version is computed in a target rather than during evaluation; read the packed file name instead.
 
 ## Remaining gates
 
