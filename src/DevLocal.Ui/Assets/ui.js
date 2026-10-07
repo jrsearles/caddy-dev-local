@@ -55,4 +55,19 @@
             if (input) { input.focus(); input.select(); }
         },
     };
+
+    // The connection badge lives in the header; when Blazor marks it
+    // failed/rejected the circuit is gone, so a plain reload is the
+    // only recovery. Delegated because Blazor handlers can't run offline.
+    document.addEventListener('click', function (event) {
+        const badge = event.target && event.target.closest
+            ? event.target.closest('#components-reconnect-modal')
+            : null;
+        if (!badge) return;
+        if (badge.classList.contains('components-reconnect-failed') ||
+            badge.classList.contains('components-reconnect-resume-failed') ||
+            badge.classList.contains('components-reconnect-rejected')) {
+            location.reload();
+        }
+    });
 })();

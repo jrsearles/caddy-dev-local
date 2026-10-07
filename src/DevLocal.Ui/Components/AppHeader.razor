@@ -23,6 +23,14 @@
         {
             <span class="chip chip-projects"><span class="chip-dot"></span>@Model.Projects.Count @(Model.Projects.Count == 1 ? "project" : "projects")</span>
         }
+        <span class="chip reconnect-badge" id="components-reconnect-modal" role="status"
+              title="Live updates connection">
+            <span class="chip-dot"></span>
+            <span class="reconnect-label reconnect-label-online">Online</span>
+            <span class="reconnect-label reconnect-label-reconnecting">Reconnecting…</span>
+            <span class="reconnect-label reconnect-label-paused">Paused</span>
+            <span class="reconnect-label reconnect-label-offline">Offline — click to reload</span>
+        </span>
         <button class="theme-toggle" type="button" @onclick="CycleThemeAsync" title="@themeLabel"
                 aria-label="@themeLabel">
             <SvgIcon Name="sun" />

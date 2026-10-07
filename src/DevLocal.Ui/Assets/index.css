@@ -175,6 +175,54 @@ body {
 .chip-stopped .chip-dot  { background: var(--red); }
 .chip-projects .chip-dot { background: var(--accent); }
 
+/* ── Live-connection badge ─────────────────────────────────────
+   blazor.web.js toggles components-reconnect-* classes on
+   #components-reconnect-modal; CSS renders each state as a
+   non-blocking header badge instead of the default overlay. */
+.reconnect-badge { user-select: none; }
+
+.reconnect-badge .chip-dot { background: var(--green); }
+
+.reconnect-label-reconnecting,
+.reconnect-label-paused,
+.reconnect-label-offline { display: none; }
+
+.reconnect-badge.components-reconnect-show .chip-dot,
+.reconnect-badge.components-reconnect-paused .chip-dot { background: var(--yellow); }
+
+.reconnect-badge.components-reconnect-show .chip-dot {
+    animation: reconnect-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes reconnect-pulse {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.35; }
+}
+
+.reconnect-badge.components-reconnect-failed .chip-dot,
+.reconnect-badge.components-reconnect-resume-failed .chip-dot,
+.reconnect-badge.components-reconnect-rejected .chip-dot { background: var(--red); }
+
+.reconnect-badge.components-reconnect-show .reconnect-label-online,
+.reconnect-badge.components-reconnect-paused .reconnect-label-online,
+.reconnect-badge.components-reconnect-failed .reconnect-label-online,
+.reconnect-badge.components-reconnect-resume-failed .reconnect-label-online,
+.reconnect-badge.components-reconnect-rejected .reconnect-label-online { display: none; }
+
+.reconnect-badge.components-reconnect-show .reconnect-label-reconnecting,
+.reconnect-badge.components-reconnect-paused .reconnect-label-paused,
+.reconnect-badge.components-reconnect-failed .reconnect-label-offline,
+.reconnect-badge.components-reconnect-resume-failed .reconnect-label-offline,
+.reconnect-badge.components-reconnect-rejected .reconnect-label-offline { display: inline; }
+
+.reconnect-badge.components-reconnect-failed,
+.reconnect-badge.components-reconnect-resume-failed,
+.reconnect-badge.components-reconnect-rejected {
+    cursor: pointer;
+    color: var(--red);
+    border-color: rgba(248, 81, 73, 0.4);
+}
+
 /* theme toggle */
 .theme-toggle {
     display: inline-flex;

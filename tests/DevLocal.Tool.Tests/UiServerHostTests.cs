@@ -68,6 +68,22 @@ public sealed class UiServerHostTests
     }
 
     [Fact]
+    public async Task RendersReconnectBadgeInsteadOfBlockingOverlay()
+    {
+        await using var host = new UiServerHost("dev.local");
+        var port = await host.StartAsync(0, CancellationToken.None);
+        using var client = new HttpClient();
+
+        var html = await client.GetStringAsync($"http://127.0.0.1:{port}/");
+        Assert.Contains("id=\"components-reconnect-modal\"", html);
+        Assert.Contains("reconnect-badge", html);
+
+        var css = await client.GetStringAsync($"http://127.0.0.1:{port}/index.css");
+        Assert.Contains("components-reconnect-show", css);
+        Assert.DoesNotContain("components-reconnect-overlay", css);
+    }
+
+    [Fact]
     public async Task ReportsDiscoveryErrors()
     {
         await using var host = new UiServerHost("dev.local");

@@ -19,7 +19,7 @@ A Windows host application that discovers Docker containers and registers `{proj
   - **Detail drawer** — click a container card header to slide open a side panel with full image, short container ID, networks, published port table, health status, and filtered labels (`dev.local.*`, `com.docker.compose.*`, `org.opencontainers.image.*`); includes an "Open in Docker Desktop" button
   - **Domain rows** — a copy button per domain copies `host:port`; a globe icon links to the service in the browser
   - **Docker Desktop links** — each card opens Docker Desktop's Logs view filtered to that container (`docker-desktop://dashboard/logs?containerIds={id}`); project section headers link to that project's view
-  - **Live updates** — state streams over the Blazor SignalR circuit, so the page updates without a reload
+  - **Live updates** — state streams over the Blazor SignalR circuit, so the page updates without a reload; a connection badge in the header shows Online/Reconnecting…/Offline instead of a blocking overlay, and clicking the Offline badge reloads the page
   - **Discovery banner** — a dismissible error banner appears when Docker discovery fails, showing the last error and time of last successful refresh
   - **Caddy config tab** — shows the effective running Caddy config as a collapsible JSON tree with expand/collapse-all, and a raw JSON toggle
   - **Theme** — defaults to system preference; the header toggle cycles light → dark → system
