@@ -76,8 +76,8 @@ internal sealed class UiServerHook(string tld, int requestedPort, ICaddyConfigCl
     private CaddyResources Resources(ImmutableArray<ContainerInfo> containers, int port)
     {
         var reserved = DomainGenerator.DomainTargets(tld, containers).Keys.ToHashSet(StringComparer.Ordinal);
-        var hosts = new[] { tld, DomainGenerator.TldLocalhost(tld) }
-            .Where(host => !reserved.Contains(host)).Distinct(StringComparer.Ordinal).ToArray();
+        var uiHost = DomainGenerator.TldLocalhost(tld);
+        var hosts = reserved.Contains(uiHost) ? [] : new[] { uiHost };
         var routes = ImmutableDictionary.CreateBuilder<string, JsonElement>(StringComparer.Ordinal);
         var policies = ImmutableDictionary.CreateBuilder<string, JsonElement>(StringComparer.Ordinal);
         if (hosts.Length != 0)

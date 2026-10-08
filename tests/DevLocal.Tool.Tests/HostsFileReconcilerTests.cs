@@ -19,7 +19,7 @@ public sealed class HostsFileReconcilerTests
 
     [Theory]
     [MemberData(nameof(Cases))]
-    public void ManagedBlockMatchesGoFixture(HostsCase fixture) =>
+    public void ManagedBlockMatchesFixture(HostsCase fixture) =>
         Assert.Equal(fixture.ExpectedBlock, HostsBlock.Build(fixture.Tld, fixture.Domains));
 
     [Fact]

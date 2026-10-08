@@ -42,7 +42,7 @@ devlocal start
 
 ## URLs
 
-- `https://dev.local` — Dashboard
+- `https://dev.localhost` — Dashboard
 - `https://standalone.web.dev.local` — nginx web server
 - `https://standalone.api.dev.local` — API server
 - `https://standalone.multi.dev.local` — Multi-port service

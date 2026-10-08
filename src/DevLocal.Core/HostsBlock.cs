@@ -12,18 +12,14 @@ public static class HostsBlock
         var sorted = domains.OrderBy(domain => domain, StringComparer.Ordinal).ToArray();
         var block = new StringBuilder()
             .Append(BeginMarker).Append('\n')
-            .Append("# Managed by caddy-dev-local — do not edit.\n")
-            .Append("127.0.0.1    ").Append(tld).Append('\n');
+            .Append("# Managed by caddy-dev-local — do not edit.\n");
 
-        var alias = DomainGenerator.TldLocalhost(tld);
-        if (alias != tld && !sorted.Contains(alias, StringComparer.Ordinal))
-            block.Append("127.0.0.1    ").Append(alias).Append('\n');
+        var uiHost = DomainGenerator.TldLocalhost(tld);
+        if (!sorted.Contains(uiHost, StringComparer.Ordinal))
+            block.Append("127.0.0.1    ").Append(uiHost).Append('\n');
 
         foreach (var domain in sorted)
-        {
-            if (domain != tld)
-                block.Append("127.0.0.1    ").Append(domain).Append('\n');
-        }
+            block.Append("127.0.0.1    ").Append(domain).Append('\n');
 
         return block.Append(EndMarker).Append('\n').ToString();
     }

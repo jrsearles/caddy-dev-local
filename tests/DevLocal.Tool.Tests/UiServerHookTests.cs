@@ -21,7 +21,7 @@ public sealed class UiServerHookTests
         var handler = route.GetProperty("handle")[0];
         Assert.Equal("reverse_proxy", handler.GetProperty("handler").GetString());
         Assert.Equal(hook.BaseUrl.Substring("http://".Length), Dial(caddy.Desired!));
-        Assert.Equal(new[] { "dev.local", "dev.localhost" },
+        Assert.Equal(new[] { "dev.localhost" },
             route.GetProperty("match")[0].GetProperty("host").EnumerateArray().Select(item => item.GetString()).ToArray());
         Assert.Contains("devlocal-tls-ui", caddy.Desired.Policies.Keys);
         Assert.Contains("\"apps\":{\"http\":{}}", hook.State.Current.ConfigJson);
@@ -81,13 +81,13 @@ public sealed class UiServerHookTests
             [new ContainerInfo
             {
                 ContainerId = "custom", ContainerName = "custom", IsRunning = true,
-                CustomDomains = [new CustomDomain(8080, "dev.local")]
+                CustomDomains = [new CustomDomain(8080, "dev.localhost")]
             }], new DiscoveryStatus(DateTimeOffset.UtcNow, ""));
 
         await hook.ApplyAsync(update, CancellationToken.None);
 
-        var subjects = caddy.Desired!.Policies["devlocal-tls-ui"].GetProperty("subjects");
-        Assert.Equal(new[] { "dev.localhost" }, subjects.EnumerateArray().Select(item => item.GetString()!).ToArray());
+        Assert.False(caddy.Desired!.Routes.ContainsKey("devlocal-index"));
+        Assert.False(caddy.Desired.Policies.ContainsKey("devlocal-tls-ui"));
     }
 
     [Fact]
