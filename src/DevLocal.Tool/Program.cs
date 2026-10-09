@@ -25,6 +25,10 @@ try
 
     if (args.Length == 0 || args.Contains("--help", StringComparer.Ordinal))
     {
+        if (args.Length == 0 && OperatingSystem.IsWindows())
+            await ServiceManager.PrintStatusAsync(CancellationToken.None);
+        if (args.Length == 0)
+            Console.WriteLine();
         Console.WriteLine("Usage: devlocal [start|clean|version] [flags]\n" +
             "       devlocal service install|upgrade|status|logs|start|stop|restart|uninstall\n" +
             "Commands:\n" +
@@ -33,7 +37,7 @@ try
             "  version  Print the tool version and exit\n" +
             "Flags: --tld --stale-ttl --probe-timeout --poll-interval --hosts-file --no-tracing " +
             "--caddy --ui --ui-port --caddy-admin --caddy-server --allow-create-server --log-level --docker-pipe\n" +
-            "A command is required. Options come from flags, then DEVLOCAL_* env vars, then defaults.");
+            "Options come from flags, then DEVLOCAL_* env vars, then defaults.");
         return 0;
     }
 

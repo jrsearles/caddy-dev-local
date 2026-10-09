@@ -72,11 +72,7 @@ internal static class ServiceManager
                 await ScAsync(token, "start", ServicePaths.Name);
                 return 0;
             case "status":
-                Console.WriteLine(await ScAsync(token, "query", ServicePaths.Name));
-                if (File.Exists(ServicePaths.ControllerStatusPath))
-                    Console.WriteLine(await File.ReadAllTextAsync(ServicePaths.ControllerStatusPath, token));
-                else
-                    Console.WriteLine("Controller status is not available yet; the service may not have completed its first refresh.");
+                await PrintStatusAsync(token);
                 return 0;
             case "logs":
                 if (File.Exists(ServicePaths.ControllerLogPath))
@@ -86,6 +82,20 @@ internal static class ServiceManager
             default:
                 throw new ArgumentException($"Unknown service command: {args[0]}");
         }
+    }
+
+    internal static async Task PrintStatusAsync(CancellationToken token)
+    {
+        if (!await ExistsAsync(token))
+        {
+            Console.WriteLine("Service is not installed.");
+            return;
+        }
+        Console.WriteLine(await ScAsync(token, "query", ServicePaths.Name));
+        if (File.Exists(ServicePaths.ControllerStatusPath))
+            Console.WriteLine(await File.ReadAllTextAsync(ServicePaths.ControllerStatusPath, token));
+        else
+            Console.WriteLine("Controller status is not available yet; the service may not have completed its first refresh.");
     }
 
     internal static ServiceSettings ParseSettings(string[] args)
