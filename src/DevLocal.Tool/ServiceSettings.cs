@@ -2,11 +2,11 @@ using System.Text.Json;
 
 namespace DevLocal.Tool;
 
-internal sealed record ServiceSettings(string CaddyAdmin, string DockerPipe)
+internal sealed record ServiceSettings(string CaddyAdmin)
 {
     public AppOptions? Options { get; init; }
 
-    internal static ServiceSettings Default => new("http://localhost:2019", "docker_engine");
+    internal static ServiceSettings Default => new("http://localhost:2019");
 
     internal static async Task<ServiceSettings> LoadAsync(CancellationToken token)
     {

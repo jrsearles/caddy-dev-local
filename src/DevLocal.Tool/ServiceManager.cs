@@ -18,11 +18,6 @@ internal static class ServiceManager
             case "install":
                 RequireAdmin();
                 var settings = ParseSettings(args[1..]);
-                if (!args.Any(arg => arg == "--docker-pipe" || arg.StartsWith("--docker-pipe=", StringComparison.Ordinal)))
-                {
-                    var pipe = await DockerContext.CurrentPipeAsync(token) ?? settings.DockerPipe;
-                    settings = settings with { DockerPipe = pipe, Options = settings.Options! with { DockerPipe = pipe } };
-                }
                 if (await ExistsAsync(token))
                     throw new InvalidOperationException("DevLocal service already exists; use service upgrade");
                 Deploy();
@@ -103,9 +98,7 @@ internal static class ServiceManager
         var options = CommandLine.ParseOptions(args);
         if (!Uri.TryCreate(options.CaddyAdmin, UriKind.Absolute, out var uri) || uri.Scheme != "http")
             throw new ArgumentException("--caddy-admin must be an HTTP URL");
-        if (string.IsNullOrWhiteSpace(options.DockerPipe) || options.DockerPipe.Contains('\\') || options.DockerPipe.Contains('/'))
-            throw new ArgumentException("--docker-pipe must be a pipe name, such as docker_engine");
-        return new ServiceSettings(options.CaddyAdmin, options.DockerPipe)
+        return new ServiceSettings(options.CaddyAdmin)
         {
             Options = options
         };

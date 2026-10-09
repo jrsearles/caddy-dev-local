@@ -11,7 +11,7 @@ internal sealed class ControllerWorker(ServiceSettings settings, ILogger<Control
         try
         {
             var options = settings.Options ?? throw new InvalidOperationException("Controller service options are missing");
-            await using var session = ControllerFactory.Create(options, (name, error) =>
+            await using var session = await ControllerFactory.Create(options, (name, error) =>
             {
                 reporter.Record(name, error);
                 logger.LogError(error, "Hook {HookName} failed", name);

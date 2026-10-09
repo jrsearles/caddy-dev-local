@@ -16,7 +16,7 @@ public sealed class HostsHookTests
         try
         {
             await File.WriteAllTextAsync(path, "127.0.0.1 unrelated.local\n");
-            var hook = new HostsHook(new HostsFileReconciler(path), "dev.local", true, true);
+            var hook = new HostsHook(new HostsFileReconciler(path), "dev.local");
             var first = new DiscoveryUpdate(
                 [new ContainerInfo { ContainerName = "web", IsRunning = true, PublishedPorts = ImmutableDictionary<ushort, ushort>.Empty.Add(80, 8080) }],
                 new DiscoveryStatus(DateTimeOffset.UtcNow, ""));
@@ -48,7 +48,7 @@ public sealed class HostsHookTests
         {
             var original = HostsBlock.Build("dev.local", ["web.dev.local"]);
             await File.WriteAllTextAsync(path, original);
-            var hook = new HostsHook(new HostsFileReconciler(path), "dev.local", true, true);
+            var hook = new HostsHook(new HostsFileReconciler(path), "dev.local");
 
             await hook.ApplyAsync(new DiscoveryUpdate([], new DiscoveryStatus(null, "Docker unavailable")), CancellationToken.None);
 
@@ -61,21 +61,17 @@ public sealed class HostsHookTests
     }
 
     [Fact]
-    public async Task DisabledOrUnwritableHookDoesNotCreateHostsFile()
+    public async Task AlwaysAttemptsSyncEvenWithoutHostsFile()
     {
         var directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
         Directory.CreateDirectory(directory);
         var path = Path.Combine(directory, "hosts");
         try
         {
-            foreach (var hook in new[]
-            {
-                new HostsHook(new HostsFileReconciler(path), "dev.local", false, true),
-                new HostsHook(new HostsFileReconciler(path), "dev.local", true, false)
-            })
-                await hook.ApplyAsync(new DiscoveryUpdate([], new DiscoveryStatus(DateTimeOffset.UtcNow, "")), CancellationToken.None);
+            var hook = new HostsHook(new HostsFileReconciler(path), "dev.local");
+            await hook.ApplyAsync(new DiscoveryUpdate([], new DiscoveryStatus(DateTimeOffset.UtcNow, "")), CancellationToken.None);
 
-            Assert.False(File.Exists(path));
+            Assert.True(File.Exists(path));
         }
         finally
         {

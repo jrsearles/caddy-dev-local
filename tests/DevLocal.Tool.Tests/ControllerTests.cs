@@ -32,7 +32,7 @@ public sealed class ControllerTests
             var caddy = new FakeCaddy();
             var runtime = new HookRuntime();
             runtime.Register(new CaddyHook(caddy, "dev.local", tracing: true));
-            runtime.Register(new HostsHook(new HostsFileReconciler(hostsPath), "dev.local", true, true));
+            runtime.Register(new HostsHook(new HostsFileReconciler(hostsPath), "dev.local"));
             var reconciled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             runtime.Register(new FakeHook((_, _) =>
             {

@@ -86,26 +86,20 @@ Custom domains replace the generated ones, including the `.localhost` alias.
 | `--tld` | `DEVLOCAL_TLD` | `dev.local` | Top-level domain |
 | `--stale-ttl` | `DEVLOCAL_STALE_TTL` | `1h` | Keep configuration for stopped containers |
 | `--probe-timeout` | `DEVLOCAL_PROBE_TIMEOUT` | `2s` | HTTP probe timeout |
-| `--hosts-file` | `DEVLOCAL_HOSTS_FILE` | `true` | Manage hosts file entries for domains |
 | `--no-tracing` | `DEVLOCAL_TRACING=false` | tracing enabled | Disable OpenTelemetry tracing on dynamic routes |
 | `--poll-interval` | `DEVLOCAL_POLL_INTERVAL` | `30s` | Periodically refresh as a safety net for missed Docker events; `0` disables |
-| `--caddy` | — | `true` | Register routes and TLS policies with Caddy |
-| `--ui` | — | `true` | Host the dashboard and register its route |
 | `--ui-port` | `DEVLOCAL_UI_PORT` | `0` | Port for the in-process dashboard host; `0` picks a random free loopback port |
 | `--caddy-admin` | `DEVLOCAL_CADDY_ADMIN` | `http://localhost:2019` | Caddy admin API URL |
 | `--caddy-server` | `DEVLOCAL_CADDY_SERVER` | `srv0` | Caddy HTTP server name |
 | `--allow-create-server` | — | `true` | Create the target Caddy HTTP server when absent |
-| `--docker-pipe` | — | from `docker context inspect` | Docker named pipe to connect to, such as `docker_engine` or `dockerDesktopLinuxEngine` |
 | `--log-level` | `DEVLOCAL_LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, or `error` |
 
-Values come from flags, then `DEVLOCAL_*` environment variables, then defaults. Everything is enabled by default.
+Values come from flags, then `DEVLOCAL_*` environment variables, then defaults. Everything is enabled by default. The Docker named pipe is detected from `docker context inspect` at connect time and falls back to `docker_engine`.
 
 ### Turning pieces off
 
 ```powershell
-devlocal start --hosts-file=false        # Don't touch the hosts file
-devlocal start --no-tracing              # No OpenTelemetry tracing on routes
-devlocal start --caddy=false --ui=false  # Hosts-file updates only
+devlocal start --no-tracing             # No OpenTelemetry tracing on routes
 ```
 
 ### Caddy
@@ -126,7 +120,7 @@ devlocal service status
 devlocal service logs
 ```
 
-The service starts automatically (delayed) with restart-on-failure and runs as LocalSystem. Settings, status, and logs live under `%ProgramData%\DevLocal`. Other subcommands: `upgrade`, `start`, `stop`, `restart`, `uninstall`. Uninstalling keeps settings and logs. The Docker pipe is read from `docker context inspect` at install time — override with `--docker-pipe`.
+The service starts automatically (delayed) with restart-on-failure and runs as LocalSystem. Settings, status, and logs live under `%ProgramData%\DevLocal`. Other subcommands: `upgrade`, `start`, `stop`, `restart`, `uninstall`. Uninstalling keeps settings and logs. The Docker pipe is detected from `docker context inspect` when the controller connects.
 
 ## Example
 

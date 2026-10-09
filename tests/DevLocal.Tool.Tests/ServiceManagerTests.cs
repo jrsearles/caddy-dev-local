@@ -8,10 +8,9 @@ public sealed class ServiceManagerTests
     [Fact]
     public void ServiceSettingsRejectInvalidEndpoints()
     {
-        Assert.Throws<ArgumentException>(() => ServiceManager.ParseSettings(["--docker-pipe", @"\\.\pipe\docker_engine"]));
         Assert.Throws<ArgumentException>(() => ServiceManager.ParseSettings(["--caddy-admin", "invalid"]));
         Assert.Throws<ArgumentException>(() => ServiceManager.ParseSettings(["--unknown", "value"]));
-        Assert.Equal("dockerDesktopLinuxEngine", ServiceManager.ParseSettings(["--docker-pipe", "dockerDesktopLinuxEngine"]).DockerPipe);
+        Assert.Equal("http://localhost:2019", ServiceManager.ParseSettings([]).CaddyAdmin);
     }
 
     [Fact]

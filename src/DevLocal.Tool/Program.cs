@@ -35,20 +35,15 @@ try
             "  start    Reconcile, then watch Docker events and poll, serving the index UI\n" +
             "  clean    Remove managed Caddy routes, TLS policies and the hosts block\n" +
             "  version  Print the tool version and exit\n" +
-            "Flags: --tld --stale-ttl --probe-timeout --poll-interval --hosts-file --no-tracing " +
-            "--caddy --ui --ui-port --caddy-admin --caddy-server --allow-create-server --log-level --docker-pipe\n" +
-            "Options come from flags, then DEVLOCAL_* env vars, then defaults.");
+            "Flags: --tld --stale-ttl --probe-timeout --poll-interval --no-tracing " +
+            "--ui-port --caddy-admin --caddy-server --allow-create-server --log-level\n" +
+            "Options come from flags, then DEVLOCAL_* env vars, then defaults.\n" +
+            "The Docker named pipe is detected from `docker context inspect`.");
         return 0;
     }
 
     var settings = CommandLine.Parse(args);
-    if (!args.Any(arg => arg == "--docker-pipe" || arg.StartsWith("--docker-pipe=", StringComparison.Ordinal)))
-    {
-        var pipe = await DockerContext.CurrentPipeAsync(CancellationToken.None);
-        if (pipe is not null)
-            settings = settings with { Options = settings.Options with { DockerPipe = pipe } };
-    }
-    await using var session = ControllerFactory.Create(settings.Options,
+    await using var session = await ControllerFactory.Create(settings.Options,
         onError: (message, ex) => Console.Error.WriteLine($"devlocal: {message}: {ex.Message}"),
         onLog: message => Console.WriteLine(message));
     using var stop = new CancellationTokenSource();

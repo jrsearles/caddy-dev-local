@@ -13,21 +13,18 @@ public sealed class CommandLineTests
         {
             ["DEVLOCAL_TLD"] = "env.local",
             ["DEVLOCAL_POLL_INTERVAL"] = "30s",
-            ["DEVLOCAL_HOSTS_FILE"] = "true",
             ["DEVLOCAL_TRACING"] = "false",
             ["DEVLOCAL_CADDY_ADMIN"] = "http://localhost:2020",
             ["DEVLOCAL_UI_PORT"] = "8080"
         };
         var parsed = CommandLine.Parse(
-            ["start", "--tld", "flag.local", "--poll-interval=0", "--hosts-file=false", "--no-tracing=false", "--caddy=false"],
+            ["start", "--tld", "flag.local", "--poll-interval=0", "--no-tracing=false"],
             name => env.GetValueOrDefault(name));
 
         Assert.Equal(RunMode.Start, parsed.Mode);
         Assert.Equal("flag.local", parsed.Options.Tld);
         Assert.Equal(TimeSpan.Zero, parsed.Options.PollInterval);
-        Assert.False(parsed.Options.HostsFile);
         Assert.True(parsed.Options.Tracing);
-        Assert.False(parsed.Options.Caddy);
         Assert.Equal("http://localhost:2020", parsed.Options.CaddyAdmin);
         Assert.Equal(8080, parsed.Options.UiPort);
     }
@@ -40,9 +37,6 @@ public sealed class CommandLineTests
         Assert.Equal(RunMode.Clean, parsed.Mode);
         Assert.Equal(TimeSpan.FromHours(1), parsed.Options.StaleTtl);
         Assert.Equal(TimeSpan.FromSeconds(2), parsed.Options.ProbeTimeout);
-        Assert.True(parsed.Options.Caddy);
-        Assert.True(parsed.Options.UI);
-        Assert.True(parsed.Options.HostsFile);
         Assert.Equal(0, parsed.Options.UiPort);
     }
 
@@ -75,8 +69,7 @@ public sealed class CommandLineTests
     {
         Assert.Throws<ArgumentException>(() => CommandLine.Parse(["run"], _ => null));
         Assert.Throws<ArgumentException>(() => CommandLine.Parse(["--caddy=false"], _ => null));
-        Assert.Throws<ArgumentException>(() => CommandLine.Parse(["--caddy=false", "--ui=false", "--hosts-file=false"],
-            _ => null));
+        Assert.Throws<ArgumentException>(() => CommandLine.Parse(["--hosts-file=false", "--ui=false"], _ => null));
     }
 
     [Fact]
@@ -90,13 +83,13 @@ public sealed class CommandLineTests
     [Fact]
     public void ServiceOptionsPersistSelectedConfiguration()
     {
-        var settings = ServiceManager.ParseSettings(["--tld", "my.local", "--poll-interval", "0", "--hosts-file=false"]);
+        var settings = ServiceManager.ParseSettings(["--tld", "my.local", "--poll-interval", "0", "--log-level=debug"]);
         var serialized = JsonSerializer.Serialize(settings);
         var restored = JsonSerializer.Deserialize<ServiceSettings>(serialized)!;
 
         Assert.Equal("my.local", restored.Options!.Tld);
         Assert.Equal(TimeSpan.Zero, restored.Options.PollInterval);
-        Assert.False(restored.Options.HostsFile);
+        Assert.Equal("debug", restored.Options.LogLevel);
         Assert.Contains("\"Tld\":\"my.local\"", serialized);
     }
 }

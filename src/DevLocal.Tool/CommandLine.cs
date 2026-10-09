@@ -11,16 +11,12 @@ internal sealed record AppOptions
     public TimeSpan StaleTtl { get; init; } = TimeSpan.FromHours(1);
     public TimeSpan ProbeTimeout { get; init; } = TimeSpan.FromSeconds(2);
     public TimeSpan PollInterval { get; init; } = TimeSpan.FromSeconds(30);
-    public bool HostsFile { get; init; } = true;
     public bool Tracing { get; init; } = true;
-    public bool Caddy { get; init; } = true;
-    public bool UI { get; init; } = true;
     public int UiPort { get; init; }
     public string CaddyAdmin { get; init; } = "http://localhost:2019";
     public string CaddyServer { get; init; } = "srv0";
     public bool AllowCreateServer { get; init; } = true;
     public string LogLevel { get; init; } = "info";
-    public string DockerPipe { get; init; } = "docker_engine";
 }
 
 internal sealed record ParsedCommand(RunMode Mode, AppOptions Options);
@@ -30,8 +26,7 @@ internal static class CommandLine
     private static readonly Regex durationSegment = new(
         @"\G(?<amount>\d+(?:\.\d+)?)(?<unit>ns|us|µs|μs|ms|s|m|h)", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
-    internal static ParsedCommand Parse(string[] args, Func<string, string?>? environment = null,
-        string dockerPipe = "docker_engine")
+    internal static ParsedCommand Parse(string[] args, Func<string, string?>? environment = null)
     {
         if (args.Length == 0 || args[0].StartsWith('-'))
             throw new ArgumentException("Missing command; expected 'start' or 'clean'");
@@ -41,11 +36,10 @@ internal static class CommandLine
             "clean" => RunMode.Clean,
             _ => throw new ArgumentException($"Unknown command {args[0]}")
         };
-        return new ParsedCommand(mode, ParseOptions(args[1..], environment, dockerPipe));
+        return new ParsedCommand(mode, ParseOptions(args[1..], environment));
     }
 
-    internal static AppOptions ParseOptions(string[] args, Func<string, string?>? environment = null,
-        string dockerPipe = "docker_engine")
+    internal static AppOptions ParseOptions(string[] args, Func<string, string?>? environment = null)
     {
         environment ??= Environment.GetEnvironmentVariable;
         string Env(string name, string fallback) => environment(name) is { Length: > 0 } value ? value : fallback;
@@ -55,13 +49,11 @@ internal static class CommandLine
             StaleTtl = EnvDuration("DEVLOCAL_STALE_TTL", TimeSpan.FromHours(1)),
             ProbeTimeout = EnvDuration("DEVLOCAL_PROBE_TIMEOUT", TimeSpan.FromSeconds(2)),
             PollInterval = EnvDuration("DEVLOCAL_POLL_INTERVAL", TimeSpan.FromSeconds(30)),
-            HostsFile = EnvBool("DEVLOCAL_HOSTS_FILE", true),
             Tracing = EnvBool("DEVLOCAL_TRACING", true),
             CaddyAdmin = Env("DEVLOCAL_CADDY_ADMIN", "http://localhost:2019"),
             CaddyServer = Env("DEVLOCAL_CADDY_SERVER", "srv0"),
             UiPort = ParsePort(Env("DEVLOCAL_UI_PORT", "0")),
-            LogLevel = Env("DEVLOCAL_LOG_LEVEL", "info"),
-            DockerPipe = dockerPipe
+            LogLevel = Env("DEVLOCAL_LOG_LEVEL", "info")
         };
 
         for (var cursor = 0; cursor < args.Length; cursor++)
@@ -72,15 +64,12 @@ internal static class CommandLine
             var separator = input.IndexOf('=');
             var name = separator < 0 ? input[2..] : input[2..separator];
             var value = separator < 0 ? null : input[(separator + 1)..];
-            var boolean = name is "hosts-file" or "caddy" or "ui" or "allow-create-server" or "no-tracing";
+            var boolean = name is "allow-create-server" or "no-tracing";
             if (boolean)
             {
                 var enabled = value is null || ParseBool(value);
                 options = name switch
                 {
-                    "hosts-file" => options with { HostsFile = enabled },
-                    "caddy" => options with { Caddy = enabled },
-                    "ui" => options with { UI = enabled },
                     "allow-create-server" => options with { AllowCreateServer = enabled },
                     "no-tracing" => options with { Tracing = !enabled },
                     _ => options
@@ -99,13 +88,10 @@ internal static class CommandLine
                 "caddy-admin" => options with { CaddyAdmin = value },
                 "caddy-server" => options with { CaddyServer = value },
                 "log-level" => options with { LogLevel = value },
-                "docker-pipe" => options with { DockerPipe = value },
                 _ => throw new ArgumentException($"Unknown flag --{name}")
             };
         }
 
-        if (options.DockerPipe == "")
-            throw new ArgumentException("Docker pipe cannot be empty");
         if (options.LogLevel is not ("debug" or "info" or "warn" or "error"))
             throw new ArgumentException($"Invalid log level {options.LogLevel}");
         return options;
