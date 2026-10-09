@@ -121,13 +121,12 @@ Dynamic routes include Caddy's [OpenTelemetry tracing handler](https://caddyserv
 From an Administrator prompt:
 
 ```powershell
-devlocal service install               # Connectivity monitor only (the default)
-devlocal service install --controller  # Full reconciliation in the background
+devlocal service install   # Continuous controller: full reconciliation in the background
 devlocal service status
 devlocal service logs
 ```
 
-The service starts automatically (delayed) with restart-on-failure and runs as LocalSystem. Settings, status, and logs live under `%ProgramData%\DevLocal`. Other subcommands: `upgrade`, `start`, `stop`, `restart`, `uninstall`. Uninstalling keeps settings and logs; switching modes means reinstalling with the desired option. The Docker pipe is read from `docker context inspect` at install time — override with `--docker-pipe`.
+The service starts automatically (delayed) with restart-on-failure and runs as LocalSystem. Settings, status, and logs live under `%ProgramData%\DevLocal`. Other subcommands: `upgrade`, `start`, `stop`, `restart`, `uninstall`. Uninstalling keeps settings and logs. The Docker pipe is read from `docker context inspect` at install time — override with `--docker-pipe`.
 
 ## Example
 
@@ -152,7 +151,7 @@ The demo also includes non-HTTP services (PostgreSQL, Redis, SQL Server on port 
 
 - **curl fails the HTTPS handshake** — Caddy's internal CA publishes no CRL or OCSP responder, so Windows Schannel reports `CRYPT_E_NO_REVOCATION_CHECK`. Pass `--ssl-no-revoke` to `curl.exe`; browsers are unaffected.
 - **A removed domain still resolves** — flush the DNS client cache with `ipconfig /flushdns`.
-- **Docker shows disconnected in service monitor mode** — Docker Desktop usually starts at user login; the service connects once the pipe becomes available.
+- **Docker shows disconnected on the dashboard** — Docker Desktop usually starts at user login; the service connects once the pipe becomes available.
 - **Certificates accumulate in `caddy-data`** — Caddy never prunes issued certificates for domains devlocal stops managing. Harmless disk growth only.
 
 ## Building from Source

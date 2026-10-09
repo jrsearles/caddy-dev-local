@@ -90,14 +90,13 @@ public sealed class CommandLineTests
     [Fact]
     public void ServiceOptionsPersistSelectedConfiguration()
     {
-        var settings = ServiceManager.ParseSettings(["--controller", "--tld", "my.local", "--poll-interval", "0", "--hosts-file=false"]);
+        var settings = ServiceManager.ParseSettings(["--tld", "my.local", "--poll-interval", "0", "--hosts-file=false"]);
         var serialized = JsonSerializer.Serialize(settings);
         var restored = JsonSerializer.Deserialize<ServiceSettings>(serialized)!;
 
         Assert.Equal("my.local", restored.Options!.Tld);
         Assert.Equal(TimeSpan.Zero, restored.Options.PollInterval);
         Assert.False(restored.Options.HostsFile);
-        Assert.True(restored.ControllerEnabled);
         Assert.Contains("\"Tld\":\"my.local\"", serialized);
     }
 }

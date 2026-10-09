@@ -73,23 +73,14 @@ internal static class ServiceManager
                 return 0;
             case "status":
                 Console.WriteLine(await ScAsync(token, "query", ServicePaths.Name));
-                if (File.Exists(ServicePaths.ConfigPath) && (await ServiceSettings.LoadAsync(token)).ControllerEnabled)
-                {
-                    Console.WriteLine("Mode: continuous controller");
-                    if (File.Exists(ServicePaths.ControllerStatusPath))
-                        Console.WriteLine(await File.ReadAllTextAsync(ServicePaths.ControllerStatusPath, token));
-                    else
-                        Console.WriteLine("Controller status is not available yet; the service may not have completed its first refresh.");
-                }
-                else if (File.Exists(ServicePaths.StatusPath))
-                    Console.WriteLine(await File.ReadAllTextAsync(ServicePaths.StatusPath, token));
+                if (File.Exists(ServicePaths.ControllerStatusPath))
+                    Console.WriteLine(await File.ReadAllTextAsync(ServicePaths.ControllerStatusPath, token));
+                else
+                    Console.WriteLine("Controller status is not available yet; the service may not have completed its first refresh.");
                 return 0;
             case "logs":
-                var logPath = File.Exists(ServicePaths.ConfigPath) && (await ServiceSettings.LoadAsync(token)).ControllerEnabled
-                    ? ServicePaths.ControllerLogPath
-                    : ServicePaths.LogPath;
-                if (File.Exists(logPath))
-                    foreach (var line in File.ReadLines(logPath).TakeLast(50))
+                if (File.Exists(ServicePaths.ControllerLogPath))
+                    foreach (var line in File.ReadLines(ServicePaths.ControllerLogPath).TakeLast(50))
                         Console.WriteLine(line);
                 return 0;
             default:
@@ -99,17 +90,14 @@ internal static class ServiceManager
 
     internal static ServiceSettings ParseSettings(string[] args)
     {
-        var controllerEnabled = args.Contains("--controller", StringComparer.Ordinal);
-        var flags = args.Where(arg => arg != "--controller").ToArray();
-        var options = CommandLine.ParseOptions(flags);
+        var options = CommandLine.ParseOptions(args);
         if (!Uri.TryCreate(options.CaddyAdmin, UriKind.Absolute, out var uri) || uri.Scheme != "http")
             throw new ArgumentException("--caddy-admin must be an HTTP URL");
         if (string.IsNullOrWhiteSpace(options.DockerPipe) || options.DockerPipe.Contains('\\') || options.DockerPipe.Contains('/'))
             throw new ArgumentException("--docker-pipe must be a pipe name, such as docker_engine");
         return new ServiceSettings(options.CaddyAdmin, options.DockerPipe)
         {
-            Options = options,
-            ControllerEnabled = controllerEnabled
+            Options = options
         };
     }
 

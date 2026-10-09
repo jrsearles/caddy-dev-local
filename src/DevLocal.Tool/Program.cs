@@ -9,19 +9,10 @@ try
 
     if (args is ["service", "run"])
     {
-        var serviceSettings = await ServiceSettings.LoadAsync(CancellationToken.None);
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddWindowsService(options => options.ServiceName = ServicePaths.Name);
-        if (serviceSettings.ControllerEnabled)
-        {
-            builder.Services.AddSingleton(serviceSettings);
-            builder.Services.AddHostedService<ControllerWorker>();
-        }
-        else
-        {
-            builder.Services.AddSingleton<IDependencyProbe, DependencyMonitor>();
-            builder.Services.AddHostedService<MonitorWorker>();
-        }
+        builder.Services.AddSingleton(await ServiceSettings.LoadAsync(CancellationToken.None));
+        builder.Services.AddHostedService<ControllerWorker>();
         await builder.Build().RunAsync();
         return 0;
     }

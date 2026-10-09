@@ -3,40 +3,8 @@ using Xunit;
 
 namespace DevLocal.Tool.Tests;
 
-public sealed class MonitorCycleTests
+public sealed class ServiceManagerTests
 {
-    [Fact]
-    public async Task ReportsIndependentDependenciesAndRecoversOnNextCheck()
-    {
-        var probe = new FakeProbe { DockerError = new IOException("Docker Desktop is not running") };
-        var settings = ServiceSettings.Default;
-
-        var first = await MonitorCycle.CheckAsync(probe, settings, CancellationToken.None);
-        Assert.False(first.Docker.Connected);
-        Assert.Contains("not running", first.Docker.Error);
-        Assert.True(first.Caddy.Connected);
-        Assert.Equal("docker_engine", probe.Pipe);
-        Assert.Equal("http://localhost:2019", probe.AdminUrl);
-
-        probe.DockerError = null;
-        probe.CaddyError = new HttpRequestException("Caddy is restarting");
-        var second = await MonitorCycle.CheckAsync(probe, settings, CancellationToken.None);
-        Assert.True(second.Docker.Connected);
-        Assert.False(second.Caddy.Connected);
-        Assert.Contains("restarting", second.Caddy.Error);
-    }
-
-    [Fact]
-    public async Task CancellationIsNotTreatedAsConnectionFailure()
-    {
-        using var cancellation = new CancellationTokenSource();
-        cancellation.Cancel();
-        var probe = new FakeProbe { DockerError = new OperationCanceledException() };
-
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            MonitorCycle.CheckAsync(probe, ServiceSettings.Default, cancellation.Token));
-    }
-
     [Fact]
     public void ServiceSettingsRejectInvalidEndpoints()
     {
@@ -100,30 +68,6 @@ public sealed class MonitorCycleTests
         {
             if (Directory.Exists(source)) Directory.Delete(source, true);
             if (Directory.Exists(destination)) Directory.Delete(destination, true);
-        }
-    }
-
-    private sealed class FakeProbe : IDependencyProbe
-    {
-        public Exception? DockerError { get; set; }
-        public Exception? CaddyError { get; set; }
-        public string? Pipe { get; private set; }
-        public string? AdminUrl { get; private set; }
-
-        public Task CheckDockerAsync(string pipe, CancellationToken token)
-        {
-            Pipe = pipe;
-            if (DockerError is not null)
-                throw DockerError;
-            return Task.CompletedTask;
-        }
-
-        public Task CheckCaddyAsync(string adminUrl, CancellationToken token)
-        {
-            AdminUrl = adminUrl;
-            if (CaddyError is not null)
-                throw CaddyError;
-            return Task.CompletedTask;
         }
     }
 }
