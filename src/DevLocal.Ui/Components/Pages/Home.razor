@@ -1,10 +1,6 @@
 @page "/"
 @implements IDisposable
-@inject UiState State
-@inject TldProvider Tld
 @inject UiSession Session
-@inject NavigationManager Navigation
-@inject UiInterop Interop
 
 <PageTitle>devlocal — Container Index</PageTitle>
 
@@ -62,20 +58,16 @@ else
 <ContainerDrawer Model="@Session.Selected" OnClose="CloseAsync" />
 
 @code {
-    private DashboardModel model = DashboardBuilder.Build("", new UiSnapshot([], new DiscoveryStatus(null, ""), ""));
-
-    private DashboardModel Model => model;
-
-    protected override void OnInitialized()
-    {
-        model = Build();
-        State.Changed += OnStateChanged;
-        Session.SelectionChanged += OnStateChanged;
-        Session.FilterChanged += OnStateChanged;
-    }
+    [CascadingParameter] private DashboardModel Model { get; set; } = DashboardBuilder.Empty;
 
     [SupplyParameterFromQuery(Name = "q")]
     private string? Query { get; set; }
+
+    protected override void OnInitialized()
+    {
+        Session.SelectionChanged += OnSessionChanged;
+        Session.FilterChanged += OnSessionChanged;
+    }
 
     protected override void OnParametersSet()
     {
@@ -83,13 +75,7 @@ else
             Session.SetFilter(value);
     }
 
-    private DashboardModel Build() => DashboardBuilder.Build(Tld.Value, State.Current);
-
-    private void OnStateChanged() => InvokeAsync(() =>
-    {
-        model = Build();
-        StateHasChanged();
-    });
+    private void OnSessionChanged() => InvokeAsync(StateHasChanged);
 
     private Task OpenAsync(ContainerModel container)
     {
@@ -105,8 +91,7 @@ else
 
     public void Dispose()
     {
-        State.Changed -= OnStateChanged;
-        Session.SelectionChanged -= OnStateChanged;
-        Session.FilterChanged -= OnStateChanged;
+        Session.SelectionChanged -= OnSessionChanged;
+        Session.FilterChanged -= OnSessionChanged;
     }
 }

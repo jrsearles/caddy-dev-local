@@ -1,46 +1,48 @@
 @if (Node is JsonObject obj)
 {
-    <button type="button" class="line json-line" aria-expanded="@(IsOpen ? "true" : "false")" @onclick="Toggle">
-        <span class="caret-icon json-caret" aria-hidden="true">@(IsOpen ? "▾" : "▸")</span>
-        <span class="json-key">@Key</span><span class="json-separator">: </span><span class="json-separator">{</span>
-        <span class="json-size">@obj.Count</span>
-    </button>
-    @if (IsOpen)
+    @if (obj.Count == 0)
     {
-        <div class="json-children">
-            @foreach (var property in obj)
-            {
-                <JsonTreeNode Tree="Tree" Node="property.Value" Path="@(Path + "/" + property.Key)" Key="property.Key" />
-            }
-        </div>
-        <div class="line"><span class="json-separator">}</span></div>
+        <div class="json-row"><span class="json-caret"></span><span class="json-key @KeyClass">@Key</span><span class="json-colon">:</span><span class="json-brace">{ }</span></div>
+    }
+    else
+    {
+        <button type="button" class="json-row json-toggle @(IsOpen ? "open" : "")" aria-expanded="@(IsOpen ? "true" : "false")" @onclick="Toggle"><span class="json-caret" aria-hidden="true"><SvgIcon Name="chevron" /></span><span class="json-key @KeyClass">@Key</span><span class="json-colon">:</span><span class="json-brace">{</span><span class="json-count">@(obj.Count) @(obj.Count == 1 ? "key" : "keys")</span>@if (!IsOpen){<span class="json-ellipsis">…</span><span class="json-brace">}</span>}</button>
+        @if (IsOpen)
+        {
+            <div class="json-children">
+                @foreach (var property in obj)
+                {
+                    <JsonTreeNode Tree="Tree" Node="property.Value" Path="@(Path + "/" + property.Key)" Key="@property.Key" />
+                }
+            </div>
+            <div class="json-row json-close"><span class="json-caret"></span><span class="json-brace">}</span></div>
+        }
     }
 }
 else if (Node is JsonArray array)
 {
-    <button type="button" class="line json-line" aria-expanded="@(IsOpen ? "true" : "false")" @onclick="Toggle">
-        <span class="caret-icon json-caret" aria-hidden="true">@(IsOpen ? "▾" : "▸")</span>
-        <span class="json-key">@Key</span><span class="json-separator">: </span><span class="json-separator">[</span>
-        <span class="json-size">@array.Count</span>
-    </button>
-    @if (IsOpen)
+    @if (array.Count == 0)
     {
-        <div class="json-children">
-            @for (var index = 0; index < array.Count; index++)
-            {
-                <JsonTreeNode Tree="Tree" Node="array[index]" Path="@(Path + "/" + index)" Key="@index.ToString(CultureInfo.InvariantCulture)" />
-            }
-        </div>
-        <div class="line"><span class="json-separator">]</span></div>
+        <div class="json-row"><span class="json-caret"></span><span class="json-key @KeyClass">@Key</span><span class="json-colon">:</span><span class="json-brace">[ ]</span></div>
+    }
+    else
+    {
+        <button type="button" class="json-row json-toggle @(IsOpen ? "open" : "")" aria-expanded="@(IsOpen ? "true" : "false")" @onclick="Toggle"><span class="json-caret" aria-hidden="true"><SvgIcon Name="chevron" /></span><span class="json-key @KeyClass">@Key</span><span class="json-colon">:</span><span class="json-brace">[</span><span class="json-count">@(array.Count) @(array.Count == 1 ? "item" : "items")</span>@if (!IsOpen){<span class="json-ellipsis">…</span><span class="json-brace">]</span>}</button>
+        @if (IsOpen)
+        {
+            <div class="json-children">
+                @for (var index = 0; index < array.Count; index++)
+                {
+                    <JsonTreeNode Tree="Tree" Node="array[index]" Path="@(Path + "/" + index)" Key="@index.ToString(CultureInfo.InvariantCulture)" />
+                }
+            </div>
+            <div class="json-row json-close"><span class="json-caret"></span><span class="json-brace">]</span></div>
+        }
     }
 }
 else if (Node is not null)
 {
-    <div class="line">
-        <span class="caret-icon" aria-hidden="true"></span>
-        <span class="json-key">@Key</span><span class="json-separator">: </span>
-        <span class="json-value json-@Kind">@Value</span>
-    </div>
+    <div class="json-row json-leaf"><span class="json-caret"></span><span class="json-key @KeyClass">@Key</span><span class="json-colon">:</span><span class="json-value json-@Kind" title="@Value">@Display</span>@if (Copyable){<CopyButton Text="@Value" />}</div>
 }
 
 @code {
@@ -54,13 +56,26 @@ else if (Node is not null)
 
     private bool IsOpen => Tree.IsOpen(Path);
 
-    private string Kind => Node?.GetValueKind().ToString().ToLowerInvariant() ?? "null";
+    private string Kind => Node?.GetValueKind() switch
+    {
+        JsonValueKind.String => "string",
+        JsonValueKind.Number => "number",
+        JsonValueKind.True or JsonValueKind.False => "boolean",
+        _ => "null",
+    };
+
+    private string Display => Kind == "string" ? $"\"{Value}\"" : Value;
 
     private string Value => Node switch
     {
-        JsonValue value => value.ToJsonString().Trim('"'),
+        JsonValue value when value.GetValueKind() == JsonValueKind.String => value.GetValue<string>(),
+        JsonValue value => value.ToJsonString(),
         _ => "",
     };
+
+    private bool Copyable => Kind is "string" or "number" && Value.Length > 0;
+
+    private string KeyClass => Key.Length > 0 && Key.All(char.IsDigit) ? "json-idx" : "";
 
     private void Toggle() => Tree.Toggle(Path);
 }

@@ -6,18 +6,18 @@
 <PageTitle>devlocal — Container Index</PageTitle>
 
 <h1 class="visually-hidden">devlocal container index</h1>
-<AppHeader Model="@Dashboard" />
-<ErrorBanner Model="@Dashboard" />
-<TabNav Model="@Dashboard" />
+<AppHeader Model="@dashboard" />
+<ErrorBanner Model="@dashboard" />
+<TabNav Model="@dashboard" />
 
 <main class="content">
-    @Body
+    <CascadingValue Value="@dashboard">
+        @Body
+    </CascadingValue>
 </main>
 
 @code {
-    private DashboardModel dashboard = Empty();
-
-    private DashboardModel Dashboard => dashboard;
+    private DashboardModel dashboard = DashboardBuilder.Empty;
 
     protected override void OnInitialized()
     {
@@ -34,7 +34,4 @@
     });
 
     public void Dispose() => State.Changed -= OnStateChanged;
-
-    private static DashboardModel Empty() =>
-        DashboardBuilder.Build("", new UiSnapshot([], new DiscoveryStatus(null, ""), ""));
 }

@@ -25,18 +25,18 @@ public sealed class JsonTreeState
 
     public void Reset() => open.Clear();
 
-    public static IReadOnlyList<string> Paths(JsonNode? node)
+    public static IReadOnlyList<string> Paths(JsonNode? node, int maxDepth = int.MaxValue)
     {
         var paths = new List<string>();
         if (node is not null)
             paths.Add("");
-        Walk(node, "", paths, 0);
+        Walk(node, "", paths, 0, maxDepth);
         return paths;
     }
 
-    private static void Walk(JsonNode? node, string path, List<string> paths, int depth)
+    private static void Walk(JsonNode? node, string path, List<string> paths, int depth, int maxDepth)
     {
-        if (depth > 24)
+        if (depth >= maxDepth)
             return;
         if (node is JsonObject obj)
         {
@@ -44,7 +44,7 @@ public sealed class JsonTreeState
             {
                 var child = path + "/" + property.Key;
                 paths.Add(child);
-                Walk(property.Value, child, paths, depth + 1);
+                Walk(property.Value, child, paths, depth + 1, maxDepth);
             }
         }
         else if (node is JsonArray array)
@@ -53,7 +53,7 @@ public sealed class JsonTreeState
             {
                 var child = path + "/" + index;
                 paths.Add(child);
-                Walk(array[index], child, paths, depth + 1);
+                Walk(array[index], child, paths, depth + 1, maxDepth);
             }
         }
     }

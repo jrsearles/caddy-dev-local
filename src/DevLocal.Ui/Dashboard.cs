@@ -81,6 +81,8 @@ public sealed record DashboardModel(
 
 public static class DashboardBuilder
 {
+    public static DashboardModel Empty { get; } = Build("", new UiSnapshot([], new DiscoveryStatus(null, ""), ""));
+
     public static DashboardModel Build(string tld, UiSnapshot snapshot)
     {
         var rows = snapshot.Containers.Select(info => BuildContainer(tld, info)).ToList();

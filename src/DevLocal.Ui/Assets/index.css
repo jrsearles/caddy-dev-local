@@ -754,11 +754,7 @@ body {
     color: var(--text-muted);
 }
 
-/* ── Tab panels ──────────────────────────────────────────────── */
-.tab-panel { display: none; }
-.tab-panel.active { display: block; }
-
-/* ── Config view (inside tab) ────────────────────────────────── */
+/* ── Config view ─────────────────────────────────────────────── */
 .config-view {
     border: 1px solid var(--border);
     border-radius: 8px;
@@ -810,25 +806,115 @@ body {
 .config-action-btn:hover { color: var(--accent); border-color: var(--accent); }
 .config-action-btn[hidden] { display: none; }
 
-/* json-view tree overrides */
+/* json-view tree */
 .json-container {
     font-family: 'JetBrains Mono', monospace;
     font-size: 0.72rem;
-    line-height: 1.5;
+    line-height: 1.55;
     background: transparent;
     color: var(--text-secondary);
+    white-space: normal;
 }
 
-.json-container .line { margin: 2px 0; }
-.json-container .json-key { color: var(--accent); }
-.json-container .json-separator { color: var(--text-muted); }
-.json-container .json-size { color: var(--text-muted); margin-left: 0.35rem; }
-.json-container .json-value { margin-left: 0.25rem; }
-.json-container .json-string { color: var(--syntax-string); }
-.json-container .json-number { color: var(--syntax-number); }
-.json-container .json-boolean { color: var(--syntax-boolean); }
-.json-container .json-null { color: var(--text-muted); font-style: italic; }
-.json-container .caret-icon { color: var(--text-muted); }
+.json-row {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    min-width: 0;
+    width: 100%;
+    padding: 0.08rem 0.3rem;
+    border-radius: 4px;
+    font: inherit;
+    color: inherit;
+    text-align: left;
+    background: none;
+    border: 0;
+    cursor: default;
+}
+
+button.json-row { cursor: pointer; }
+
+.json-row:hover { background: var(--bg-elevated); }
+
+.json-toggle:focus-visible {
+    outline: 1px solid var(--accent);
+    outline-offset: -1px;
+}
+
+.json-caret {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 0.85rem;
+    height: 0.85rem;
+    flex: none;
+    color: var(--text-muted);
+}
+
+.json-caret svg {
+    width: 0.6rem;
+    height: 0.6rem;
+    transition: transform 0.12s ease;
+}
+
+.json-toggle.open .json-caret svg { transform: rotate(90deg); }
+
+.json-key {
+    color: var(--accent);
+    overflow-wrap: anywhere;
+}
+
+.json-key.json-idx { color: var(--text-muted); }
+
+.json-colon { color: var(--text-muted); flex: none; }
+
+.json-brace { color: var(--text-muted); flex: none; }
+
+.json-count {
+    flex: none;
+    margin-left: 0.15rem;
+    padding: 0 0.4rem;
+    border: 1px solid var(--border-subtle);
+    border-radius: 1rem;
+    background: var(--bg-card);
+    color: var(--text-muted);
+    font-size: 0.62rem;
+    line-height: 1.35;
+}
+
+.json-ellipsis { color: var(--text-muted); flex: none; }
+
+.json-value {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.json-string { color: var(--syntax-string); }
+.json-number { color: var(--syntax-number); }
+.json-boolean { color: var(--syntax-boolean); }
+.json-null { color: var(--text-muted); font-style: italic; }
+
+.json-children {
+    margin-left: 0.45rem;
+    padding-left: 0.75rem;
+    border-left: 1px solid var(--border-subtle);
+}
+
+.json-leaf .copy-btn {
+    flex: none;
+    margin-left: 0.35rem;
+    opacity: 0;
+    transition: opacity 0.12s;
+}
+
+.json-leaf:hover .copy-btn,
+.json-leaf .copy-btn.copied,
+.json-leaf .copy-btn:focus-visible { opacity: 1; }
+
+.json-leaf .copy-btn:hover { background: var(--bg-card-hover); }
 
 /* ── Empty state ─────────────────────────────────────────────── */
 .empty-state {
@@ -1070,35 +1156,61 @@ body {
 }
 
 
-/* ── Route table ────────────────────────────────────────────── */
+/* ── Route grid (QuickGrid) ─────────────────────────────────── */
 .route-table-wrap {
     overflow-x: auto;
     margin-top: 0.75rem;
 }
 
-.route-table {
+table.route-grid {
     width: 100%;
     border-collapse: collapse;
 }
 
-.route-table th {
+.route-grid th {
     text-align: left;
     font-size: 0.68rem;
     font-weight: 600;
     color: var(--text-muted);
-    padding: 0.55rem 0.75rem;
+    padding: 0.5rem 0.55rem 0.5rem 0.75rem;
     border-bottom: 1px solid var(--border);
     white-space: nowrap;
 }
 
-.route-table td {
+.route-grid td {
     padding: 0.55rem 0.75rem;
     border-bottom: 1px solid var(--border-subtle);
     vertical-align: top;
 }
 
-.route-table tbody tr:hover td {
+.route-grid tbody tr:hover td {
     background: var(--bg-elevated);
+}
+
+.route-grid button.col-title {
+    padding: 0.12rem 0.35rem;
+    border-radius: 4px;
+    color: inherit;
+    font-weight: 600;
+}
+
+.route-grid button.col-title:hover {
+    color: var(--accent);
+    background: var(--bg-elevated);
+}
+
+.route-grid button.col-title:focus-visible {
+    outline: 1px solid var(--accent);
+    outline-offset: -1px;
+}
+
+.route-grid th.col-sort-asc .sort-indicator,
+.route-grid th.col-sort-desc .sort-indicator {
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%2358a6ff"><path d="M 2 3.25 L 12 20.75 L 22 3.25 L 12 10 z" /></svg>');
+    background-size: 0.65rem;
+    background-position: center;
+    background-repeat: no-repeat;
+    opacity: 0.85;
 }
 
 .route-host-val {
@@ -1244,46 +1356,6 @@ body {
     clip: rect(0 0 0 0);
     white-space: nowrap;
     border: 0;
-}
-
-.json-children {
-    margin-left: 0.9rem;
-    padding-left: 0.6rem;
-    border-left: 1px solid var(--border);
-}
-
-.json-caret {
-    display: inline-block;
-    width: 1em;
-    padding: 0;
-    background: none;
-    border: 0;
-    font: inherit;
-    line-height: inherit;
-    cursor: pointer;
-}
-
-.json-caret:hover { color: var(--accent); }
-
-.json-line {
-    display: block;
-    width: 100%;
-    padding: 0;
-    background: none;
-    border: 0;
-    font: inherit;
-    line-height: inherit;
-    text-align: left;
-    color: inherit;
-    cursor: pointer;
-}
-
-.json-line:hover { color: var(--text); }
-.json-line:hover .json-caret { color: var(--accent); }
-
-.json-line:focus-visible {
-    outline: 1px solid var(--accent);
-    outline-offset: -1px;
 }
 
 .tab-btn {

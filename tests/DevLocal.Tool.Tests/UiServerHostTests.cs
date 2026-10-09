@@ -34,6 +34,24 @@ public sealed class UiServerHostTests
     }
 
     [Fact]
+    public async Task ServesQuickGridStylesAndScript()
+    {
+        await using var host = new UiServerHost("dev.local");
+        var port = await host.StartAsync(0, CancellationToken.None);
+        using var client = new HttpClient();
+
+        var css = await client.GetAsync($"http://127.0.0.1:{port}/quickgrid.css");
+        Assert.Equal(HttpStatusCode.OK, css.StatusCode);
+        Assert.Equal("text/css", css.Content.Headers.ContentType?.MediaType);
+        Assert.Contains("col-title", await css.Content.ReadAsStringAsync());
+
+        var script = await client.GetAsync(
+            $"http://127.0.0.1:{port}/_content/Microsoft.AspNetCore.Components.QuickGrid/QuickGrid.razor.js");
+        Assert.Equal(HttpStatusCode.OK, script.StatusCode);
+        Assert.Contains("init", await script.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
     public async Task ServesInteractiveNegotiationEndpoint()
     {
         await using var host = new UiServerHost("dev.local");
