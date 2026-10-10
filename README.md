@@ -29,7 +29,7 @@ You need Windows, Docker Desktop, [Caddy](https://caddyserver.com/docs/install),
    ```powershell
    just pack
    dotnet tool install --global DevLocal.Tool --add-source artifacts
-   devlocal start
+   devlocal run
    ```
 
 4. Visit **https://my-app.dev.local** — or **https://dev.localhost** for the dashboard.
@@ -99,7 +99,7 @@ Values come from flags, then `DEVLOCAL_*` environment variables, then defaults. 
 ### Turning pieces off
 
 ```powershell
-devlocal start --no-tracing             # No OpenTelemetry tracing on routes
+devlocal run --no-tracing               # No OpenTelemetry tracing on routes
 ```
 
 ### Caddy
@@ -115,12 +115,12 @@ Dynamic routes include Caddy's [OpenTelemetry tracing handler](https://caddyserv
 From an Administrator prompt:
 
 ```powershell
-devlocal service install   # Continuous controller: full reconciliation in the background
-devlocal service status
-devlocal service logs
+devlocal install   # Continuous controller: full reconciliation in the background
+devlocal status
+devlocal logs
 ```
 
-The service starts automatically (delayed) with restart-on-failure and runs as LocalSystem. Settings, status, and logs live under `%ProgramData%\DevLocal`. Other subcommands: `upgrade`, `start`, `stop`, `restart`, `uninstall`. Uninstalling keeps settings and logs. The Docker pipe is detected from `docker context inspect` when the controller connects.
+The service starts automatically (delayed) with restart-on-failure and runs as LocalSystem. Settings, status, and logs live under `%ProgramData%\DevLocal`. Other commands: `upgrade`, `start`, `stop`, `restart`, `uninstall`. Uninstalling keeps settings and logs. The Docker pipe is detected from `docker context inspect` when the controller connects. The `service` prefix still works (`devlocal service install`), but the plain forms are preferred.
 
 ## Example
 
@@ -129,7 +129,7 @@ A complete demo lives in [example/](example/):
 ```powershell
 cd example/standalone
 docker compose up -d
-devlocal start   # from another terminal
+devlocal run   # from another terminal
 ```
 
 Then visit:

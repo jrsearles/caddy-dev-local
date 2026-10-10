@@ -18,7 +18,7 @@ public sealed class CommandLineTests
             ["DEVLOCAL_UI_PORT"] = "8080"
         };
         var parsed = CommandLine.Parse(
-            ["start", "--tld", "flag.local", "--poll-interval=0", "--no-tracing=false"],
+            ["run", "--tld", "flag.local", "--poll-interval=0", "--no-tracing=false"],
             name => env.GetValueOrDefault(name));
 
         Assert.Equal(RunMode.Start, parsed.Mode);
@@ -43,16 +43,16 @@ public sealed class CommandLineTests
     [Fact]
     public void ParsesUiPortFlagAndRejectsOutOfRangeValues()
     {
-        Assert.Equal(5050, CommandLine.Parse(["start", "--ui-port", "5050"]).Options.UiPort);
-        Assert.Equal(5050, CommandLine.Parse(["start", "--ui-port=5050"]).Options.UiPort);
-        Assert.Throws<FormatException>(() => CommandLine.Parse(["start", "--ui-port=70000"]));
-        Assert.Throws<FormatException>(() => CommandLine.Parse(["start", "--ui-port=abc"]));
+        Assert.Equal(5050, CommandLine.Parse(["run", "--ui-port", "5050"]).Options.UiPort);
+        Assert.Equal(5050, CommandLine.Parse(["run", "--ui-port=5050"]).Options.UiPort);
+        Assert.Throws<FormatException>(() => CommandLine.Parse(["run", "--ui-port=70000"]));
+        Assert.Throws<FormatException>(() => CommandLine.Parse(["run", "--ui-port=abc"]));
     }
 
     [Fact]
     public void RejectsRemovedIndexDirFlag()
     {
-        Assert.Throws<ArgumentException>(() => CommandLine.Parse(["start", "--index-dir", "C:/index"]));
+        Assert.Throws<ArgumentException>(() => CommandLine.Parse(["run", "--index-dir", "C:/index"]));
     }
 
     [Theory]
@@ -65,18 +65,27 @@ public sealed class CommandLineTests
         Assert.Equal(TimeSpan.FromSeconds(seconds), CommandLine.ParseDuration(value));
 
     [Fact]
-    public void RejectsRemovedRunCommandAndRequiresAnExplicitSubcommand()
+    public void RejectsServiceStartAsForegroundCommandAndRequiresAnExplicitSubcommand()
     {
-        Assert.Throws<ArgumentException>(() => CommandLine.Parse(["run"], _ => null));
+        Assert.Throws<ArgumentException>(() => CommandLine.Parse(["start"], _ => null));
         Assert.Throws<ArgumentException>(() => CommandLine.Parse(["--caddy=false"], _ => null));
         Assert.Throws<ArgumentException>(() => CommandLine.Parse(["--hosts-file=false", "--ui=false"], _ => null));
     }
 
     [Fact]
+    public void ServiceCommandsAreRecognizedAtTopLevel()
+    {
+        Assert.True(ServiceManager.IsCommand("install"));
+        Assert.True(ServiceManager.IsCommand("start"));
+        Assert.False(ServiceManager.IsCommand("run"));
+        Assert.False(ServiceManager.IsCommand("clean"));
+    }
+
+    [Fact]
     public void RejectsCommandsAfterFlagsAndInvalidExplicitDurations()
     {
-        Assert.Throws<ArgumentException>(() => CommandLine.Parse(["start", "--caddy=false", "clean"], _ => null));
-        Assert.Throws<FormatException>(() => CommandLine.Parse(["start", "--stale-ttl=broken"], _ => null));
+        Assert.Throws<ArgumentException>(() => CommandLine.Parse(["run", "--caddy=false", "clean"], _ => null));
+        Assert.Throws<FormatException>(() => CommandLine.Parse(["run", "--stale-ttl=broken"], _ => null));
         Assert.Throws<ArgumentException>(() => CommandLine.Parse(["unknown"], _ => null));
     }
 

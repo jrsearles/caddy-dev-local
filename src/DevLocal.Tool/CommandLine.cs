@@ -29,10 +29,10 @@ internal static class CommandLine
     internal static ParsedCommand Parse(string[] args, Func<string, string?>? environment = null)
     {
         if (args.Length == 0 || args[0].StartsWith('-'))
-            throw new ArgumentException("Missing command; expected 'start' or 'clean'");
+            throw new ArgumentException("Missing command; expected 'run' or 'clean'");
         var mode = args[0] switch
         {
-            "start" => RunMode.Start,
+            "run" => RunMode.Start,
             "clean" => RunMode.Clean,
             _ => throw new ArgumentException($"Unknown command {args[0]}")
         };

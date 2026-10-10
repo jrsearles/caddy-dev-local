@@ -9,7 +9,7 @@ try
     {
         Cli.Out.MarkupLine(
             "[bold]Usage:[/] devlocal service <command>\n" +
-            "Commands:\n" +
+            "Commands (also available as top-level commands, e.g. [aqua]devlocal install[/]):\n" +
             "  [aqua]install[/]    Install the background service (Administrator required)\n" +
             "  [aqua]upgrade[/]    Update the service binaries and restart it\n" +
             "  [aqua]uninstall[/]  Stop the service and remove it\n" +
@@ -48,11 +48,18 @@ try
         Cli.Out.MarkupLine(
             "[bold]Usage:[/] devlocal <command> [dim](flags)[/]\n" +
             "Commands:\n" +
-            "  [aqua]start[/]    Reconcile routes, watch Docker events and poll; serves the index UI\n" +
-            "  [aqua]clean[/]    Remove managed Caddy routes, TLS policies and the hosts block\n" +
-            "  [aqua]service[/]  Manage the background service: install, upgrade, uninstall,\n" +
-            "           start, stop, restart, status, logs\n" +
-            "  [aqua]version[/]  Print the tool version and exit\n" +
+            "  [aqua]run[/]       Reconcile routes, watch Docker events and poll; serves the index UI\n" +
+            "  [aqua]clean[/]     Remove managed Caddy routes, TLS policies and the hosts block\n" +
+            "  [aqua]install[/]   Install the background service (Administrator required)\n" +
+            "  [aqua]upgrade[/]   Update the service binaries and restart it\n" +
+            "  [aqua]uninstall[/] Stop the service and remove it\n" +
+            "  [aqua]start[/]     Start the installed service\n" +
+            "  [aqua]stop[/]      Stop the running service\n" +
+            "  [aqua]restart[/]   Restart the service\n" +
+            "  [aqua]status[/]    Show whether the service is installed and running\n" +
+            "  [aqua]logs[/]      Show the last 50 service log lines\n" +
+            "  [aqua]service[/]   Alternate namespace for the service commands above\n" +
+            "  [aqua]version[/]   Print the tool version and exit\n" +
             "Flags:\n" +
             "  [aqua]--tld[/] <domain>              Top-level domain for generated names [dim](dev.local)[/]\n" +
             "  [aqua]--ui-port[/] <port>            Fixed port for the index UI [dim](auto-picked)[/]\n" +
@@ -69,6 +76,9 @@ try
             "from [aqua]docker context inspect[/].");
         return 0;
     }
+
+    if (args.Length > 0 && ServiceManager.IsCommand(args[0]))
+        return await ServiceManager.RunAsync(args, CancellationToken.None);
 
     var settings = CommandLine.Parse(args);
     await using var session = await ControllerFactory.Create(settings.Options,

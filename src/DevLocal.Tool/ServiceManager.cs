@@ -9,12 +9,19 @@ namespace DevLocal.Tool;
 
 internal static class ServiceManager
 {
+    private static readonly HashSet<string> commands = new(StringComparer.Ordinal)
+    {
+        "install", "upgrade", "uninstall", "start", "stop", "restart", "status", "logs"
+    };
+
+    internal static bool IsCommand(string name) => commands.Contains(name);
+
     internal static async Task<int> RunAsync(string[] args, CancellationToken token)
     {
         if (!OperatingSystem.IsWindows())
             throw new PlatformNotSupportedException("Windows service commands require Windows");
-        if (args.Length == 0)
-            throw new ArgumentException("Expected service install, upgrade, uninstall, start, stop, restart, status, or logs");
+        if (args.Length == 0 || !IsCommand(args[0]))
+            throw new ArgumentException("Expected install, upgrade, uninstall, start, stop, restart, status, or logs");
 
         switch (args[0])
         {
@@ -22,7 +29,7 @@ internal static class ServiceManager
                 RequireAdmin();
                 var settings = ParseSettings(args[1..]);
                 if (await ExistsAsync(token))
-                    throw new InvalidOperationException("DevLocal service already exists; use service upgrade");
+                    throw new InvalidOperationException("DevLocal service already exists; use devlocal upgrade");
                 Deploy();
                 await settings.SaveAsync(token);
                 try
@@ -41,7 +48,7 @@ internal static class ServiceManager
                         await ScAsync(token, "delete", ServicePaths.Name);
                     throw;
                 }
-                Cli.Out.MarkupLine("[green]✓[/] Service installed and started. Check [aqua]devlocal service status[/] or [aqua]devlocal service logs[/].");
+                Cli.Out.MarkupLine("[green]✓[/] Service installed and started. Check [aqua]devlocal status[/] or [aqua]devlocal logs[/].");
                 return 0;
             case "upgrade":
                 RequireAdmin();
@@ -96,7 +103,7 @@ internal static class ServiceManager
     {
         if (!await ExistsAsync(token))
         {
-            Cli.Out.MarkupLine("Service: [red]not installed[/]. Run [aqua]devlocal service install[/] from an Administrator terminal.");
+            Cli.Out.MarkupLine("Service: [red]not installed[/]. Run [aqua]devlocal install[/] from an Administrator terminal.");
             return;
         }
         var state = DescribeState(await ScAsync(token, "query", ServicePaths.Name));
