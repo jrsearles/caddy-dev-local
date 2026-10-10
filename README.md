@@ -120,7 +120,7 @@ devlocal status
 devlocal logs
 ```
 
-The service starts automatically (delayed) with restart-on-failure and runs as LocalSystem. Settings, status, and logs live under `%ProgramData%\DevLocal`. Other commands: `upgrade`, `start`, `stop`, `restart`. Uninstalling cleans up everything devlocal created (routes, TLS policies, hosts entries) and then removes the service; settings and logs are kept. The Docker pipe is detected from `docker context inspect` when the controller connects. The `service` prefix still works (`devlocal service install`), but the plain forms are preferred.
+The service starts automatically (delayed) with restart-on-failure and runs as LocalSystem. Settings, status, and logs live under `%ProgramData%\DevLocal`. Other commands: `upgrade`, `start`, `stop`, `restart`. Uninstalling cleans up everything devlocal created (routes, TLS policies, hosts entries) and then removes the service; settings and logs are kept. The Docker pipe is detected from `docker context inspect` when the controller connects.
 
 ## Example
 
