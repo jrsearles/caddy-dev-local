@@ -1,6 +1,9 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Security.Principal;
+using System.Text.Json;
+using System.Text.RegularExpressions;
+using Spectre.Console;
 
 namespace DevLocal.Tool;
 
@@ -38,6 +41,7 @@ internal static class ServiceManager
                         await ScAsync(token, "delete", ServicePaths.Name);
                     throw;
                 }
+                Cli.Out.MarkupLine("[green]✓[/] Service installed and started. Check [aqua]devlocal service status[/] or [aqua]devlocal service logs[/].");
                 return 0;
             case "upgrade":
                 RequireAdmin();
@@ -45,26 +49,33 @@ internal static class ServiceManager
                 await StopAsync(token);
                 Deploy();
                 await ScAsync(token, "start", ServicePaths.Name);
+                Cli.Out.MarkupLine("[green]✓[/] Service upgraded and started.");
                 return 0;
             case "uninstall":
                 RequireAdmin();
                 await RequireInstalledAsync(token);
                 await StopAsync(token);
                 await ScAsync(token, "delete", ServicePaths.Name);
-                Console.WriteLine($"Service removed. Configuration and logs remain in {ServicePaths.DataDirectory}.");
+                Cli.Out.MarkupLineInterpolated($"[green]✓[/] Service removed. Configuration and logs remain in {Markup.Escape(ServicePaths.DataDirectory)}.");
                 return 0;
             case "start":
                 RequireAdmin();
+                await RequireInstalledAsync(token);
                 await ScAsync(token, "start", ServicePaths.Name);
+                Cli.Out.MarkupLine("[green]✓[/] Service started.");
                 return 0;
             case "stop":
                 RequireAdmin();
+                await RequireInstalledAsync(token);
                 await StopAsync(token);
+                Cli.Out.MarkupLine("[green]✓[/] Service stopped.");
                 return 0;
             case "restart":
                 RequireAdmin();
+                await RequireInstalledAsync(token);
                 await StopAsync(token);
                 await ScAsync(token, "start", ServicePaths.Name);
+                Cli.Out.MarkupLine("[green]✓[/] Service restarted.");
                 return 0;
             case "status":
                 await PrintStatusAsync(token);
@@ -73,6 +84,8 @@ internal static class ServiceManager
                 if (File.Exists(ServicePaths.ControllerLogPath))
                     foreach (var line in File.ReadLines(ServicePaths.ControllerLogPath).TakeLast(50))
                         Console.WriteLine(line);
+                else
+                    Cli.Out.MarkupLineInterpolated($"[yellow]No log output yet[/]; the service has not written to {Markup.Escape(ServicePaths.ControllerLogPath)}.");
                 return 0;
             default:
                 throw new ArgumentException($"Unknown service command: {args[0]}");
@@ -83,14 +96,54 @@ internal static class ServiceManager
     {
         if (!await ExistsAsync(token))
         {
-            Console.WriteLine("Service is not installed.");
+            Cli.Out.MarkupLine("Service: [red]not installed[/]. Run [aqua]devlocal service install[/] from an Administrator terminal.");
             return;
         }
-        Console.WriteLine(await ScAsync(token, "query", ServicePaths.Name));
-        if (File.Exists(ServicePaths.ControllerStatusPath))
-            Console.WriteLine(await File.ReadAllTextAsync(ServicePaths.ControllerStatusPath, token));
-        else
-            Console.WriteLine("Controller status is not available yet; the service may not have completed its first refresh.");
+        var state = DescribeState(await ScAsync(token, "query", ServicePaths.Name));
+        var colored = state switch
+        {
+            "running" => $"[green]{state}[/]",
+            "stopped" or "starting" or "stopping" or "paused" => $"[yellow]{state}[/]",
+            _ => $"[red]{state}[/]"
+        };
+        Cli.Out.MarkupLine($"Service: installed, {colored}");
+        if (!File.Exists(ServicePaths.ControllerStatusPath))
+        {
+            Cli.Out.MarkupLine("Controller: [yellow]no status yet[/]; the service may not have finished starting.");
+            return;
+        }
+        try
+        {
+            var status = JsonSerializer.Deserialize<ControllerStatus>(
+                await File.ReadAllTextAsync(ServicePaths.ControllerStatusPath, token));
+            if (status is null)
+                throw new JsonException("Status is empty");
+            Cli.Out.MarkupLine($"Controller: last refreshed {status.UpdatedAt.ToLocalTime():yyyy-MM-dd HH:mm:ss}");
+            Cli.Out.MarkupLine($"Index UI: {(string.IsNullOrEmpty(status.UiBaseUrl) ? "[dim]not started[/]" : Markup.Escape(status.UiBaseUrl))}");
+            Cli.Out.MarkupLine($"Hooks: {(status.Hooks.Length == 0 ? "[dim]none[/]" : Markup.Escape(string.Join(", ", status.Hooks)))}");
+            foreach (var error in status.Errors)
+                Cli.Out.MarkupLine($"[red]Error:[/] {Markup.Escape(error)}");
+        }
+        catch (JsonException)
+        {
+            Cli.Out.MarkupLine("Controller: [red]status could not be read[/]; the service may be upgrading.");
+        }
+    }
+
+    private static string DescribeState(string query)
+    {
+        var match = Regex.Match(query, @"STATE\s*:\s*\d+\s+([A-Z_]+)");
+        return match.Success
+            ? match.Groups[1].Value switch
+            {
+                "RUNNING" => "running",
+                "STOPPED" => "stopped",
+                "START_PENDING" => "starting",
+                "STOP_PENDING" => "stopping",
+                "PAUSED" => "paused",
+                _ => match.Groups[1].Value.ToLowerInvariant()
+            }
+            : "state unknown";
     }
 
     internal static ServiceSettings ParseSettings(string[] args)

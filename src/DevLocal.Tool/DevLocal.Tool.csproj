@@ -19,6 +19,7 @@
   <ItemGroup>
     <PackageReference Include="Docker.DotNet.Enhanced" Version="4.3.3" />
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.0" />
+    <PackageReference Include="Spectre.Console" Version="0.50.0" />
     <None Include="../../docs/csharp-port.md" Pack="true" PackagePath="/" />
   </ItemGroup>
   <ItemGroup>
