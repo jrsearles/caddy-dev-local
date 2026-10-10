@@ -62,8 +62,9 @@ internal static class ServiceManager
                 RequireAdmin();
                 await RequireInstalledAsync(token);
                 await StopAsync(token);
+                await CleanAsync(token);
                 await ScAsync(token, "delete", ServicePaths.Name);
-                Cli.Out.MarkupLineInterpolated($"[green]✓[/] Service removed. Configuration and logs remain in {Markup.Escape(ServicePaths.DataDirectory)}.");
+                Cli.Out.MarkupLineInterpolated($"[green]✓[/] Service removed and managed routes, TLS policies and hosts entries cleaned. Configuration and logs remain in {Markup.Escape(ServicePaths.DataDirectory)}.");
                 return 0;
             case "start":
                 RequireAdmin();
@@ -203,6 +204,29 @@ internal static class ServiceManager
             var target = Path.Combine(destination, relative);
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
             File.Copy(file, target, true);
+        }
+    }
+
+    private static async Task CleanAsync(CancellationToken token)
+    {
+        ServiceSettings settings;
+        try
+        {
+            settings = await ServiceSettings.LoadAsync(token);
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or JsonException)
+        {
+            settings = ServiceSettings.Default;
+        }
+        await using var session = await ControllerFactory.Create(settings.Options ?? new AppOptions());
+        try
+        {
+            await session.Controller.CleanupAsync(token);
+        }
+        catch (Exception ex) when (!token.IsCancellationRequested)
+        {
+            Cli.Err.MarkupLine($"[yellow]devlocal:[/] cleanup failed: {Markup.Escape(ex.Message)};");
+            Cli.Err.MarkupLine("Managed routes or hosts entries may remain and can be removed by running [aqua]devlocal uninstall[/] again.");
         }
     }
 

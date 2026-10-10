@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 
 namespace DevLocal.Tool;
 
-internal enum RunMode { Start, Clean }
+internal enum RunMode { Start }
 
 internal sealed record AppOptions
 {
@@ -29,11 +29,10 @@ internal static class CommandLine
     internal static ParsedCommand Parse(string[] args, Func<string, string?>? environment = null)
     {
         if (args.Length == 0 || args[0].StartsWith('-'))
-            throw new ArgumentException("Missing command; expected 'run' or 'clean'");
+            throw new ArgumentException("Missing command; expected 'run'");
         var mode = args[0] switch
         {
             "run" => RunMode.Start,
-            "clean" => RunMode.Clean,
             _ => throw new ArgumentException($"Unknown command {args[0]}")
         };
         return new ParsedCommand(mode, ParseOptions(args[1..], environment));

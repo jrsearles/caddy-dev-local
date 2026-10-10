@@ -12,7 +12,7 @@ try
             "Commands (also available as top-level commands, e.g. [aqua]devlocal install[/]):\n" +
             "  [aqua]install[/]    Install the background service (Administrator required)\n" +
             "  [aqua]upgrade[/]    Update the service binaries and restart it\n" +
-            "  [aqua]uninstall[/]  Stop the service and remove it\n" +
+            "  [aqua]uninstall[/]  Stop the service, clean managed routes and hosts entries, remove it\n" +
             "  [aqua]start[/]      Start the installed service\n" +
             "  [aqua]stop[/]       Stop the running service\n" +
             "  [aqua]restart[/]    Restart the service\n" +
@@ -49,10 +49,9 @@ try
             "[bold]Usage:[/] devlocal <command> [dim](flags)[/]\n" +
             "Commands:\n" +
             "  [aqua]run[/]       Reconcile routes, watch Docker events and poll; serves the index UI\n" +
-            "  [aqua]clean[/]     Remove managed Caddy routes, TLS policies and the hosts block\n" +
             "  [aqua]install[/]   Install the background service (Administrator required)\n" +
             "  [aqua]upgrade[/]   Update the service binaries and restart it\n" +
-            "  [aqua]uninstall[/] Stop the service and remove it\n" +
+            "  [aqua]uninstall[/] Stop the service, clean routes and hosts entries, remove it\n" +
             "  [aqua]start[/]     Start the installed service\n" +
             "  [aqua]stop[/]      Stop the running service\n" +
             "  [aqua]restart[/]   Restart the service\n" +
@@ -90,9 +89,6 @@ try
     {
         case RunMode.Start:
             await session.Controller.RunAsync(stop.Token);
-            break;
-        case RunMode.Clean:
-            await session.Controller.CleanupAsync(stop.Token);
             break;
     }
     return 0;

@@ -32,9 +32,9 @@ public sealed class CommandLineTests
     [Fact]
     public void KeepsGoDefaultsAndTreatsInvalidEnvironmentDurationAsDefault()
     {
-        var parsed = CommandLine.Parse(["clean"], name => name == "DEVLOCAL_STALE_TTL" ? "invalid" : null);
+        var parsed = CommandLine.Parse(["run"], name => name == "DEVLOCAL_STALE_TTL" ? "invalid" : null);
 
-        Assert.Equal(RunMode.Clean, parsed.Mode);
+        Assert.Equal(RunMode.Start, parsed.Mode);
         Assert.Equal(TimeSpan.FromHours(1), parsed.Options.StaleTtl);
         Assert.Equal(TimeSpan.FromSeconds(2), parsed.Options.ProbeTimeout);
         Assert.Equal(0, parsed.Options.UiPort);
@@ -84,7 +84,7 @@ public sealed class CommandLineTests
     [Fact]
     public void RejectsCommandsAfterFlagsAndInvalidExplicitDurations()
     {
-        Assert.Throws<ArgumentException>(() => CommandLine.Parse(["run", "--caddy=false", "clean"], _ => null));
+        Assert.Throws<ArgumentException>(() => CommandLine.Parse(["run", "--tld=x", "clean"], _ => null));
         Assert.Throws<FormatException>(() => CommandLine.Parse(["run", "--stale-ttl=broken"], _ => null));
         Assert.Throws<ArgumentException>(() => CommandLine.Parse(["unknown"], _ => null));
     }
