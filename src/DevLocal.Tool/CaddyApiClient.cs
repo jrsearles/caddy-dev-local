@@ -56,6 +56,10 @@ internal sealed class CaddyApiClient : ICaddyConfigClient, IDisposable
                 actualRoutes = await GetArrayAsync(routesPath, token)
                     ?? throw new InvalidOperationException("Caddy routes are still missing after creating the server");
             }
+            else
+            {
+                await EnsureListenAsync(token);
+            }
 
             await ReconcileRoutesAsync(routesPath, actualRoutes, desired.Routes, owned, token);
             await ReconcilePoliciesAsync(desired.Policies, owned, token);
@@ -119,12 +123,40 @@ internal sealed class CaddyApiClient : ICaddyConfigClient, IDisposable
             return;
         }
         EnsureSuccess(HttpMethod.Get, serverPath, status, body);
+        await EnsureListenAsync(token);
         (status, body) = await RequestAsync(HttpMethod.Put, routesPath, "[]"u8.ToArray(), token);
         if (status != HttpStatusCode.Conflict)
             EnsureSuccess(HttpMethod.Put, routesPath, status, body);
     }
 
-    private async Task CreateServerAsync(string serverPath, CancellationToken token)
+    private async Task EnsureListenAsync(CancellationToken token)
+    {
+        var serverPath = $"/config/apps/http/servers/{Uri.EscapeDataString(serverName)}";
+        var (status, body) = await RequestAsync(HttpMethod.Get, serverPath, null, token);
+        if (IsMissing(status, body))
+            return;
+        EnsureSuccess(HttpMethod.Get, serverPath, status, body);
+
+        using var server = JsonDocument.Parse(body);
+        var listen = server.RootElement.TryGetProperty("listen", out var listenValue) && listenValue.ValueKind == JsonValueKind.Array
+            ? listenValue.EnumerateArray()
+                .Select(item => item.GetString())
+                .Where(item => !string.IsNullOrEmpty(item))
+                .Cast<string>()
+                .ToList()
+            : [];
+        var (httpPort, httpsPort) = await GetEffectivePortsAsync(token);
+        var missing = new[] { $":{httpsPort}", $":{httpPort}" }
+            .Where(entry => !listen.Contains(entry, StringComparer.Ordinal))
+            .ToArray();
+        if (missing.Length == 0)
+            return;
+
+        listen.AddRange(missing);
+        await ChangeAsync(HttpMethod.Patch, serverPath + "/listen", JsonSerializer.SerializeToUtf8Bytes(listen), token);
+    }
+
+    private async Task<(int httpPort, int httpsPort)> GetEffectivePortsAsync(CancellationToken token)
     {
         var (status, body) = await RequestAsync(HttpMethod.Get, "/config/apps/http", null, token);
         var httpPort = 80;
@@ -139,12 +171,18 @@ internal sealed class CaddyApiClient : ICaddyConfigClient, IDisposable
                 httpsPort = httpsValue.GetInt32();
         }
 
+        return (httpPort, httpsPort);
+    }
+
+    private async Task CreateServerAsync(string serverPath, CancellationToken token)
+    {
+        var (httpPort, httpsPort) = await GetEffectivePortsAsync(token);
         var server = new Dictionary<string, object>
         {
             ["listen"] = new[] { $":{httpsPort}", $":{httpPort}" },
             ["routes"] = Array.Empty<object>()
         };
-        (status, body) = await RequestAsync(HttpMethod.Put, serverPath, JsonSerializer.SerializeToUtf8Bytes(server), token);
+        var (status, body) = await RequestAsync(HttpMethod.Put, serverPath, JsonSerializer.SerializeToUtf8Bytes(server), token);
         if (status != HttpStatusCode.Conflict)
             EnsureSuccess(HttpMethod.Put, serverPath, status, body);
     }
@@ -234,7 +272,7 @@ internal sealed class CaddyApiClient : ICaddyConfigClient, IDisposable
             return null;
         EnsureSuccess(HttpMethod.Get, path, status, body);
         if (body.Length == 0 || Encoding.UTF8.GetString(body) == "null")
-            return [];
+            return null;
         using var document = JsonDocument.Parse(body);
         return document.RootElement.EnumerateArray().Select(item => item.Clone()).ToArray();
     }

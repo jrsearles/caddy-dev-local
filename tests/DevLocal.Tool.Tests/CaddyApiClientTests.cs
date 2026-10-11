@@ -87,6 +87,29 @@ public sealed class CaddyApiClientTests
     }
 
     [Fact]
+    public async Task AddsMissingListenersToAnExistingServer()
+    {
+        var state = new FakeCaddy { ServerExists = true, HttpPort = 8080, Listen = [":8080"] };
+        using var http = new HttpClient(state);
+        using var client = new CaddyApiClient("http://localhost:2019", client: http);
+
+        await client.ReconcileAsync(CaddyResourceGenerator.Build(new Dictionary<string, ImmutableArray<string>>
+        {
+            ["web.dev.local"] = ["localhost:8080"]
+        }, tracing: false), CaddyResourceGenerator.Owns, CancellationToken.None);
+
+        Assert.Contains("PATCH /config/apps/http/servers/srv0/listen", state.Writes);
+        Assert.Equal(new[] { ":8080", ":443" }, state.Listen);
+
+        state.Writes.Clear();
+        await client.ReconcileAsync(CaddyResourceGenerator.Build(new Dictionary<string, ImmutableArray<string>>
+        {
+            ["web.dev.local"] = ["localhost:8080"]
+        }, tracing: false), CaddyResourceGenerator.Owns, CancellationToken.None);
+        Assert.DoesNotContain(state.Writes, write => write.StartsWith("PATCH /config/apps/http/servers/srv0", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task CleanupDoesNotCreateMissingCaddyServer()
     {
         var state = new FakeCaddy();
@@ -97,6 +120,22 @@ public sealed class CaddyApiClientTests
 
         Assert.False(state.ServerExists);
         Assert.Empty(state.Writes);
+    }
+
+    [Fact]
+    public async Task MaterializesMissingRoutesArrayBeforeReconcilingById()
+    {
+        var state = new FakeCaddy { ServerExists = true, MissingRoutesKey = true };
+        using var http = new HttpClient(state);
+        using var client = new CaddyApiClient("http://localhost:2019", client: http);
+
+        await client.ReconcileAsync(CaddyResourceGenerator.Build(new Dictionary<string, ImmutableArray<string>>
+        {
+            ["web.dev.local"] = ["localhost:8080"]
+        }, tracing: false), CaddyResourceGenerator.Owns, CancellationToken.None);
+
+        Assert.Contains("PUT /config/apps/http/servers/srv0/routes", state.Writes);
+        Assert.Contains(state.Routes, item => item["@id"]!.GetValue<string>() == "devlocal-route-web-dev-local");
     }
 
     [Fact]
@@ -140,9 +179,10 @@ public sealed class CaddyApiClientTests
         public bool ServerExists { get; set; }
         public bool PoliciesExist { get; set; }
         public bool DropOnPatch { get; set; }
+        public bool MissingRoutesKey { get; set; }
         public int HttpPort { get; set; } = 80;
         public int HttpsPort { get; set; } = 443;
-        public string[] Listen { get; private set; } = [];
+        public string[] Listen { get; set; } = [];
         public List<JsonNode> Routes { get; } = [];
         public List<JsonNode> Policies { get; private set; } = [];
         public List<string> Writes { get; } = [];
@@ -162,21 +202,33 @@ public sealed class CaddyApiClientTests
             if (path == "/config/apps/http/servers/srv0")
             {
                 if (method == "GET")
-                    return ServerExists ? Respond(HttpStatusCode.OK, "{}") : Respond(HttpStatusCode.NotFound, "server missing");
+                    return ServerExists ? Respond(HttpStatusCode.OK, JsonSerializer.Serialize(new { listen = Listen }))
+                        : Respond(HttpStatusCode.NotFound, "server missing");
                 if (method == "PUT")
                 {
                     ServerExists = true;
-                    Listen = body!["listen"]!.AsArray().Select(item => item!.GetValue<string>()).ToArray();
+                    if (body!["listen"] is not null)
+                        Listen = body["listen"]!.AsArray().Select(item => item!.GetValue<string>()).ToArray();
                     return Respond(HttpStatusCode.OK, "{}");
                 }
+            }
+            if (path == "/config/apps/http/servers/srv0/listen" && method == "PATCH")
+            {
+                ServerExists = true;
+                Listen = body!.AsArray().Select(item => item!.GetValue<string>()).ToArray();
+                return Respond(HttpStatusCode.OK, "{}");
             }
             if (path == "/config/apps/http/servers/srv0/routes")
             {
                 if (method == "GET")
-                    return ServerExists ? Respond(HttpStatusCode.OK, JsonSerializer.Serialize(Routes))
-                        : Respond(HttpStatusCode.BadRequest, "invalid traversal path");
+                    return !ServerExists ? Respond(HttpStatusCode.BadRequest, "invalid traversal path")
+                        : MissingRoutesKey ? Respond(HttpStatusCode.OK, "null")
+                        : Respond(HttpStatusCode.OK, JsonSerializer.Serialize(Routes));
                 if (method == "PUT")
+                {
+                    MissingRoutesKey = false;
                     return Respond(HttpStatusCode.OK, "{}");
+                }
             }
             if (path == "/config/apps/http/servers/srv0/routes/-" && method == "POST")
             {

@@ -7,7 +7,7 @@ param(
     [string] $CaddyExe = '',
     [string] $NssmExe = '',
     [int] $AdminPort = 2019,
-    [int] $HttpPort = 8080,
+    [int] $HttpPort = 80,
     [switch] $SkipManualCaddyStop
 )
 
